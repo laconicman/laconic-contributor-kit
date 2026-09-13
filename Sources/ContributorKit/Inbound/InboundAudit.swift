@@ -15,13 +15,16 @@ public struct InboundAudit: Sendable {
     public let me: String?
     public let stripper: BoilerplateStripper
     public let supersession: SupersessionDetector
+    public let informational: InformationalDetector
 
     public init(
-        me: String?, stripper: BoilerplateStripper, supersession: SupersessionDetector
+        me: String?, stripper: BoilerplateStripper, supersession: SupersessionDetector,
+        informational: InformationalDetector
     ) {
         self.me = me
         self.stripper = stripper
         self.supersession = supersession
+        self.informational = informational
     }
 
     public struct Result: Sendable {
@@ -80,8 +83,17 @@ public struct InboundAudit: Sendable {
                 !isMine($0) && $0.author.caseInsensitiveCompare(root.author) == .orderedSame
             }
 
+            // Display text is the stripped prose on every channel. An inline Devin
+            // body opens with its marker and closes with a badge block, so the raw
+            // slice led with an invisible HTML comment and pushed the finding title out
+            // of view — a trial session routed every triage through `--json` because of
+            // it.
+            let rootProse = stripper.prose(of: root.body)
+
             let state: ItemState
-            if let lastMine = mine.last {
+            if informational.isInformational(raw: root.body, prose: rootProse) != nil {
+                state = .informational
+            } else if let lastMine = mine.last {
                 if askerReplies.contains(where: { $0.createdAt > lastMine.createdAt }) {
                     state = .answeredConfirmed
                 } else if let edited = root.lastEditedAt, edited > lastMine.createdAt {
@@ -102,7 +114,9 @@ public struct InboundAudit: Sendable {
                     changed: changeDescription(
                         for: root, previous: previous?.entries[root.id],
                         was: before, now: state),
-                    text: .init(ask: root.body, reply: mine.last?.body),
+                    text: .init(
+                        ask: rootProse.isEmpty ? root.body : rootProse,
+                        reply: mine.last.map { stripper.prose(of: $0.body) }),
                     roundID: root.reviewID, roundAt: root.createdAt, author: root.author,
                     previousState: before == state ? nil : before))
         }
@@ -126,6 +140,8 @@ public struct InboundAudit: Sendable {
                     state = .noProse
                 } else if supersession.supersedes(prose) != nil {
                     state = .superseded
+                } else if informational.isInformational(raw: comment.body, prose: prose) != nil {
+                    state = .informational
                 } else if let ack = previous?.entries[comment.id]?.acknowledged {
                     state =
                         ack.bodySha256AtAck == comment.bodySHA256

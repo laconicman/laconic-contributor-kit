@@ -148,6 +148,110 @@ struct InboundTests {
         #expect(stripper.prose(of: "Real prose.\n<!-- never closed").trimmed == "Real prose.")
     }
 
+    // MARK: - The reviewer's own kind marker
+
+    /// **Reading the asker's declared `kind` is not deciding a meaning question.** Devin
+    /// Review opens every inline body with a machine-readable marker, and the two kinds
+    /// it emits are `bug` (a finding) and `analysis` (a 📝 Info receipt). Taking the
+    /// asker at their word is the same move supersession makes.
+    ///
+    /// The markers below are the real thing, copied from
+    /// `laconicman/YandexDeliveryExpress#3`.
+    @Test("a reviewer-declared analysis note is not owed; a declared bug is")
+    func declaredKindIsHonoured() throws {
+        let config = try Configuration.builtInDefaults()
+        let detector = try InformationalDetector(
+            patterns: config.inbound.informationalPatterns)
+        let stripper = try BoilerplateStripper(settings: config.inbound)
+
+        let analysis = """
+            <!-- devin-review-comment {"id": "ANALYSIS_pr-review-job-8092f8_0001",             "file_path": "Tests/SampleData.swift", "kind": "analysis"} -->
+
+            📝 **Info: Bridge init field/order match verified**
+
+            The test-side init forwards all 17 fields.
+            """
+        let bug = analysis
+            .replacingOccurrences(of: "\"kind\": \"analysis\"", with: "\"kind\": \"bug\"")
+
+        #expect(detector.isInformational(raw: analysis, prose: stripper.prose(of: analysis)) != nil)
+        #expect(detector.isInformational(raw: bug, prose: stripper.prose(of: bug)) == nil)
+        #expect(ItemState.informational.isOwed == false)
+    }
+
+    /// A bot's run announcement is a fixed phrase, and the only prose left once the
+    /// badge is stripped. Matched against the stripped prose rather than the raw body.
+    @Test("a bot run announcement is informational, not an obligation")
+    func botAnnouncementIsInformational() throws {
+        let config = try Configuration.builtInDefaults()
+        let detector = try InformationalDetector(
+            patterns: config.inbound.informationalPatterns)
+        let stripper = try BoilerplateStripper(settings: config.inbound)
+
+        let announcement = """
+            Starting Devin Review.
+
+            <!-- devin-review-badge-begin -->
+            <a href="https://app.devin.ai/review/o/r/pull/3" target="_blank">
+              <picture>
+                <img src="https://static.devin.ai/assets/gh-devin-review-light.svg?v=3">
+              </picture>
+            </a>
+            <!-- devin-review-badge-end -->
+            """
+        let prose = stripper.prose(of: announcement)
+        #expect(prose == "Starting Devin Review.")
+        #expect(detector.isInformational(raw: announcement, prose: prose) != nil)
+    }
+
+    /// **Paired markers must be stripped before generic HTML comments.** Removing
+    /// `<!--…-->` first destroys the begin/end pairing and leaves the wrapped block
+    /// behind — a bare `<a href=…>` / `</a>` trailing every excerpt, which is what sent
+    /// a trial session through `--json` for every single triage.
+    @Test("the badge block is removed whole, leaving no anchor residue")
+    func badgeBlockLeavesNoResidue() throws {
+        let stripper = try BoilerplateStripper(
+            settings: try Configuration.builtInDefaults().inbound)
+        let body = """
+            **Devin Review** found 1 new potential issue.
+
+            <!-- devin-review-badge-begin -->
+            <a href="https://app.devin.ai/review/o/r/pull/3" target="_blank">
+              <picture>
+                <source media="(prefers-color-scheme: dark)" srcset="https://x/d.svg">
+                <img src="https://x/l.svg" alt="Devin Review">
+              </picture>
+            </a>
+            <!-- devin-review-badge-end -->
+            """
+        #expect(stripper.prose(of: body) == "**Devin Review** found 1 new potential issue.")
+    }
+
+    /// The finding title must lead the excerpt. An inline Devin body opens with its
+    /// marker, so the raw slice showed an invisible HTML comment and pushed the title
+    /// out of view.
+    @Test("an inline ask's text leads with the finding, not the marker")
+    func inlineAskLeadsWithTheFinding() throws {
+        let raw = """
+            <!-- devin-review-comment {"id": "BUG_pr-review-job-295bbd", "kind": "bug"} -->
+
+            🔴 **Interrupted sync skips new pages**
+
+            After one incremental page, `commitPage` clears `backfillComplete`.
+            """
+        let root = RemoteComment(
+            id: "discussion_r1", channel: .inlineThread, author: "devin-ai-integration",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: raw, permalink: "https://github.com/o/r/pull/1#discussion_r1")
+
+        let result = try Fixtures.audit().run(
+            pullRequest(threads: [RemoteThread(comments: [root])]), against: nil)
+        let ask = try #require(result.items.first?.text.ask)
+        #expect(ask.hasPrefix("🔴 **Interrupted sync skips new pages**"))
+        #expect(!ask.contains("devin-review-comment"))
+        #expect(result.items.first?.state == .openAsk, "a declared bug is still owed")
+    }
+
     // MARK: - Gap 2.3: supersession
 
     /// A reviewer can retract an obligation. Without this, §12.10's never-auto-cleared

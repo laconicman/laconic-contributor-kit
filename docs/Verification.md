@@ -56,15 +56,32 @@ established, beyond the author's own runs:
 
 | Not verified | Why |
 |---|---|
-| **A PR with more than one reviewer.** | Both ground-truth PRs were reviewed only by `sauwming`. A root comment from a third party — someone who is neither us nor the maintainer — is untested in both the fixtures and the live runs. |
+| **A PR with more than one reviewer.** | Both ground-truth PRs were reviewed only by `sauwming`; **both live trials also had exactly one reviewer** (the Devin bot), every other participant being the contributor. Three independent attempts, still untested. A root comment from a third party is the gap. |
 | **Supersession against a real retraction.** | The phrase list is matched by unit test against a constructed body. No captured GitHub review body in this workspace contains a retraction. |
 | **`answered-confirmed` against real data.** | No fixture and neither live PR contains a thread where the asker replied after our reply. Tested against a constructed thread only. |
-| **Pagination past one page.** | Every live subject fitted in one page of 100. The cursor loop, the `hasNextPage` ceiling and the `truncatedFetch` anomaly are exercised by unit test and by construction, not by a real oversized PR. |
-| **`lastEditedAt` on a real edited comment.** | Edit detection is tested through the body hash, which is the API-independent backstop. No live comment in these runs had been edited. |
-| **Issues, as opposed to pull requests.** | The query serves both through `issueOrPullRequest`, and the decoder treats every connection as optional, but no live run targeted an issue. |
+| **Pagination past one page.** | Every live subject fitted in one page of 100 — the largest across both trials carried 88 items on one page. The cursor loop, the `hasNextPage` ceiling and the `truncatedFetch` anomaly are exercised by unit test and by construction, never by a real oversized PR. |
+| ~~`lastEditedAt` on a real edited comment~~ | **Now verified** — six live instances in the second trial, plus an edited *review body* in the first. Moved to the executed table. |
+| **Issues, as opposed to pull requests.** | The query serves both through `issueOrPullRequest`, and the decoder treats every connection as optional, but no live run in either trial targeted an issue — the second found no live issue to run against. The issue-*comment* channel is well exercised; the issue *subject* is not. |
 | **`commenter:` missing an inline-only PR.** | Requires `Candidates.graphql` and the enumeration union, which belong to `contrib out`. Not built. |
 | **Whether a fork issue backlinks onto an upstream thread.** | A write to a public repository. Not attempted. |
 | **Any platform other than macOS.** | `platforms: [.macOS(.v14)]`; CryptoKit and the XDG state path are the only platform-specific pieces. |
+
+## From a second live trial, 2026-09-13 (Devin Desktop)
+
+A second session ran `contrib` as the contributor across 17 PRs in two repositories
+(`laconicman/YDelivery` ×11, `laconicman/YandexDeliveryExpress` ×6), processing a real
+review day. What it established:
+
+| Claim | Evidence |
+|---|---|
+| **`edited-after-my-answer` — a previously untested row** | Fired on **six live instances** across four PRs. On two the edit genuinely changed the ask and produced code fixes; on two it did not and was said so once. The state's question was the right fork every time |
+| It found work a careful manual pass had missed — again | A hand audit with raw `gh api` on 09-09 believed the repo current; the first sweep found 18 action-state items across nine "done" PRs, including a same-day edit at 12:02 that would have shipped past |
+| Transitions are load-bearing | `6 × open-ask → answered-claimed`, `1 × edited-after-my-answer → answered-claimed`, `1 × obligation-open → obligation-acknowledged` — reported as "the most load-bearing line in the output" |
+| Supersession, authorship, `no-prose` | Confirmed incidentally at volume: 3 retractions, `23 of those review bodies are mine` on one PR and 24/50 on another, 18 empty bodies absorbed |
+| Day's outcome | 21 thread replies, 17 recorded acks, 3 code fixes, 2 docs fixes. **`owed 0` on every PR except one deliberate archaeology pile** |
+
+**Two defects and one wart it found, all now fixed** — see below. One gap was left open
+by decision rather than by oversight: see `Decisions.md` on era acknowledgement.
 
 ## Three defects the live trial found
 
@@ -95,6 +112,37 @@ established, beyond the author's own runs:
 The provenance block also now states body completeness **positively** (`bodies: full text,
 not excerpts`). The trial could not tell whether the `excerptBodies` check had passed or
 had failed to run, which is the same absence-of-evidence shape as the rest of this file.
+
+## Three more, from the second trial
+
+4. **The reviewer's own `kind` marker was ignored.** Devin Review opens every inline body
+   with `<!-- devin-review-comment {… "kind": "bug" | "analysis"} -->`, and `analysis`
+   notes are 📝 Info receipts, not requests. They classified `open-ask` and demanded
+   answers; a session answered three with one-liners to reach zero.
+
+   Reading a kind the *asker* declared is not the CLI deciding a meaning question — it is
+   the same move supersession makes. New `informational` state, driven by configurable
+   patterns rather than hardcoded, shipped with the Devin markers and a bot's fixed
+   announcement phrase. **Verified on `laconicman/telegram-kb#1`: 9 of 9 items reclassified
+   were reviewer-declared `analysis`; no `bug` was touched.** `owed` 5 → 3.
+
+   Measured first: across two repositories the only kinds Devin emits are `analysis` (13)
+   and `bug` (11).
+
+5. **Excerpts led with an invisible HTML comment.** An inline body opens with the marker,
+   so the visible slice showed `<!-- devin-review-comment {"id": "BUG_pr-review-job…` and
+   pushed the finding title out of view. A trial session routed **every** triage through
+   `--json` because of it. Ask text is now the stripped prose on all three channels —
+   `🔴 **Interrupted sync skips new pages** …` leads.
+
+6. **Paired markers were being destroyed before they could be used.** Stripping `<!--…-->`
+   generically removed Devin's `badge-begin` / `badge-end` delimiters first and left the
+   wrapped `<a href=…>` / `</a>` behind, trailing every excerpt. Paired blocks are now
+   stripped first. Not a classification bug — `no-prose` was always reached by genuinely
+   empty bodies — but it was the noise in exactly the place the complaint was about.
+
+**And one non-defect worth recording:** the trial's `--json` parser broke because `text`
+is an object, not a string. The shape was right and undocumented; `--help` now states it.
 
 ## A sharp edge, found while preparing a handoff
 
