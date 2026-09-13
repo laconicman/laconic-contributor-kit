@@ -1,0 +1,37 @@
+# ContributorKit — inbound (`contrib in`) defaults.
+#
+# A SEPARATE file from contributorkit.default.yml on purpose. That one is generated
+# from the fixtures and every figure in it was MEASURED over pjproject's 3,435 files.
+# Nothing here was measured. All of it is REASONED from one field report — two live
+# Devin review rounds on laconicman/telegram-kb#1, 2026-09-12 — and TASK §9's rule is
+# that provenance is stated per claim. Keeping the two apart is how that stays visible.
+
+inbound:
+  # A review body whose prose is only badge markup is not an obligation; it is a
+  # no-op. Four of six bodies in the field report's round 2 were exactly this.
+  # Stripped before the emptiness test, in this order. The body is still COUNTED in
+  # the examined total (TASK §12.3 rule 4) — it is only excluded from the worklist.
+  boilerplateBlocks:
+    - "<!--...-->"        # HTML comments
+    - "<picture>...</picture>"
+    - "<details>...</details>"
+  boilerplatePatterns:    # whole lines matching these are dropped
+    - "^\\s*!\\[[^]]*\\]\\([^)]*\\)\\s*$"           # a lone markdown image
+    - "^\\s*\\[!\\[[^]]*\\]\\([^)]*\\)\\]\\([^)]*\\)\\s*$"  # a lone linked badge
+    - "^\\s*<img[^>]*>\\s*$"
+    - "^\\s*<a[^>]*>\\s*</a>\\s*$"
+    - "^\\s*-{3,}\\s*$"
+
+  # A reviewer can RETRACT an obligation. Matched case-insensitively against the
+  # stripped prose; a match marks the item superseded, which is reported and counted
+  # but is not owed. Without this, TASK §12.10's never-auto-cleared rule holds open an
+  # ask the asker has themselves withdrawn.
+  supersessionPhrases:
+    - "this report is out of date"
+    - "superseded by"
+    - "this review is obsolete"
+    - "please disregard this review"
+
+  # Forms of acknowledgement `contrib ack --with` accepts. Shape is always checked;
+  # existence is checked only where it is free (see Acknowledgement.swift).
+  acknowledgementKinds: ["comment", "commit", "pr-body", "none"]

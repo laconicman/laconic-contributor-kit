@@ -1,0 +1,166 @@
+import Foundation
+import Testing
+
+@testable import ContributorKit
+
+/// TASK §6, day one: the regression test with a known answer.
+///
+/// Every figure asserted here comes from `manifest.json`, which `make_manifest.py`
+/// derived from 13 `cloc` documents captured twice and compared byte-for-byte.
+@Suite("contrib loc — against the measured fixtures")
+struct LocTests {
+
+    @Test("every fixture's four sections decode exactly as captured")
+    func decodesEverySection() async throws {
+        let manifest = try Fixtures.manifest()
+        #expect(manifest.fixtures.count == 13, "the fixture set is 13 cloc documents")
+
+        for fixture in manifest.fixtures {
+            let byFile = fixture.kind.hasSuffix("by-file")
+            let document = try ClocDocument(
+                json: try Fixtures.data(fixture.file), keySpace: byFile ? .path : .language)
+            let stats = document.stats
+
+            #expect(stats.added == fixture.cloc.added, "\(fixture.file) added")
+            #expect(stats.removed == fixture.cloc.removed, "\(fixture.file) removed")
+            #expect(stats.modified == fixture.cloc.modified, "\(fixture.file) modified")
+            #expect(stats.net == fixture.net, "\(fixture.file) net")
+        }
+    }
+
+    /// The headline row: `tls-restart` branch total, added/removed/modified code
+    /// 107 / 82 / 35 and comment 109 / 0 / 8, netting code +25, comment +109, blank +21.
+    @Test("tls-restart branch total reproduces TASK §6's net figures")
+    func tlsRestartBranchTotal() async throws {
+        let runner = try Fixtures.clocRunner("cloc/tls-restart.branch.json")
+        let document = try await Fixtures.cloc(runner).diff(
+            refA: "2ba80f1ed", refB: "fix/tls-restart-no-listener-reports-success",
+            options: .init(languages: ["C", "C/C++ Header", "Objective-C"]),
+            cwd: URL(fileURLWithPath: "."))
+
+        #expect(document.stats.added == Counts(code: 107, comment: 109, blank: 21))
+        #expect(document.stats.removed == Counts(code: 82, comment: 0, blank: 0))
+        #expect(document.stats.modified == Counts(code: 35, comment: 8, blank: 0))
+        #expect(document.stats.net == Counts(code: 25, comment: 109, blank: 21))
+        // Proof the code actually reached the subprocess seam rather than reading a
+        // file directly — the check must be able to fail for the right reason.
+        #expect(runner.calls.count == 1)
+        #expect(runner.unusedRecordings.isEmpty)
+    }
+
+    /// **Gross churn deliberately does not agree with §6 and must not be asserted
+    /// against it.** §6's heuristic gave `+148 −123`; cloc splits the same edits into
+    /// 107 added, 82 removed and 35 modified in place. Same net, truer churn.
+    @Test("net agrees with the §6 heuristic; gross is asserted only against cloc")
+    func netAgreesGrossDoesNot() throws {
+        let manifest = try Fixtures.manifest()
+        for fixture in manifest.fixtures {
+            guard let heuristic = fixture.heuristic else { continue }
+            let agrees =
+                fixture.net.code == heuristic.code && fixture.net.comment == heuristic.comment
+            #expect(
+                agrees == (fixture.agrees ?? false),
+                "\(fixture.file): manifest records agrees=\(fixture.agrees ?? false)")
+        }
+    }
+
+    /// The one fixture that disagrees, and that is the point: §6's awk heuristic files
+    /// two `*p_min = …;` dereferences as comments. The manifest carries both figures.
+    @Test("darwin-tls is code +32 / comment +30 — deliberately not §6's +30/+32")
+    func darwinTlsDisagreesWithTheHeuristic() throws {
+        let manifest = try Fixtures.manifest()
+        let fixture = try #require(
+            manifest.fixtures.first { $0.file == "cloc/darwin-tls.branch.json" })
+        #expect(fixture.net == Counts(code: 32, comment: 30, blank: 8))
+        #expect(fixture.heuristic?.code == 30)
+        #expect(fixture.heuristic?.comment == 32)
+        #expect(fixture.agrees == false)
+    }
+
+    @Test("--ignore-whitespace moves modified code 35 → 20 with net unchanged at +25")
+    func ignoreWhitespaceCorrection() throws {
+        let manifest = try Fixtures.manifest()
+        let plain = try #require(
+            manifest.fixtures.first { $0.file == "cloc/tls-restart.branch.json" })
+        let corrected = try #require(
+            manifest.fixtures.first { $0.file == "cloc/tls-restart.branch.ignore-ws.json" })
+        #expect(plain.cloc.modified.code == 35)
+        #expect(corrected.cloc.modified.code == 20)
+        #expect(plain.net.code == corrected.net.code)
+        #expect(plain.net.code == 25)
+    }
+
+    /// Commit `56e706f7d` is `code −33 / comment +21`. A ratio field there prints
+    /// `−0.64`, which is worse than printing nothing (TASK §3.4).
+    @Test("the comment-to-code ratio is suppressed when net code ≤ 0")
+    func ratioSuppressedOnNegativeNetCode() throws {
+        let document = try ClocDocument(
+            json: try Fixtures.data("cloc/tls-restart.commit-03-56e706f7d.json"),
+            keySpace: .language)
+        #expect(document.stats.net.code == -33)
+        #expect(document.stats.net.comment == 21)
+        #expect(document.stats.commentToCodeRatio == nil)
+
+        let positive = try ClocDocument(
+            json: try Fixtures.data("cloc/tls-restart.commit-01-5ba09a23f.json"),
+            keySpace: .language)
+        #expect(positive.stats.commentToCodeRatio == 1.2)
+    }
+
+    /// Per-commit figures do not sum to the branch total and must never be presented as
+    /// a check on it: commits re-touch the same lines, so the per-commit added comments
+    /// sum to 121 against a branch total of 109 (added code 172 against 107).
+    @Test("per-commit figures deliberately do not sum to the branch total")
+    func perCommitDoesNotSumToBranch() throws {
+        let manifest = try Fixtures.manifest()
+        let commits = manifest.fixtures.filter { $0.kind == "commit" }
+        #expect(commits.count == 7)
+        let addedCode = commits.reduce(0) { $0 + $1.cloc.added.code }
+        let addedComment = commits.reduce(0) { $0 + $1.cloc.added.comment }
+        let branch = try #require(
+            manifest.fixtures.first { $0.file == "cloc/tls-restart.branch.json" })
+        #expect(addedCode == 172)
+        #expect(addedComment == 121)
+        #expect(branch.cloc.added.code == 107)
+        #expect(branch.cloc.added.comment == 109)
+    }
+
+    /// `SUM` is a sibling key inside every section, not a separate top-level object.
+    /// Reading it while iterating doubles every total.
+    @Test("SUM is skipped, so totals do not double")
+    func sumKeyIsSkipped() throws {
+        let document = try ClocDocument(
+            json: try Fixtures.data("cloc/darwin-tls.branch.json"), keySpace: .language)
+        #expect(document.sections["added"]?.keys.contains("SUM") == false)
+        #expect(document.stats.added.code == 58)
+    }
+
+    /// cloc exits 0 and emits an empty document when a range touches nothing it
+    /// recognises. A decoder that reports zeroes there is a check that passes because
+    /// it did not run — the field report's rule 5.
+    @Test("an empty cloc document is an error, not a row of zeroes")
+    func emptyDocumentRefused() {
+        #expect(throws: ClocError.self) {
+            _ = try ClocDocument(json: Data("{}".utf8), keySpace: .language)
+        }
+        #expect(throws: ClocError.self) {
+            _ = try ClocDocument(
+                json: Data(#"{"header":{"cloc_version":"2.06"}}"#.utf8), keySpace: .language)
+        }
+    }
+
+    /// `--include-lang` is ONE argument whose value contains a comma, a slash and a
+    /// space. Through `Process` it must be a single element of the argv array.
+    @Test("--include-lang is one argv element, never split on spaces")
+    func includeLangIsOneArgument() {
+        let cloc = Cloc(executable: "cloc", runner: RecordedCommandRunner([]))
+        let argv = cloc.argv(
+            refA: "a", refB: "b",
+            options: .init(
+                languages: ["C", "C/C++ Header", "Objective-C"],
+                forceLang: [".m": "Objective-C"]))
+        #expect(argv.contains("--include-lang=C,C/C++ Header,Objective-C"))
+        #expect(argv.contains("--force-lang=Objective-C,m"))
+        #expect(argv.filter { $0.hasPrefix("--include-lang") }.count == 1)
+    }
+}

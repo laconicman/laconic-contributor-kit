@@ -1,0 +1,138 @@
+{"header" : {
+  "cloc_url"           : "github.com/AlDanial/cloc",
+  "cloc_version"       : "2.06",
+  "elapsed_seconds"    : 0.473327875137329,
+  "n_files"            : 0,
+  "n_lines"            : 7712,
+  "files_per_second"   : 0,
+  "lines_per_second"   : 16293.1456292585},
+ "added" : {
+  "pjlib/src/pj/ssl_sock_imp_common.c" : {
+    "comment" : 12,
+    "blank" : 3,
+    "nFiles" : 0,
+    "code" : 13
+  },
+  "pjsip/src/pjsip/sip_transport_tcp.c" : {
+    "nFiles" : 0,
+    "code" : 14,
+    "blank" : 6,
+    "comment" : 24
+  },
+  "pjsip/src/pjsip/sip_transport_tls.c" : {
+    "comment" : 64,
+    "blank" : 12,
+    "code" : 80,
+    "nFiles" : 0
+  },
+  "pjlib/include/pj/ssl_sock.h" : {
+    "nFiles" : 0,
+    "code" : 0,
+    "blank" : 0,
+    "comment" : 9
+  }
+  },
+ "same" : {
+  "pjlib/src/pj/ssl_sock_imp_common.c" : {
+    "comment" : 434,
+    "blank" : 0,
+    "nFiles" : 0,
+    "code" : 1892
+  },
+  "pjsip/src/pjsip/sip_transport_tcp.c" : {
+    "nFiles" : 0,
+    "code" : 1210,
+    "blank" : 0,
+    "comment" : 335
+  },
+  "pjsip/src/pjsip/sip_transport_tls.c" : {
+    "comment" : 380,
+    "blank" : 0,
+    "code" : 1527,
+    "nFiles" : 0
+  },
+  "pjlib/include/pj/ssl_sock.h" : {
+    "nFiles" : 0,
+    "code" : 425,
+    "blank" : 0,
+    "comment" : 1147
+  }
+  },
+ "modified" : {
+  "pjlib/src/pj/ssl_sock_imp_common.c" : {
+    "comment" : 0,
+    "blank" : 0,
+    "nFiles" : 0,
+    "code" : 0
+  },
+  "pjsip/src/pjsip/sip_transport_tcp.c" : {
+    "nFiles" : 0,
+    "code" : 4,
+    "blank" : 0,
+    "comment" : 1
+  },
+  "pjsip/src/pjsip/sip_transport_tls.c" : {
+    "comment" : 3,
+    "blank" : 0,
+    "code" : 31,
+    "nFiles" : 0
+  },
+  "pjlib/include/pj/ssl_sock.h" : {
+    "nFiles" : 0,
+    "code" : 0,
+    "blank" : 0,
+    "comment" : 4
+  }
+  },
+ "removed" : {
+  "pjlib/src/pj/ssl_sock_imp_common.c" : {
+    "comment" : 0,
+    "blank" : 0,
+    "nFiles" : 0,
+    "code" : 0
+  },
+  "pjsip/src/pjsip/sip_transport_tcp.c" : {
+    "nFiles" : 0,
+    "code" : 1,
+    "blank" : 0,
+    "comment" : 0
+  },
+  "pjsip/src/pjsip/sip_transport_tls.c" : {
+    "comment" : 0,
+    "blank" : 0,
+    "code" : 81,
+    "nFiles" : 0
+  },
+  "pjlib/include/pj/ssl_sock.h" : {
+    "nFiles" : 0,
+    "code" : 0,
+    "blank" : 0,
+    "comment" : 0
+  }
+  },
+  "SUM" : {
+  "added" : {
+    "code" : 107,
+    "nFiles" : 0,
+    "blank" : 21,
+    "comment" : 109
+},
+  "same" : {
+    "code" : 5054,
+    "nFiles" : 0,
+    "blank" : 0,
+    "comment" : 2296
+},
+  "modified" : {
+    "code" : 35,
+    "nFiles" : 0,
+    "blank" : 0,
+    "comment" : 8
+},
+  "removed" : {
+    "code" : 82,
+    "nFiles" : 0,
+    "blank" : 0,
+    "comment" : 0
+}
+} }
