@@ -25,6 +25,14 @@ public struct Snapshot: Codable, Sendable {
         public var updatedAt: Date?
         public var lastEditedAt: Date?
         public var bodySha256: String
+        /// What the audit concluded about this item last run.
+        ///
+        /// Without it the differ compares bodies and authorship only, so it can see a
+        /// new or edited comment and **structurally cannot see a resolution** — it
+        /// reported "nothing moved" in the run immediately after six threads were
+        /// answered and one obligation acknowledged. That is a report of absence that
+        /// cannot tell *nothing happened* from *this check cannot see what happened*.
+        public var state: ItemState?
         public var firstSeen: Date
         public var myReplyID: String?
         public var myReplyAt: Date?

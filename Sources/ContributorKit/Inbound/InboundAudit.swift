@@ -93,14 +93,18 @@ public struct InboundAudit: Sendable {
                 state = .openAsk
             }
 
-            upsert(&snapshot, comment: root, myReply: mine.last)
+            let before = previous?.entries[root.id]?.state
+            upsert(&snapshot, comment: root, myReply: mine.last, state: state)
             items.append(
                 InboundItem(
                     id: root.id, kind: .inlineThread, permalink: root.permalink,
                     state: state, question: state.question,
-                    changed: changeDescription(for: root, previous: previous?.entries[root.id]),
-                    text: .init(ask: excerpt(root.body), reply: mine.last.map { excerpt($0.body) }),
-                    roundID: root.reviewID, roundAt: root.createdAt, author: root.author))
+                    changed: changeDescription(
+                        for: root, previous: previous?.entries[root.id],
+                        was: before, now: state),
+                    text: .init(ask: root.body, reply: mine.last?.body),
+                    roundID: root.reviewID, roundAt: root.createdAt, author: root.author,
+                    previousState: before == state ? nil : before))
         }
 
         // ---- channels 2 and 3: review bodies, then issue comments -----------------
@@ -129,15 +133,18 @@ public struct InboundAudit: Sendable {
                 } else {
                     state = .obligationOpen
                 }
-                upsert(&snapshot, comment: comment, myReply: nil)
+                let before = previous?.entries[comment.id]?.state
+                upsert(&snapshot, comment: comment, myReply: nil, state: state)
                 items.append(
                     InboundItem(
                         id: comment.id, kind: channel, permalink: comment.permalink,
                         state: state, question: state.question,
                         changed: changeDescription(
-                            for: comment, previous: previous?.entries[comment.id]),
-                        text: .init(ask: excerpt(prose.isEmpty ? comment.body : prose), reply: nil),
-                        roundID: nil, roundAt: comment.createdAt, author: comment.author))
+                            for: comment, previous: previous?.entries[comment.id],
+                            was: before, now: state),
+                        text: .init(ask: prose.isEmpty ? comment.body : prose, reply: nil),
+                        roundID: nil, roundAt: comment.createdAt, author: comment.author,
+                        previousState: before == state ? nil : before))
             }
         }
 
@@ -148,23 +155,34 @@ public struct InboundAudit: Sendable {
 
     /// `nil` when the snapshot had it and nothing moved — the majority of items on any
     /// round after the first, and the reason this is a differ and not a reporter.
-    private func changeDescription(for comment: RemoteComment, previous: Snapshot.Entry?)
-        -> String?
-    {
+    ///
+    /// **A state transition counts as movement.** Comparing bodies alone means the run
+    /// straight after a round of replies reports "nothing moved", which is true of what
+    /// the snapshot tracks and false of what a contributor tracks.
+    private func changeDescription(
+        for comment: RemoteComment, previous: Snapshot.Entry?,
+        was: ItemState?, now: ItemState
+    ) -> String? {
         guard let previous else { return "new since the last run" }
+
+        var parts: [String] = []
+        if let was, was != now {
+            parts.append("\(was.rawValue) → \(now.rawValue)")
+        }
         if previous.bodySha256 != comment.bodySHA256 {
             let when = comment.lastEditedAt.map { " (edited \(GitHubTime.string($0)))" } ?? ""
-            return "body changed since the last run\(when)"
-        }
-        if previous.acknowledged != nil, previous.acknowledged?.bodySha256AtAck != comment.bodySHA256
+            parts.append("body changed since the last run\(when)")
+        } else if previous.acknowledged != nil,
+            previous.acknowledged?.bodySha256AtAck != comment.bodySHA256
         {
-            return "edited after it was acknowledged"
+            parts.append("edited after it was acknowledged")
         }
-        return nil
+        return parts.isEmpty ? nil : parts.joined(separator: "; ")
     }
 
     private func upsert(
-        _ snapshot: inout Snapshot, comment: RemoteComment, myReply: RemoteComment?
+        _ snapshot: inout Snapshot, comment: RemoteComment, myReply: RemoteComment?,
+        state: ItemState
     ) {
         var entry =
             snapshot.entries[comment.id]
@@ -172,21 +190,15 @@ public struct InboundAudit: Sendable {
                 kind: comment.channel, url: comment.permalink, author: comment.author,
                 createdAt: comment.createdAt, updatedAt: comment.updatedAt,
                 lastEditedAt: comment.lastEditedAt, bodySha256: comment.bodySHA256,
-                firstSeen: Date(), myReplyID: nil, myReplyAt: nil, acknowledged: nil)
+                state: nil, firstSeen: Date(), myReplyID: nil, myReplyAt: nil,
+                acknowledged: nil)
         entry.updatedAt = comment.updatedAt
         entry.lastEditedAt = comment.lastEditedAt
         entry.bodySha256 = comment.bodySHA256
         entry.myReplyID = myReply?.id ?? entry.myReplyID
         entry.myReplyAt = myReply?.createdAt ?? entry.myReplyAt
+        entry.state = state
         snapshot.entries[comment.id] = entry
     }
 
-    /// The minimum text §13.3 allows: enough to answer the question, not enough to
-    /// re-enumerate from.
-    private func excerpt(_ body: String, limit: Int = 400) -> String {
-        let collapsed = body.replacingOccurrences(of: "\r", with: "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard collapsed.count > limit else { return collapsed }
-        return String(collapsed.prefix(limit)) + "…"
-    }
 }

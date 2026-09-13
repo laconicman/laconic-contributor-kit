@@ -225,6 +225,86 @@ struct InboundTests {
         #expect(second.owed.count == first.owed.count)
     }
 
+    /// **A state transition is movement.** Comparing bodies alone means the run straight
+    /// after a round of replies reports "nothing moved" — true of what the snapshot
+    /// tracks, false of what a contributor tracks. Reported from a live trial: six
+    /// threads answered and one obligation acknowledged, and the next run said nothing
+    /// had changed.
+    @Test("answering a thread shows up as a transition on the next run")
+    func stateTransitionsAreMovement() throws {
+        let root = comment("discussion_r1", "sauwming", at: 0)
+        let unanswered = RemoteThread(comments: [root])
+        let answered = RemoteThread(
+            comments: [root, comment("discussion_r2", "laconicman", at: 10)])
+
+        let first = try Fixtures.audit().run(
+            pullRequest(threads: [unanswered]), against: nil)
+        #expect(first.items.first?.state == .openAsk)
+
+        // Nothing changed at all: no transition, no movement.
+        let stable = try Fixtures.audit().run(
+            pullRequest(threads: [unanswered]), against: first.updatedSnapshot)
+        #expect(stable.items.first?.changed == nil)
+        #expect(stable.items.first?.previousState == nil)
+
+        // Now I reply. The body did not change; the state did.
+        let moved = try Fixtures.audit().run(
+            pullRequest(threads: [answered]), against: first.updatedSnapshot)
+        #expect(moved.items.first?.state == .answeredClaimed)
+        #expect(moved.items.first?.previousState == .openAsk)
+        #expect(moved.items.first?.changed == "open-ask → answered-claimed")
+        // And it is visible, even though it is no longer owed — which is the run in
+        // which "is my reply actually responsive?" is worth asking.
+        #expect(moved.items.first?.state.isOwed == false)
+        #expect(moved.items.contains { $0.changed != nil })
+    }
+
+    /// An acknowledgement is a transition too, and it was the other half of the same
+    /// silent run.
+    @Test("acknowledging an obligation shows up as a transition")
+    func acknowledgementIsATransition() throws {
+        let body = RemoteComment(
+            id: "pullrequestreview-1", channel: .reviewBody, author: "devin",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: "Please add a regression test.",
+            permalink: "https://github.com/o/r/pull/1#pullrequestreview-1")
+
+        var snapshot = try Fixtures.audit().run(
+            pullRequest(reviewBodies: [body]), against: nil
+        ).updatedSnapshot
+        snapshot.entries["pullrequestreview-1"]?.acknowledged = Acknowledgement(
+            kind: .commit, pointer: "1da04eb", bodySha256AtAck: body.bodySHA256,
+            verified: true, verificationNote: "test")
+
+        let after = try Fixtures.audit().run(
+            pullRequest(reviewBodies: [body]), against: snapshot)
+        #expect(after.items.first?.state == .obligationAcknowledged)
+        #expect(after.items.first?.changed == "obligation-open → obligation-acknowledged")
+    }
+
+    /// **The `--json` ask must be answerable from the JSON.** It was truncated at 400
+    /// characters, so every round-3 ask in the live trial ended mid-sentence and the
+    /// session had to re-fetch bodies with `gh api` — which is the re-enumeration the
+    /// machine contract exists to eliminate. Terminal display still truncates; the
+    /// contract does not.
+    @Test("the ask is carried whole, not sliced")
+    func askIsNotTruncated() throws {
+        let long = String(repeating: "A resumed backfill loses the newest watermark. ", count: 40)
+        #expect(long.count > 400)
+        let body = RemoteComment(
+            id: "pullrequestreview-1", channel: .reviewBody, author: "devin",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: long, permalink: "https://github.com/o/r/pull/1#pullrequestreview-1")
+
+        let result = try Fixtures.audit().run(
+            pullRequest(reviewBodies: [body]), against: nil)
+        // A review body's ask is the *stripped* prose — badge markup should not pad the
+        // contract — so it is trimmed, but never sliced.
+        #expect(result.items.first?.text.ask == long.trimmingCharacters(in: .whitespacesAndNewlines))
+        #expect(result.items.first?.text.ask.hasSuffix("…") == false)
+        #expect((result.items.first?.text.ask.count ?? 0) > 400)
+    }
+
     /// The record is keyed by comment id **and** body hash, so an edit after
     /// acknowledgement re-opens the item by itself. For review bodies the hash is not
     /// an optimisation — it is the only mechanism REST leaves available.

@@ -209,6 +209,23 @@ The first version of *that* test silently examined 12 of its 13 rows, because a 
 meant to skip non-path rows also skipped `Makefile` — the same shape of bug, inside the
 test written to catch it. It now locates the table by its header and reads it whole.
 
+## Open, raised by the live trial
+
+- **Recording a responsiveness check.** When the asker never confirms, there is no way to
+  record *"I re-read this and my reply does answer it"*, so the tool cannot tell a
+  re-read `answered-claimed` from one nobody looked at. Surfacing it at the transition
+  addresses *when to look*, not *how to record having looked*. `ack` is deliberately not
+  the answer — it now refuses inline threads rather than silently accepting them.
+- **`open-ask`'s question carries no information beyond the state name.** Reported as
+  correct but inert. It may be that `open-ask` genuinely has no meaning question — the
+  boundary table lists the ask/no-reply test entirely on the deterministic side. If
+  anything belongs there it is probably *how many rounds ago it was raised*, since
+  "the maintainer had to ask three times" is the whole origin of this tool.
+- **Fixes generate the next round's findings at a steady rate.** Three of six round-3
+  findings were introduced by round-2 fixes; one round-2 finding was a bug in a round-1
+  fix. Nothing notices that a new ask sits on lines a previous fix touched. Recorded
+  because it is the most consistent pattern observed, not because it is scoped.
+
 ## Still open
 - **Whether a backticked reference suppresses GitHub's cross-reference event.** Needed to
   choose `referenceStyle`; a write to a public repository, so not tested here.

@@ -140,6 +140,28 @@ struct ContractTests {
         #expect(ack.verificationNote.contains("no local repository"))
     }
 
+    /// Acknowledging an inline thread used to report success and write a field nothing
+    /// reads — owed unchanged, no transition, exit 0. A silent no-op that reads as
+    /// success is the one failure this tool exists to refuse, so it is refused.
+    @Test("an inline thread is not acknowledgeable, and says why")
+    func inlineThreadsRefuseAcknowledgement() throws {
+        let pr = try Fixtures.threads(pr: 5233, comments: "pr-5233.positive.comments.json")
+        let snapshot = try Fixtures.audit().run(pr, against: nil).updatedSnapshot
+
+        let inline = try #require(
+            snapshot.entries.first { $0.value.kind == .inlineThread }?.key)
+        #expect(inline.hasPrefix("discussion_r"))
+
+        let body = try #require(
+            snapshot.entries.first { $0.value.kind == .reviewBody }?.key)
+        #expect(body.hasPrefix("pullrequestreview-"))
+
+        // The audit consults `acknowledged` for channels 2 and 3 only, which is what
+        // made the inline case a no-op rather than an error.
+        #expect(snapshot.entries[inline]?.kind == .inlineThread)
+        #expect(snapshot.entries[body]?.kind == .reviewBody)
+    }
+
     // MARK: - Snapshot
 
     @Test("a snapshot round-trips, and a future schema is refused rather than guessed at")
