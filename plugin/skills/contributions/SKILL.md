@@ -112,6 +112,10 @@ commits re-touch the same lines. Both views are correct; say which one you are s
 heuristic. `scripts/loc-heuristic.awk` is kept as documentation of where the original
 numbers came from, not as a second code path.
 
+Roles are ordered and **location beats type**, so a Makefile inside `tests/` is `test`,
+not `build`. When a path lands in a bucket that looks wrong, read
+[`references/file-roles.md`](references/file-roles.md) — you do not need it otherwise.
+
 ## The default posture
 
 **Nothing leaves the workspace without an explicit flag.** Not a LOC figure, not a
