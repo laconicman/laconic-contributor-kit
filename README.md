@@ -61,6 +61,50 @@ Recorded, never inferred from proximity in time. The record is keyed by comment 
 **and** body hash, so if the reviewer edits the ask after you acknowledge it, the item
 re-opens by itself.
 
+## What "owed" means
+
+The provenance block ends with a count of items **owed**. It is not a backlog estimate
+and not a judgement about your work — it is one deterministic question per item:
+
+> *Is there something here that nothing in the record answers?*
+
+Four states are owed, and five are not:
+
+| Owed | Not owed |
+|---|---|
+| `open-ask` — a root ask from someone else, no reply from me | `answered-claimed` — I replied |
+| `obligation-open` — a review body or issue comment with nothing recorded | `answered-confirmed` — the asker replied after me |
+| `reopened-by-edit` — acknowledged, then the body changed | `obligation-acknowledged` — recorded, body unmoved |
+| `edited-after-my-answer` — the ask moved after I answered | `superseded` — the reviewer retracted it |
+| | `no-prose` — badge markup only |
+
+**The two halves have opposite defaults, and that is the whole design.** On an inline
+thread "answered" is decidable — did I post a reply in this thread? — so the default
+flips to *not owed* as soon as I reply. On a review body or an issue comment there is no
+reply relation to check, so nothing can ever make it *not* owed except a record. The
+channel that cannot be replied to is the one that goes missing, so it is the one that
+defaults to owed.
+
+### The cold start
+
+A repository you adopt this on mid-flight will show a pile on the first run. On
+`pjsip/pjproject#5233` that was **eight** — one per review round the maintainer ever
+posted — even though every one had been absorbed months earlier across eight rounds of
+back-and-forth.
+
+That is correct, not a bug: the tool has no memory of rounds that happened before it
+existed, and inferring "these are probably fine because they are old" is precisely the
+inference the obligation model exists to refuse. But it is a once-per-repository cost,
+and the honest way to pay it is to record it as what it is:
+
+```bash
+contrib ack pullrequestreview-5095816383 --with none:"pre-adoption; absorbed in round 3"
+```
+
+Those acknowledgements are real records with real reasons, and they re-open by
+themselves if the reviewer ever edits the body. After the first pass, every later run
+shows only what actually moved.
+
 ## It is a differ, not a reporter
 
 Every run compares the world against a local snapshot and reports the delta. A

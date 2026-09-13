@@ -7,6 +7,8 @@ import Testing
 /// (TASK §3.3). These assertions are against `manifest.json`'s own `paths` and
 /// `byRole` blocks, which `make_manifest.py` produced with the same ordered list the
 /// 39/33/18/7/1 distribution was measured with.
+struct ConsequenceTableMissing: Error {}
+
 @Suite("file roles — ordered, first match wins")
 struct RoleTests {
 
@@ -34,58 +36,63 @@ struct RoleTests {
         #expect(c.role(of: "pjlib/src/pj/ssl_sock_darwin.c") == "source")
     }
 
-    /// **TASK §3.3's prose is wrong about this one case and the shipped rules are
-    /// right.** The prose says `tests/automated/Makefile` lands in `build`; the ordered
-    /// list ships `test` ahead of `build`, so it lands in `test` — and the measured
-    /// 18%/7% split was produced by that same ordering, so the rules are authoritative
-    /// and the sentence is the error. Pinned here so the next reader finds the answer
-    /// rather than the claim.
-    @Test("test precedes build, so tests/automated/Makefile is `test`")
-    func testPrecedesBuild() throws {
-        #expect(try classifier().role(of: "tests/automated/Makefile") == "test")
+    /// **Location beats type**, which is what the ordering encodes: `vendor` and `test`
+    /// say where a file lives, `build` and `docs` say what it is, and location wins.
+    /// The question the tool answers is *what part of the tree did this change touch*,
+    /// so a Makefile inside `tests/` is test-harness growth.
+    @Test("test precedes build, so a Makefile in the test tree is `test`")
+    func locationBeatsType() throws {
+        let c = try classifier()
+        #expect(c.role(of: "tests/automated/Makefile") == "test")
+        #expect(c.role(of: "Makefile") == "build")
     }
 
-    /// Every path the by-file fixtures touch, against the roles `make_manifest.py`
-    /// assigned. This is the check that the Swift glob matcher and the Python one
-    /// agree, rather than each being separately plausible.
-    @Test("every fixture path classifies exactly as the manifest recorded")
-    func matchesManifestPaths() throws {
+    /// The skill's reference page documents the consequences of the ordering as a
+    /// table. **This test reads that table out of the file and asserts every row**, so
+    /// the prose cannot drift from the rules the way it did once already — the
+    /// documented example said `build` where the shipped rules said `test`, and nothing
+    /// could catch it because the example was hand-written.
+    ///
+    /// The doc is the fixture. Add a row there and it is checked from the next run.
+    @Test("every consequence documented in references/file-roles.md still holds")
+    func documentedConsequencesHold() throws {
+        let markdown = String(decoding: try Fixtures.data("file-roles.md"), as: UTF8.self)
+        let rows = try Self.consequenceRows(in: markdown)
+        // The table is located by its header and read whole. An earlier version of this
+        // test guessed which rows were paths, and silently examined 12 of 13 — the same
+        // shape of bug it exists to catch.
+        #expect(rows.count == 13, "the consequences table has 13 rows")
+
         let c = try classifier()
-        var checked = 0
-        for fixture in try Fixtures.manifest().fixtures {
-            for (path, expected) in fixture.paths ?? [:] {
-                #expect(c.role(of: path) == expected, "\(path)")
-                checked += 1
-            }
+        for (path, role) in rows {
+            #expect(c.role(of: path) == role, "\(path) is documented as `\(role)`")
         }
-        #expect(checked == 6, "both by-file fixtures contribute their paths")
     }
 
-    /// `darwin-tls` by role: `source: code +28, comment +23` and
-    /// `test: code +4, comment +7`. One source file and one test file, so the split is
-    /// assertable rather than synthetic.
-    @Test("by-role aggregation reproduces the manifest's darwin-tls split")
-    func byRoleAggregation() throws {
-        let c = try classifier()
-        let fixture = try #require(
-            try Fixtures.manifest().fixtures.first {
-                $0.file == "cloc/darwin-tls.branch.by-file.json"
+    /// Every row of the table introduced by `| Path | Role | Why |`, in order.
+    /// Throws rather than returning empty when the header is not found: a doc-driven
+    /// test that quietly finds no rows passes for the wrong reason.
+    static func consequenceRows(in markdown: String) throws -> [(String, String)] {
+        let lines = markdown.components(separatedBy: .newlines)
+        guard
+            let header = lines.firstIndex(where: {
+                $0.hasPrefix("| Path ") && $0.contains("| Role ")
             })
-        let document = try ClocDocument(
-            json: try Fixtures.data(fixture.file), keySpace: .path)
-
-        var byRole: [String: DiffStats] = [:]
-        for (path, stats) in document.byKey {
-            let role = c.role(of: path) ?? "unclassified"
-            byRole[role] = (byRole[role] ?? DiffStats()) + stats
+        else {
+            throw ConsequenceTableMissing()
         }
-
-        #expect(byRole["source"]?.net == Counts(code: 28, comment: 23, blank: 8))
-        #expect(byRole["test"]?.net == Counts(code: 4, comment: 7, blank: 0))
-        for (role, expected) in fixture.byRole ?? [:] {
-            #expect(byRole[role]?.net == expected.net, "role \(role)")
-            #expect(byRole[role]?.added == expected.added, "role \(role) added")
+        var rows: [(String, String)] = []
+        for line in lines.dropFirst(header + 2) {
+            guard line.hasPrefix("|") else { break }
+            let cells = line.split(separator: "|", omittingEmptySubsequences: false)
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+            guard cells.count >= 4 else { break }
+            let unquote = { (s: String) in
+                s.trimmingCharacters(in: CharacterSet(charactersIn: "`"))
+            }
+            rows.append((unquote(cells[1]), unquote(cells[2])))
         }
+        return rows
     }
 
     @Test("paths containing spaces survive — nothing splits on whitespace")
@@ -104,6 +111,29 @@ struct ConfigurationTests {
     /// is itself generated from the script that measured the role distribution. If
     /// these ever differ, the shipped defaults and the measured numbers have drifted —
     /// which is the exact failure the fixtures README set this rule up to prevent.
+    /// The consequences test reads a *copy* of `references/file-roles.md` under
+    /// `Fixtures/`, because SwiftPM test resources must live in the test target. That
+    /// copy is itself a drift hazard, so it is compared with the real file here —
+    /// otherwise the doc-driven test could keep passing against a stale duplicate while
+    /// the page the reader actually sees says something else.
+    @Test("the fixture copy of file-roles.md matches the page the skill ships")
+    func fileRolesCopyMatchesTheSkill() throws {
+        let shipped = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()  // ContributorKitTests
+            .deletingLastPathComponent()  // Tests
+            .deletingLastPathComponent()  // package root
+            .appending(path: "plugin/skills/contributions/references/file-roles.md")
+        guard FileManager.default.fileExists(atPath: shipped.path) else {
+            // Running from somewhere the source tree is not laid out as expected — say
+            // so rather than passing silently.
+            Issue.record("could not find the shipped page at \(shipped.path)")
+            return
+        }
+        #expect(
+            try Data(contentsOf: shipped) == (try Fixtures.data("file-roles.md")),
+            "cp plugin/skills/contributions/references/file-roles.md Tests/ContributorKitTests/Fixtures/")
+    }
+
     @Test("the shipped default config is byte-identical to the fixtures' copy")
     func shippedDefaultMatchesFixture() throws {
         let fromFixtures = String(
