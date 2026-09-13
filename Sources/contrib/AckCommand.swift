@@ -41,6 +41,26 @@ struct AckCommand: AsyncParsableCommand {
     @Option(name: .long, help: "Where the snapshot lives (default: XDG state dir).")
     var stateDir: String?
 
+    enum AckError: Error, CustomStringConvertible {
+        case inlineThread(String)
+
+        var description: String {
+            switch self {
+            case .inlineThread(let id):
+                return """
+                    \(id) is an inline review thread, which `ack` does not take.
+
+                    An inline thread is discharged by replying in it — the audit reads \
+                    the reply and moves it to `answered-claimed` on the next run, and \
+                    to `answered-confirmed` if the asker replies after you.
+
+                    Only a review body or an issue comment needs an acknowledgement, \
+                    because neither can be replied to at all.
+                    """
+            }
+        }
+    }
+
     func run() async throws {
         var provenance = Provenance(command: "contrib ack \(id)")
         let store = SnapshotStore(directory: stateDir.map { URL(fileURLWithPath: $0) })
@@ -49,6 +69,14 @@ struct AckCommand: AsyncParsableCommand {
         }
         guard let entry = snapshot.entries[id] else {
             throw SnapshotError.unknownItem(id)
+        }
+        // An inline thread is discharged by replying in it, which the audit can see.
+        // Accepting an acknowledgement here would write a field nothing reads — a
+        // silent no-op that reports success, which is the one failure this tool exists
+        // to refuse. Recording a *responsiveness* check is a real need and an open
+        // design question; it is not this command.
+        guard entry.kind != .inlineThread else {
+            throw AckError.inlineThread(id)
         }
 
         let repository = URL(fileURLWithPath: repo).standardizedFileURL

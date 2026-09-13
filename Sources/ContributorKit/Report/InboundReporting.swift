@@ -30,7 +30,11 @@ public enum InboundReporting {
         let shown = result.items.filter { options.all || $0.state.isOwed || $0.changed != nil }
         if shown.isEmpty {
             lines.append("")
-            lines.append("Nothing owed and nothing moved since the last run.")
+            // Say what was compared. "Nothing moved" on its own cannot be told apart
+            // from "this check cannot see what would have moved".
+            lines.append(
+                "Nothing owed. No item changed state, body or acknowledgement since the "
+                    + "last run — \(result.items.count) compared.")
             return lines.joined(separator: "\n")
         }
 
@@ -91,6 +95,19 @@ public enum InboundReporting {
         provenance.examined("owed", result.owed.count)
         provenance.examined("pages fetched", pr.pagesFetched)
 
+        // Transitions, named. The run straight after a round of replies is the one most
+        // likely to be read, and "nothing moved" was the wrong answer to it.
+        let moved = result.items.filter { $0.previousState != nil }
+        if !moved.isEmpty {
+            provenance.examined("changed state", moved.count)
+            let byTransition = Dictionary(grouping: moved) {
+                "\($0.previousState!.rawValue) → \($0.state.rawValue)"
+            }
+            for transition in byTransition.keys.sorted() {
+                provenance.note("\(byTransition[transition]!.count) × \(transition)")
+            }
+        }
+
         for state in [ItemState.noProse, .superseded] {
             let count = Channel.allCases.reduce(0) { $0 + result.count(of: state, in: $1) }
             if count > 0 {
@@ -106,10 +123,15 @@ public enum InboundReporting {
         for connection in pr.truncatedConnections {
             provenance.anomaly("truncatedFetch", "\(connection) still had a next page")
         }
+        // Stated positively as well as negatively: an observer cannot tell a check that
+        // passed from one that did not run, and "no excerptBodies anomaly" is exactly
+        // that shape.
         if pr.bodiesAreExcerpts {
             provenance.anomaly(
                 "excerptBodies",
                 "bodies are truncated excerpts — boilerplate and supersession checks saw a fragment")
+        } else {
+            provenance.note("bodies: full text, not excerpts")
         }
     }
 

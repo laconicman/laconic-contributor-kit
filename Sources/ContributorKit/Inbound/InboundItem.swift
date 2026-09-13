@@ -115,6 +115,8 @@ public struct InboundItem: Codable, Sendable {
     public var roundID: String?
     public var roundAt: Date?
     public var author: String?
+    /// The state this item held last run, when it differs from the current one.
+    public var previousState: ItemState?
 
     enum CodingKeys: String, CodingKey {
         case id, kind, permalink, state, question, changed, text

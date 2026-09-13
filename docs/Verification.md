@@ -32,6 +32,26 @@ Verified on 2026-09-13, macOS 26.0, Swift 6.3.3, `cloc` 2.06, `gh` authenticated
 | GraphQL `Int!` variable passing (`-F` not `-f`) | every live run above | no 422 |
 | `reviews()` returns bodies for comment-only reviews | #5234 live | yes — 12 with empty bodies |
 
+## From a live trial, 2026-09-13
+
+An independent session ran `contrib` as the contributor through a real review round on
+`laconicman/telegram-kb#1`, with Devin Review as maintainer, and reported back. What that
+established, beyond the author's own runs:
+
+| Claim | Evidence |
+|---|---|
+| The boilerplate stripper handles **real** Devin badge markup | 9 bodies `no-prose`, 4 independently confirmed empty by hand; no misclassification either way |
+| Prose survives stripping | `**Devin Review** found 6 new potential issues.` came back `obligation-open` |
+| Supersession fires through formatting | 3 real retractions matched, inside a GitHub `[!NOTE]` admonition **and** a blockquote **and** bold |
+| A real edited review body | Devin edited a round-1 body to prepend the retraction; classified correctly post-edit |
+| Reviewer resolution → `answered-confirmed` | 9 threads, each carrying a real `✅ Resolved:` reply |
+| …and it **discriminated** | of 6 threads, Devin confirmed 5; the 6th stayed `answered-claimed` — the exact distinction the state exists for |
+| Authorship filter, exact | 10 of 23 bodies ours, then 16 of 29 after 6 replies — the delta is exactly the replies posted |
+| It found a round that was missed | A hand-rolled three-channel fetch the day before reported zero new comments; `contrib in` listed 7 owed, of which 3 were regressions introduced by the previous round's fixes |
+| False positives | zero, across 7 owed items and 16 findings over three rounds |
+
+**Three defects it found, all now fixed** — see the section below.
+
 ## Not verified here — and why
 
 | Not verified | Why |
@@ -45,6 +65,36 @@ Verified on 2026-09-13, macOS 26.0, Swift 6.3.3, `cloc` 2.06, `gh` authenticated
 | **`commenter:` missing an inline-only PR.** | Requires `Candidates.graphql` and the enumeration union, which belong to `contrib out`. Not built. |
 | **Whether a fork issue backlinks onto an upstream thread.** | A write to a public repository. Not attempted. |
 | **Any platform other than macOS.** | `platforms: [.macOS(.v14)]`; CryptoKit and the XDG state path are the only platform-specific pieces. |
+
+## Three defects the live trial found
+
+1. **The differ could not see state transitions.** The run straight after answering six
+   threads and acknowledging one obligation said *"nothing moved since the last run"* —
+   true of what the snapshot tracked, false of what a contributor tracks, because the
+   snapshot stored no state at all. It now stores `state` per entry, reports transitions
+   in `changed` (`open-ask → answered-claimed`), counts them in the provenance block, and
+   the empty case now names what was compared instead of asserting silence.
+
+   This also answers the report's separate complaint that `answered-claimed` vanishes
+   after the cold start: the run in which a thread *becomes* `answered-claimed` is
+   exactly the run where *"is my reply actually responsive?"* is worth asking, and it now
+   surfaces there.
+
+2. **`--json` sliced the ask at 400 characters.** Every round-3 ask ended mid-sentence and
+   the session had to re-fetch bodies with `gh api` — the re-enumeration the machine
+   contract exists to eliminate. The ask is now carried whole; only terminal display
+   truncates. Measured after the fix on the same PR: asks of 2248, 2026, 892 and 876
+   characters, all previously cut.
+
+3. **`contrib ack` on an inline thread was a silent no-op.** It reported success, wrote a
+   field nothing reads, and left `owed` unchanged — which is the single failure class this
+   tool refuses everywhere else. It is now refused with an explanation of why an inline
+   thread does not need one. Found by testing the report's own suggested workflow rather
+   than by reading the code.
+
+The provenance block also now states body completeness **positively** (`bodies: full text,
+not excerpts`). The trial could not tell whether the `excerptBodies` check had passed or
+had failed to run, which is the same absence-of-evidence shape as the rest of this file.
 
 ## A sharp edge, found while preparing a handoff
 

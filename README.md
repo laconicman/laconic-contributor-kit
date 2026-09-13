@@ -105,6 +105,13 @@ Those acknowledgements are real records with real reasons, and they re-open by
 themselves if the reviewer ever edits the body. After the first pass, every later run
 shows only what actually moved.
 
+**How big the pile is depends on the reviewer, not on you.** A reviewer that marks its
+own superseded reports *"out of date"* — Devin Review does — has every historical body
+classified `superseded` or `no-prose`, and the pile clears itself. Measured on one such
+PR: 37 review bodies, 16 ours, 16 no-prose, 4 superseded, **5 owed**. A human maintainer
+who never retracts produces the full pile instead. Two first runs looking nothing alike
+is this, not inconsistency.
+
 ## It is a differ, not a reporter
 
 Every run compares the world against a local snapshot and reports the delta. A
