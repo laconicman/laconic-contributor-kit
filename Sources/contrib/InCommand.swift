@@ -98,6 +98,6 @@ struct InCommand: AsyncParsableCommand {
             provenance.note("snapshot written to \(store.url(for: repository).path)")
         }
 
-        try Self.emit(provenance, quiet: json)
+        try Self.emit(provenance)
     }
 }
