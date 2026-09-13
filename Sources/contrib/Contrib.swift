@@ -25,14 +25,13 @@ struct Contrib: AsyncParsableCommand {
 /// Every command ends with a provenance block it cannot be run without, and exits
 /// non-zero on an anomaly (TASK §13.2). A guard you have to remember to invoke is a
 /// guard that does not run.
-struct AnomalousExit: Error {}
-
 extension ParsableCommand {
-    static func emit(_ provenance: Provenance, quiet: Bool) throws {
+    /// The block goes to stderr, so `--json` on stdout stays machine-readable while
+    /// the guard still reaches a human.
+    static func emit(_ provenance: Provenance) throws {
         var provenance = provenance
         provenance.finish()
         FileHandle.standardError.write(Data((provenance.rendered() + "\n").utf8))
         if provenance.hasAnomaly { throw ExitCode(2) }
-        _ = quiet
     }
 }

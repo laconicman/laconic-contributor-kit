@@ -75,6 +75,6 @@ struct AckCommand: AsyncParsableCommand {
         if !acknowledgement.verified {
             provenance.note("recorded unverified — \(acknowledgement.verificationNote)")
         }
-        try Self.emit(provenance, quiet: false)
+        try Self.emit(provenance)
     }
 }

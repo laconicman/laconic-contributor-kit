@@ -99,6 +99,6 @@ struct LocCommand: AsyncParsableCommand {
             provenance.note("appended to \(record)")
         }
 
-        try Self.emit(provenance, quiet: false)
+        try Self.emit(provenance)
     }
 }

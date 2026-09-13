@@ -76,6 +76,12 @@ public struct RemoteComment: Codable, Sendable, Equatable {
 }
 
 /// An inline review thread: ordered comments, the first of which is the root ask.
+///
+/// `isResolved` is carried because the API supplies it and the snapshot should not have
+/// to re-fetch it — but the audit never consults it. **`isResolved` is not "answered"**
+/// (TASK §12.3 rule 3): the maintainer sets resolution, a thread can be resolved with no
+/// reply from us, and an open thread can be fully answered. Never substitute one for the
+/// other.
 public struct RemoteThread: Codable, Sendable {
     public var comments: [RemoteComment]
     public var isResolved: Bool

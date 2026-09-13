@@ -25,12 +25,4 @@ public struct LocReport: Codable, Sendable {
         public var stats: DiffStats
     }
 
-    /// Per-commit figures **do not sum to the branch total** and must never be
-    /// presented as a check on it: commits re-touch the same lines, so on the
-    /// ground-truth branch the per-commit added comments sum to 121 against a branch
-    /// total of 109. Both views are correct; the report labels which one is shown
-    /// (TASK §3.4).
-    public var perCommitSum: DiffStats? {
-        commits.map { $0.reduce(DiffStats()) { $0 + $1.stats } }
-    }
 }
