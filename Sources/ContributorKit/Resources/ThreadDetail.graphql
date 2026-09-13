@@ -1,0 +1,81 @@
+# ContributorKit — one round trip per candidate thread.
+#
+# Returns issue comments, review bodies and review threads together. The review
+# BODY is the piece an inline-only fetch silently misses; TASK §4 records that
+# miss happening three times.
+#
+# Every comment kind carries `updatedAt`, `lastEditedAt`, `editor` and
+# `viewerDidAuthor`. That is not decoration: REST's `pull-request-review` schema
+# has `submitted_at` and NOTHING else — no `created_at`, no `updated_at` — so
+# GraphQL is the only API that can tell you a REVIEW BODY was edited. The channel
+# with no reply mechanism is also the channel REST cannot diff.
+#
+# `reviews()` no longer filters by `author:`, and $login is gone with it. The
+# audit needs every reviewer's bodies, not only ours, and `viewerDidAuthor`
+# already says which are ours without a login round-trip. Capability A filters
+# client-side. One query now serves both directions.
+#
+# Validated 2026-09-05 against octokit/graphql-schema@main with graphql-js;
+# re-validated 2026-09-07 after the edit-tracking fields were added.
+# Note `issueState`/`pullRequestState`: Issue.state and PullRequest.state return
+# different enums, so the same response key across the two fragments is a
+# validation error. The aliases are load-bearing, not cosmetic.
+query ThreadDetail(
+  $owner: String!
+  $name: String!
+  $number: Int!
+  $commentCursor: String
+  $reviewCursor: String
+  $threadCursor: String
+) {
+  repository(owner: $owner, name: $name) {
+    issueOrPullRequest(number: $number) {
+      __typename
+      ... on Issue {
+        number
+        title
+        url
+        issueState: state
+        closed
+        closedAt
+        comments(first: 100, after: $commentCursor) {
+          pageInfo { hasNextPage endCursor }
+          nodes { body url createdAt updatedAt lastEditedAt editor { login } viewerDidAuthor author { login } }
+        }
+      }
+      ... on PullRequest {
+        number
+        title
+        url
+        pullRequestState: state
+        closed
+        closedAt
+        merged
+        mergedAt
+        isDraft
+        comments(first: 100, after: $commentCursor) {
+          pageInfo { hasNextPage endCursor }
+          nodes { body url createdAt updatedAt lastEditedAt editor { login } viewerDidAuthor author { login } }
+        }
+        reviews(first: 100, after: $reviewCursor) {
+          pageInfo { hasNextPage endCursor }
+          nodes { body url state submittedAt createdAt updatedAt lastEditedAt editor { login } viewerDidAuthor author { login } }
+        }
+        reviewThreads(first: 100, after: $threadCursor) {
+          pageInfo { hasNextPage endCursor }
+          nodes {
+            isResolved
+            isOutdated
+            path
+            resolvedBy { login }
+            comments(first: 100) {
+              pageInfo { hasNextPage endCursor }
+              nodes { body url createdAt updatedAt lastEditedAt editor { login } viewerDidAuthor author { login } }
+            }
+          }
+        }
+      }
+    }
+  }
+  rateLimit { cost remaining resetAt }
+}
