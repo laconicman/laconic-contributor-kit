@@ -108,7 +108,7 @@ public enum InboundReporting {
             }
         }
 
-        for state in [ItemState.noProse, .superseded] {
+        for state in [ItemState.noProse, .superseded, .informational] {
             let count = Channel.allCases.reduce(0) { $0 + result.count(of: state, in: $1) }
             if count > 0 {
                 provenance.note("\(count) item(s) \(state.rawValue) — counted, not owed")

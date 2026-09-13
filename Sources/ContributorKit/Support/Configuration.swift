@@ -32,6 +32,7 @@ public struct Configuration: Codable, Sendable {
         public var boilerplateBlocks: [String]
         public var boilerplatePatterns: [String]
         public var supersessionPhrases: [String]
+        public var informationalPatterns: [String]
         public var acknowledgementKinds: [String]
     }
 

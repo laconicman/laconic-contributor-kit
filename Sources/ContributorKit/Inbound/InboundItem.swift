@@ -40,6 +40,17 @@ public enum ItemState: String, Codable, Sendable {
     /// themselves withdrawn, forever, requiring a human acknowledgement of something
     /// nobody is asking for any more.
     case superseded = "superseded"
+    /// The reviewer declared this one a note rather than an ask.
+    ///
+    /// Not the CLI deciding a meaning question — it is reading metadata the *asker*
+    /// emitted about their own comment. Devin Review opens every inline body with
+    /// `<!-- devin-review-comment {… "kind": "analysis"} -->`, and those are receipts
+    /// ("Bridge init field/order match verified"), not requests. Taking the asker at
+    /// their word is the same move supersession makes.
+    ///
+    /// The dangerous direction is a false positive hiding a real ask, so the patterns
+    /// are explicit, configurable, and counted in the provenance block.
+    case informational = "informational"
     /// Nothing but badge markup once boilerplate is stripped. Counted in the examined
     /// total so the count stays honest, but not owed: §12.3 rule 4's argument for
     /// noise over silence does not extend to noise that is *definitionally* empty.
@@ -50,7 +61,7 @@ public enum ItemState: String, Codable, Sendable {
         switch self {
         case .openAsk, .obligationOpen, .reopenedByEdit, .editedAfterMyAnswer: return true
         case .answeredClaimed, .answeredConfirmed, .obligationAcknowledged,
-            .superseded, .noProse:
+            .superseded, .noProse, .informational:
             return false
         }
     }
@@ -75,6 +86,8 @@ public enum ItemState: String, Codable, Sendable {
             return "It was edited after I acknowledged it. Does the new text ask for something else?"
         case .superseded:
             return "None. The reviewer withdrew it. Confirm the replacement is in the list."
+        case .informational:
+            return "None. The reviewer marked this one a note, not an ask."
         case .noProse:
             return "None. No prose after stripping boilerplate."
         }

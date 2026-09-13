@@ -116,6 +116,8 @@ extension Fixtures {
         return InboundAudit(
             me: me,
             stripper: try BoilerplateStripper(settings: config.inbound),
-            supersession: SupersessionDetector(phrases: config.inbound.supersessionPhrases))
+            supersession: SupersessionDetector(phrases: config.inbound.supersessionPhrases),
+            informational: try InformationalDetector(
+                patterns: config.inbound.informationalPatterns))
     }
 }

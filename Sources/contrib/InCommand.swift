@@ -20,6 +20,11 @@ struct InCommand: AsyncParsableCommand {
 
             Output is the delta against a local snapshot. On a first run everything is
             new; the snapshot is what makes the second run useful.
+
+            --json emits { provenance, items }, and each item is exactly:
+              id, kind, permalink, state, question, changed, text
+            `changed` is null when nothing moved. **`text` is an OBJECT**, not a string:
+            { "ask": <the whole ask>, "reply": <my reply, or null> }.
             """
     )
 
@@ -69,7 +74,9 @@ struct InCommand: AsyncParsableCommand {
         let audit = InboundAudit(
             me: me,
             stripper: try BoilerplateStripper(settings: configuration.inbound),
-            supersession: SupersessionDetector(phrases: configuration.inbound.supersessionPhrases))
+            supersession: SupersessionDetector(phrases: configuration.inbound.supersessionPhrases),
+            informational: try InformationalDetector(
+                patterns: configuration.inbound.informationalPatterns))
         let result = audit.run(threads, against: previous)
 
         provenance.subprocessCalls = runner.count

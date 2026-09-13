@@ -12,6 +12,11 @@ inbound:
   # Stripped before the emptiness test, in this order. The body is still COUNTED in
   # the examined total (TASK §12.3 rule 4) — it is only excluded from the worklist.
   boilerplateBlocks:
+    # PAIRED MARKERS FIRST. Stripping `<!--…-->` generically destroys the begin/end
+    # pairing that would remove a wrapped block whole, and leaves its contents behind —
+    # for Devin's badge that means a bare `<a href=…>` / `</a>` trailing every excerpt.
+    # Measured 2026-09-13 on laconicman/YandexDeliveryExpress#3.
+    - "<!-- devin-review-badge-begin -->...<!-- devin-review-badge-end -->"
     - "<!--...-->"        # HTML comments
     - "<picture>...</picture>"
     - "<details>...</details>"
@@ -35,3 +40,23 @@ inbound:
   # Forms of acknowledgement `contrib ack --with` accepts. Shape is always checked;
   # existence is checked only where it is free (see Acknowledgement.swift).
   acknowledgementKinds: ["comment", "commit", "pr-body", "none"]
+
+  # A reviewer that declares the KIND of each comment in machine-readable form can be
+  # taken at its word. This is metadata the asker emitted about their own comment, not
+  # the CLI deciding whether something "is really an ask" — the same move supersession
+  # makes, and the same reason it is allowed.
+  #
+  # Matched against the raw body first (the marker lives inside an HTML comment, which
+  # stripping removes) and then the stripped prose.
+  #
+  # Measured 2026-09-13 across laconicman/{YandexDeliveryExpress,telegram-kb}: the only
+  # two kinds Devin Review emits are "analysis" (13 occurrences, every one a 📝 Info
+  # receipt) and "bug" (11, every one a real finding). A trial session answered three
+  # analysis notes with one-liners to reach zero — harmless, and noise the marker
+  # already disambiguates.
+  #
+  # The dangerous direction is a false positive hiding a real ask, so these stay
+  # explicit and narrow. Delete them for a repository Devin does not review.
+  informationalPatterns:
+    - '<!--\s*devin-review-comment\s+\{[^}]*"kind"\s*:\s*"analysis"'
+    - '^Starting Devin Review\.$'
