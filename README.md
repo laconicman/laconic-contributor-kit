@@ -205,8 +205,14 @@ bundled and neither path is hardcoded.
 git clone https://github.com/laconicman/swift-contributor-kit
 cd swift-contributor-kit
 swift build -c release
-cp .build/release/contrib /usr/local/bin/
+./scripts/install.sh          # or: ./scripts/install.sh ~/.local/bin
 ```
+
+**Use the script rather than copying the binary.** `contrib` needs its resource bundle
+beside it, and a binary copied alone keeps working — by falling back to the absolute
+path of the build directory — right up until someone runs `swift package clean`, at
+which point it dies with an internal `fatalError` rather than a diagnosable message.
+The script copies both.
 
 `contrib loc` needs no network and no GitHub remote at all, so it works on a repository
 that has neither.

@@ -46,6 +46,24 @@ Verified on 2026-09-13, macOS 26.0, Swift 6.3.3, `cloc` 2.06, `gh` authenticated
 | **Whether a fork issue backlinks onto an upstream thread.** | A write to a public repository. Not attempted. |
 | **Any platform other than macOS.** | `platforms: [.macOS(.v14)]`; CryptoKit and the XDG state path are the only platform-specific pieces. |
 
+## A sharp edge, found while preparing a handoff
+
+**The binary is not portable on its own, and it hides that fact.** SwiftPM's generated
+`Bundle.module` accessor falls back to the *absolute path of the build directory*, so a
+binary copied alone to `/usr/local/bin` keeps working — until someone runs
+`swift package clean`, at which point it dies with an internal `fatalError` naming two
+paths and no remedy.
+
+The README previously gave `cp .build/release/contrib /usr/local/bin/` as the install
+step, which produces exactly that latent trap. Corrected: `scripts/install.sh` copies the
+binary and the bundle together, and was verified by installing to a prefix and then
+removing the bundle from the build tree — the installed copy still runs.
+
+The deeper fix, not taken: embed the three resources as generated Swift constants and
+drop `Bundle.module` entirely, which would make the binary genuinely single-file. Left
+for when distribution matters; the drift-test mechanism to keep the generated copies
+honest already exists twice in this package.
+
 ## A note on the fixtures
 
 The thread fixtures store **no full message bodies** — 120 characters per comment, 160
