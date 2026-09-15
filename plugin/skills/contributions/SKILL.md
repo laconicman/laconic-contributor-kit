@@ -73,7 +73,7 @@ Recorded, **never inferred from proximity in time**. The record is keyed by comm
 by itself. Shape is always checked; existence only where it is free, and the provenance
 block prints how many acknowledgements went in unverified.
 
-## Five rules that were each paid for
+## Rules, each one paid for
 
 1. **A review round is complete when the audit says so, never when you believe it is.**
    On `pjsip/pjproject#5233` two separate asks each had to be made three times. Every
@@ -103,6 +103,28 @@ block prints how many acknowledgements went in unverified.
    backends" cannot be checked by a reader; a row per backend plus an explicit
    *not verified here* list can. This is what a maintainer needs from a contributor who
    cannot run their CI.
+
+7. **A mechanism story is not evidence. Isolate the variable.** A plausible mechanism
+   plus confirming samples is the shape of a confident wrong answer, because the samples
+   that confirm it usually differ in more than one way from the ones that would refute
+   it. Before trusting an explanation, name the variable you changed and find a case
+   where *only* that variable differs.
+
+   Twice in one week, in two different tools:
+
+   - A connector's 400s were blamed on a stale session because fresh processes worked —
+     but every "fresh process" success had also changed the input or the time. The real
+     cause was an unindexed repository. Four discriminating questions killed the theory
+     in one pass.
+   - This kit read a reviewer's `kind: "analysis"` as "a receipt, not an ask" on the
+     strength of 13 confirming comments across two repositories. Every one of those also
+     came from a repository where that kind happened to mean receipt. On a third it
+     carried real findings, and two genuine asks were hidden for about ten runs.
+
+   Note the relationship to rule 3. That rule asks *did the check run?* This one asks
+   *did the check test the claim?* — and a verification can pass the first while failing
+   the second. "9 of 9 reclassified items carried the marker" confirms a regex. It says
+   nothing about whether the marker means what you assumed.
 
 6. **Correct the topmost record.** Where a claim in an existing comment turns out
    narrower or wrong, **edit that comment** rather than appending a correction

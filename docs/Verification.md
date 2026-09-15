@@ -181,6 +181,14 @@ Withdrawn. What remains:
 
 Regression test built from the two real bodies that were hidden.
 
+**The same failure mode was recorded independently the same week**, in a sibling tool in
+this workspace: a connector's 400 errors were blamed on a stale session because fresh
+processes worked, when every "fresh process" success had also changed the input or the
+time; the real cause was an unindexed repository. That report kept its post-mortem on the
+grounds that *"the failure mode (a mechanism story outrunning its evidence) is more
+reusable than the bug"* — and then it recurred here, in a different tool, from a different
+session, within a week. It is now rule 7 in the skill.
+
 ## The review horizon, and what it deliberately is not
 
 A second trial hit 44 never-answered threads on a June-era PR whose code a rewrite had
