@@ -150,33 +150,74 @@ struct InboundTests {
 
     // MARK: - The reviewer's own kind marker
 
-    /// **Reading the asker's declared `kind` is not deciding a meaning question.** Devin
-    /// Review opens every inline body with a machine-readable marker, and the two kinds
-    /// it emits are `bug` (a finding) and `analysis` (a 📝 Info receipt). Taking the
-    /// asker at their word is the same move supersession makes.
+    /// **Regression: a declared `kind` must never suppress an inline ask.**
     ///
-    /// The markers below are the real thing, copied from
-    /// `laconicman/YandexDeliveryExpress#3`.
-    @Test("a reviewer-declared analysis note is not owed; a declared bug is")
-    func declaredKindIsHonoured() throws {
-        let config = try Configuration.builtInDefaults()
-        let detector = try InformationalDetector(
-            patterns: config.inbound.informationalPatterns)
-        let stripper = try BoilerplateStripper(settings: config.inbound)
+    /// This kit briefly read Devin Review's `"kind": "analysis"` marker as "a receipt,
+    /// not an ask", on a sample of 13 across two repositories that were all 📝 Info
+    /// verification notes. On a third repository the same kind carries 🔍 findings —
+    /// *"Redirect refusal loses its reason"*, *"Dismissal leaves other work running"* —
+    /// and both were hidden from `owed` across roughly ten runs, then found by a human
+    /// in the GitHub UI. Devin uses one kind for two purposes.
+    ///
+    /// The bodies below are the real ones, from `laconicman/YDelivery#28`.
+    @Test("an analysis-kind inline finding is owed, marker or no marker")
+    func declaredKindNeverSuppressesAnInlineAsk() throws {
+        func devinComment(_ id: String, kind: String, title: String) -> RemoteComment {
+            RemoteComment(
+                id: id, channel: .inlineThread, author: "devin-ai-integration",
+                viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+                body: """
+                    <!-- devin-review-comment {"id": "X", "kind": "\(kind)"} -->
 
-        let analysis = """
-            <!-- devin-review-comment {"id": "ANALYSIS_pr-review-job-8092f8_0001",             "file_path": "Tests/SampleData.swift", "kind": "analysis"} -->
+                    \(title)
 
-            📝 **Info: Bridge init field/order match verified**
+                    The body of the finding.
+                    """,
+                permalink: "https://github.com/o/r/pull/28#\(id)")
+        }
 
-            The test-side init forwards all 17 fields.
-            """
-        let bug = analysis
-            .replacingOccurrences(of: "\"kind\": \"analysis\"", with: "\"kind\": \"bug\"")
+        let hidden = [
+            devinComment(
+                "discussion_r3999579354", kind: "analysis",
+                title: "🔍 **Redirect refusal loses its reason**"),
+            devinComment(
+                "discussion_r3999579379", kind: "analysis",
+                title: "🔍 **Dismissal leaves other work running**"),
+        ]
+        let alwaysOwed = devinComment(
+            "discussion_r3999579314", kind: "bug",
+            title: "🟡 **Saved-place failures look empty**")
 
-        #expect(detector.isInformational(raw: analysis, prose: stripper.prose(of: analysis)) != nil)
-        #expect(detector.isInformational(raw: bug, prose: stripper.prose(of: bug)) == nil)
-        #expect(ItemState.informational.isOwed == false)
+        let result = try Fixtures.audit().run(
+            pullRequest(
+                threads: (hidden + [alwaysOwed]).map { RemoteThread(comments: [$0]) }),
+            against: nil)
+
+        #expect(result.owed.count == 3, "every one of them is an ask")
+        #expect(result.items.allSatisfy { $0.state == .openAsk })
+        #expect(!result.items.contains { $0.state == .informational })
+    }
+
+    /// `informational` applies only where there is no reply relation. An inline thread's
+    /// lifecycle is decidable from ids alone, so suppressing one on a marker can only
+    /// ever hide a real ask — and it also made the state sticky, surviving replies that
+    /// should have moved it to `answered-claimed`.
+    @Test("informational never applies to an inline thread")
+    func informationalIsChannelTwoAndThreeOnly() throws {
+        let announcement = RemoteComment(
+            id: "discussion_r1", channel: .inlineThread, author: "devin-ai-integration",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: "Starting Devin Review.",
+            permalink: "https://github.com/o/r/pull/1#discussion_r1")
+        let inline = try Fixtures.audit().run(
+            pullRequest(threads: [RemoteThread(comments: [announcement])]), against: nil)
+        #expect(inline.items.first?.state == .openAsk)
+
+        var asIssueComment = announcement
+        asIssueComment.channel = .issueComment
+        let issue = try Fixtures.audit().run(
+            pullRequest(issueComments: [asIssueComment]), against: nil)
+        #expect(issue.items.first?.state == .informational)
     }
 
     /// A bot's run announcement is a fixed phrase, and the only prose left once the
@@ -466,6 +507,88 @@ struct InboundTests {
         }
     }
 
+    // MARK: - The review horizon
+
+    /// A repository can declare an era out of audit. **Nothing is cleared** — the items
+    /// stay in the snapshot, stay counted, and the provenance block says how many would
+    /// otherwise be owed. That is the difference between scoping a question and writing
+    /// dozens of acknowledgements asserting an absorption that did not happen.
+    @Test("items before the horizon are counted and not listed")
+    func horizonScopesRatherThanClears() throws {
+        let old = comment("discussion_r1", "reviewer", at: 0)
+        let recent = comment("discussion_r2", "reviewer", at: 10_000)
+        let pr = pullRequest(
+            threads: [RemoteThread(comments: [old]), RemoteThread(comments: [recent])])
+
+        let unscoped = try Fixtures.audit().run(pr, against: nil)
+        #expect(unscoped.owed.count == 2)
+
+        let scoped = try Fixtures.audit(horizon: Date(timeIntervalSince1970: 5_000))
+            .run(pr, against: nil)
+        #expect(scoped.owed.count == 1, "only the recent one is in scope")
+        #expect(scoped.owed.first?.id == "discussion_r2")
+        #expect(scoped.beyondHorizon.count == 1)
+        // Still examined, still in the snapshot, still an open ask — just not asked about.
+        #expect(scoped.items.count == 2)
+        #expect(scoped.updatedSnapshot.entries.count == 2)
+        #expect(scoped.items.first { $0.id == "discussion_r1" }?.state == .openAsk)
+    }
+
+    /// A horizon must scope the backlog, never hide activity. A reviewer editing a June
+    /// comment today is today's activity, and a horizon that swallowed it would be a
+    /// check quietly running against the wrong set.
+    @Test("an old item that moves surfaces despite the horizon")
+    func horizonDoesNotHideMovement() throws {
+        var old = comment("discussion_r1", "reviewer", at: 0)
+        let pr = pullRequest(threads: [RemoteThread(comments: [old])])
+        let horizon = Date(timeIntervalSince1970: 5_000)
+
+        let first = try Fixtures.audit(horizon: horizon).run(pr, against: nil)
+        #expect(first.owed.isEmpty, "the baseline run does not surface it")
+
+        // The reviewer edits it. Same creation date, different body.
+        old.body = "the ask, restated and widened"
+        old.lastEditedAt = Date(timeIntervalSince1970: 20_000)
+        let moved = try Fixtures.audit(horizon: horizon).run(
+            pullRequest(threads: [RemoteThread(comments: [old])]),
+            against: first.updatedSnapshot)
+        #expect(moved.owed.count == 1, "movement beats the horizon")
+        #expect(moved.owed.first?.changed?.contains("body changed") == true)
+    }
+
+    /// An unparseable horizon throws. One that quietly did nothing would hide exactly
+    /// what it was set to scope.
+    @Test("a malformed horizon is an error, not a no-op")
+    func malformedHorizonThrows() throws {
+        var inbound = try Configuration.builtInDefaults().inbound
+        inbound.horizon = "last summer"
+        #expect(throws: ConfigurationError.self) { _ = try inbound.horizonDate() }
+
+        inbound.horizon = "2026-07-01"
+        #expect(try inbound.horizonDate() != nil)
+        inbound.horizon = nil
+        #expect(try inbound.horizonDate() == nil)
+    }
+
+    /// `inbound:` merges per sub-key. Setting a horizon must not require restating every
+    /// pattern list — the first attempt failed with a decoding error naming an unrelated
+    /// key, which is a poor way to learn a config rule.
+    @Test("a partial inbound block keeps the shipped defaults")
+    func partialInboundMerges() throws {
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appending(path: "ck-inbound-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try "inbound:\n  horizon: \"2026-07-01\"\n".write(
+            to: directory.appending(path: ".contributorkit.yml"),
+            atomically: true, encoding: .utf8)
+
+        let config = try Configuration.load(directory: directory)
+        #expect(config.inbound.horizon == "2026-07-01")
+        #expect(config.inbound.supersessionPhrases.contains("this report is out of date"))
+        #expect(!config.inbound.boilerplateBlocks.isEmpty)
+    }
+
     // MARK: - Helpers
 
     private func comment(_ id: String, _ author: String, at seconds: TimeInterval)
@@ -478,12 +601,13 @@ struct InboundTests {
     }
 
     private func pullRequest(
-        threads: [RemoteThread] = [], reviewBodies: [RemoteComment] = []
+        threads: [RemoteThread] = [], reviewBodies: [RemoteComment] = [],
+        issueComments: [RemoteComment] = []
     ) -> PullRequestThreads {
         PullRequestThreads(
             repository: "o/r", number: 1, title: "t", url: "u", state: "OPEN",
             isMerged: false, threads: threads, reviewBodies: reviewBodies,
-            issueComments: [], pagesFetched: 1)
+            issueComments: issueComments, pagesFetched: 1)
     }
 }
 

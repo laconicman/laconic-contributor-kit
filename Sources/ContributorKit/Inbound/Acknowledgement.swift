@@ -86,8 +86,8 @@ public struct AcknowledgementParser: Sendable {
                 kind: .comment, pointer: id, bodySha256AtAck: bodySha256,
                 verified: known,
                 verificationNote: known
-                    ? "id present in this run's fetch"
-                    : "id not in this run's fetch — recorded unverified")
+                    ? "id is in the snapshot"
+                    : "id is not in the snapshot for this repository")
         case "commit":
             let looksLikeSHA =
                 value.count >= 7 && value.count <= 40

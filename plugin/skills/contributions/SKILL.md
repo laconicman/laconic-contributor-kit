@@ -29,7 +29,18 @@ table is the whole contract; there is no case where the right response is "ignor
 | `obligation-acknowledged` | Recorded, body unmoved | None | Nothing. |
 | `reopened-by-edit` | Acknowledged, then the body changed | Does the new text ask for something else? | Re-read and re-acknowledge, or answer. |
 | `superseded` | The reviewer retracted it | None | Confirm the replacement is in the list. |
+| `informational` | The reviewer's own fixed announcement phrase, on a channel with no reply relation | None | Nothing. Counted, not owed. |
 | `no-prose` | Badge markup only | None | Nothing. It is counted, not owed. |
+
+**Every state is in this table.** If `contrib` ever prints one that is not, treat it as a
+defect and check the item by hand — a state outside the table has no defined response, and
+one that quietly sat outside `owed` hid two real asks for a day.
+
+**`informational` is deliberately narrow.** It applies only to review bodies and issue
+comments, never to an inline thread, and only on a fixed unambiguous phrase. It once read
+a reviewer's declared `kind: "analysis"` as "a receipt, not an ask" — true of thirteen
+comments across two repositories and false on the third, where the same kind carried real
+findings. A category label cannot carry that decision.
 
 **A review body cannot be replied to. That does not discharge it.** It is implied that
 everything goes on after you absorb it in some way; going on as if nothing was posted
@@ -42,6 +53,11 @@ substitute one for the other.
 **"No change needed" still needs an acknowledgement.** Filtering out the items that
 need no action is how they become the next unanswered thread. Let the reply be one
 line; do not let it be no line.
+
+**A zero is a timestamp, not a state.** Acting on a PR *causes* the next review wave, so
+`owed 0` has been true at the fetch and false twenty minutes later. The provenance block
+stamps `as of <time>` for this reason. **The audit that counts is the one run after the
+reviewer's re-run, not after your push.**
 
 ## Acknowledging
 

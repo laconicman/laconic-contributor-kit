@@ -130,6 +130,23 @@ public struct InboundItem: Codable, Sendable {
     public var author: String?
     /// The state this item held last run, when it differs from the current one.
     public var previousState: ItemState?
+    /// Raised before the configured review horizon — an era this repository declared
+    /// out of audit.
+    public var beyondHorizon: Bool = false
+    /// True on the run that first records this item. "New since the last run" is a
+    /// baseline artifact, not activity, and must not be read as one.
+    public var isNewToSnapshot: Bool = false
+
+    /// Does this item belong in the output?
+    ///
+    /// Beyond the horizon an item stays hidden **unless something actually moved** — a
+    /// body edit or a state transition. A reviewer editing a June comment today is
+    /// today's activity, and a horizon that hid that would be a check quietly running
+    /// against the wrong set.
+    public var isVisible: Bool {
+        guard beyondHorizon else { return true }
+        return changed != nil && !isNewToSnapshot
+    }
 
     enum CodingKeys: String, CodingKey {
         case id, kind, permalink, state, question, changed, text

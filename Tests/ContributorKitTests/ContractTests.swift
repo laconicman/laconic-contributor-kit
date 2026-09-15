@@ -77,7 +77,7 @@ struct ContractTests {
             truncatedConnections: ["reviews"])
         let result = try Fixtures.audit().run(pr, against: nil)
         var provenance = Provenance(command: "contrib in")
-        InboundReporting.record(result, pr, into: &provenance)
+        InboundReporting.record(result, pr, previous: nil, into: &provenance)
         provenance.finish()
         #expect(provenance.anomalies.contains { $0.kind == "truncatedFetch" })
     }
@@ -91,7 +91,7 @@ struct ContractTests {
         #expect(pr.bodiesAreExcerpts)
         let result = try Fixtures.audit().run(pr, against: nil)
         var provenance = Provenance(command: "contrib in")
-        InboundReporting.record(result, pr, into: &provenance)
+        InboundReporting.record(result, pr, previous: nil, into: &provenance)
         #expect(provenance.anomalies.contains { $0.kind == "excerptBodies" })
     }
 

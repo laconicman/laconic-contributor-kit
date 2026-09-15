@@ -16,6 +16,12 @@ public struct Snapshot: Codable, Sendable {
     public var repository: String
     public var updatedAt: Date
     public var entries: [String: Entry]
+    /// Ids of comments **I** authored, recorded as authored rather than as items.
+    ///
+    /// My own comments are never entries — the audit skips them before it records
+    /// anything — so without this the one comment worth pointing an acknowledgement at
+    /// is the one kind that could never verify.
+    public var authored: Set<String> = []
 
     public struct Entry: Codable, Sendable {
         public var kind: Channel
@@ -39,10 +45,14 @@ public struct Snapshot: Codable, Sendable {
         public var acknowledged: Acknowledgement?
     }
 
-    public init(repository: String, updatedAt: Date = Date(), entries: [String: Entry] = [:]) {
+    public init(
+        repository: String, updatedAt: Date = Date(),
+        entries: [String: Entry] = [:], authored: Set<String> = []
+    ) {
         self.repository = repository
         self.updatedAt = updatedAt
         self.entries = entries
+        self.authored = authored
     }
 
     public var age: TimeInterval { Date().timeIntervalSince(updatedAt) }

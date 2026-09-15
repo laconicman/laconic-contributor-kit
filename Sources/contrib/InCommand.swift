@@ -56,13 +56,10 @@ struct InCommand: AsyncParsableCommand {
 
         let store = SnapshotStore(directory: stateDir.map { URL(fileURLWithPath: $0) })
         let previous = try store.load(repository: repository)
-        if let previous {
-            provenance.note(
-                "snapshot age \(Int(previous.age / 3600))h, \(previous.entries.count) known item(s)")
-        } else {
-            // Said out loud rather than treated as "nothing changed": a first run has no
-            // baseline, and on a second round a run without prior state is actively
-            // misleading rather than merely weaker.
+        if let horizon = configuration.inbound.horizon {
+            provenance.note("review horizon \(horizon) — earlier items counted, not listed")
+        }
+        if previous == nil {
             provenance.note("no snapshot for \(repository) — this run is the baseline")
         }
 
@@ -76,11 +73,12 @@ struct InCommand: AsyncParsableCommand {
             stripper: try BoilerplateStripper(settings: configuration.inbound),
             supersession: SupersessionDetector(phrases: configuration.inbound.supersessionPhrases),
             informational: try InformationalDetector(
-                patterns: configuration.inbound.informationalPatterns))
+                patterns: configuration.inbound.informationalPatterns),
+            horizon: try configuration.inbound.horizonDate())
         let result = audit.run(threads, against: previous)
 
         provenance.subprocessCalls = runner.count
-        InboundReporting.record(result, threads, into: &provenance)
+        InboundReporting.record(result, threads, previous: previous, into: &provenance)
         if let previous, result.updatedSnapshot.entries.count < previous.entries.count {
             provenance.anomaly(
                 "itemsVanished",

@@ -16,11 +16,14 @@ public struct InboundAudit: Sendable {
     public let stripper: BoilerplateStripper
     public let supersession: SupersessionDetector
     public let informational: InformationalDetector
+    /// Items raised before this are counted and not listed (`inbound.horizon`).
+    public let horizon: Date?
 
     public init(
         me: String?, stripper: BoilerplateStripper, supersession: SupersessionDetector,
-        informational: InformationalDetector
+        informational: InformationalDetector, horizon: Date? = nil
     ) {
+        self.horizon = horizon
         self.me = me
         self.stripper = stripper
         self.supersession = supersession
@@ -41,7 +44,12 @@ public struct InboundAudit: Sendable {
         public var ownAuthored: [Channel: Int]
         public var updatedSnapshot: Snapshot
 
-        public var owed: [InboundItem] { items.filter(\.state.isOwed) }
+        /// Owed **and** in scope. An item beyond the declared horizon is not owed
+        /// until something about it moves; the provenance block reports how many were
+        /// held back and by which boundary, so the number is never silently smaller.
+        public var owed: [InboundItem] { items.filter { $0.state.isOwed && $0.isVisible } }
+        /// Items the horizon is holding back this run.
+        public var beyondHorizon: [InboundItem] { items.filter { !$0.isVisible } }
 
         public func count(of state: ItemState, in channel: Channel) -> Int {
             items.filter { $0.kind == channel && $0.state == state }.count
@@ -75,10 +83,12 @@ public struct InboundAudit: Sendable {
             guard let root = thread.root else { continue }
             guard !isMine(root) else {
                 ownAuthored[.inlineThread, default: 0] += 1
+                snapshot.authored.insert(root.id)
                 continue
             }
             let replies = Array(thread.replies)
             let mine = replies.filter(isMine)
+            for reply in mine { snapshot.authored.insert(reply.id) }
             let askerReplies = replies.filter {
                 !isMine($0) && $0.author.caseInsensitiveCompare(root.author) == .orderedSame
             }
@@ -90,10 +100,11 @@ public struct InboundAudit: Sendable {
             // it.
             let rootProse = stripper.prose(of: root.body)
 
+            // `informational` is deliberately NOT consulted here. An inline thread has
+            // a reply relation, so its lifecycle is decidable without reading anything;
+            // suppressing one on a marker can only ever hide a real ask, and did.
             let state: ItemState
-            if informational.isInformational(raw: root.body, prose: rootProse) != nil {
-                state = .informational
-            } else if let lastMine = mine.last {
+            if let lastMine = mine.last {
                 if askerReplies.contains(where: { $0.createdAt > lastMine.createdAt }) {
                     state = .answeredConfirmed
                 } else if let edited = root.lastEditedAt, edited > lastMine.createdAt {
@@ -118,7 +129,9 @@ public struct InboundAudit: Sendable {
                         ask: rootProse.isEmpty ? root.body : rootProse,
                         reply: mine.last.map { stripper.prose(of: $0.body) }),
                     roundID: root.reviewID, roundAt: root.createdAt, author: root.author,
-                    previousState: before == state ? nil : before))
+                    previousState: before == state ? nil : before,
+                    beyondHorizon: horizon.map { root.createdAt < $0 } ?? false,
+                    isNewToSnapshot: previous?.entries[root.id] == nil))
         }
 
         // ---- channels 2 and 3: review bodies, then issue comments -----------------
@@ -132,6 +145,7 @@ public struct InboundAudit: Sendable {
             for comment in comments {
                 guard !isMine(comment) else {
                     ownAuthored[channel, default: 0] += 1
+                    snapshot.authored.insert(comment.id)
                     continue
                 }
                 let prose = stripper.prose(of: comment.body)
@@ -160,7 +174,9 @@ public struct InboundAudit: Sendable {
                             was: before, now: state),
                         text: .init(ask: prose.isEmpty ? comment.body : prose, reply: nil),
                         roundID: nil, roundAt: comment.createdAt, author: comment.author,
-                        previousState: before == state ? nil : before))
+                        previousState: before == state ? nil : before,
+                        beyondHorizon: horizon.map { comment.createdAt < $0 } ?? false,
+                        isNewToSnapshot: previous?.entries[comment.id] == nil))
             }
         }
 
