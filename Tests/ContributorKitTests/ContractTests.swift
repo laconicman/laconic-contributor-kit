@@ -140,26 +140,45 @@ struct ContractTests {
         #expect(ack.verificationNote.contains("no local repository"))
     }
 
-    /// Acknowledging an inline thread used to report success and write a field nothing
-    /// reads — owed unchanged, no transition, exit 0. A silent no-op that reads as
-    /// success is the one failure this tool exists to refuse, so it is refused.
-    @Test("an inline thread is not acknowledgeable, and says why")
-    func inlineThreadsRefuseAcknowledgement() throws {
-        let pr = try Fixtures.threads(pr: 5233, comments: "pr-5233.positive.comments.json")
-        let snapshot = try Fixtures.audit().run(pr, against: nil).updatedSnapshot
+    /// What may be acknowledged. An inline thread is answered by replying in it, so the
+    /// only record worth taking there is a responsiveness check on a reply that exists
+    /// and has not been confirmed. Anything else would write a record the audit never
+    /// reads — which once reported success and changed nothing.
+    @Test("acknowledgement eligibility follows the thread's state")
+    func acknowledgementEligibility() {
+        func entry(_ kind: Channel, _ state: ItemState?) -> Snapshot.Entry {
+            Snapshot.Entry(
+                kind: kind, url: "u", author: "reviewer", createdAt: Date(),
+                updatedAt: nil, lastEditedAt: nil, bodySha256: "h", state: state,
+                firstSeen: Date(), myReplyID: "discussion_r2", myReplyAt: Date(),
+                acknowledged: nil)
+        }
+        let allow = { (e: Snapshot.Entry) in AcknowledgementEligibility.refusal(for: e, id: "x") == nil }
 
-        let inline = try #require(
-            snapshot.entries.first { $0.value.kind == .inlineThread }?.key)
-        #expect(inline.hasPrefix("discussion_r"))
+        #expect(allow(entry(.reviewBody, .obligationOpen)))
+        #expect(allow(entry(.issueComment, .obligationOpen)))
+        #expect(allow(entry(.inlineThread, .answeredClaimed)))
+        #expect(allow(entry(.inlineThread, .answeredChecked)), "re-checking is allowed")
 
-        let body = try #require(
-            snapshot.entries.first { $0.value.kind == .reviewBody }?.key)
-        #expect(body.hasPrefix("pullrequestreview-"))
+        #expect(!allow(entry(.inlineThread, .openAsk)), "reply first")
+        #expect(!allow(entry(.inlineThread, .editedAfterMyAnswer)), "the check would be stale")
+        #expect(!allow(entry(.inlineThread, .answeredConfirmed)), "nothing to record")
+        #expect(!allow(entry(.inlineThread, nil)), "state unknown")
+    }
 
-        // The audit consults `acknowledged` for channels 2 and 3 only, which is what
-        // made the inline case a no-op rather than an error.
-        #expect(snapshot.entries[inline]?.kind == .inlineThread)
-        #expect(snapshot.entries[body]?.kind == .reviewBody)
+    /// **Every state `contrib` can print is in the skill's decision table.** A state
+    /// outside it has no defined response, and one — `informational` — sat outside the
+    /// table and outside `owed` while it hid two real asks. This fails the build the
+    /// next time a state is added without a row.
+    @Test("every item state has a row in SKILL.md's decision table")
+    func everyStateIsInTheSkillTable() throws {
+        let skill = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appending(path: "plugin/skills/contributions/SKILL.md")
+        let text = try String(contentsOf: skill, encoding: .utf8)
+        for state in ItemState.allCases {
+            #expect(text.contains("| `\(state.rawValue)` |"), "no table row for `\(state.rawValue)`")
+        }
     }
 
     // MARK: - Snapshot

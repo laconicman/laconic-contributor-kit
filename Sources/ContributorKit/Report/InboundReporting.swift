@@ -28,7 +28,7 @@ public enum InboundReporting {
         lines.append("\(pr.repository)#\(pr.number)\(title)")
 
         let shown = result.items.filter {
-            $0.isVisible && (options.all || $0.state.isOwed || $0.changed != nil)
+            options.all ? $0.isVisible : $0.isListedByDefault
         }
         if shown.isEmpty {
             lines.append("")
@@ -78,7 +78,7 @@ public enum InboundReporting {
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         let items = result.items.filter {
-            $0.isVisible && (options.all || $0.state.isOwed || $0.changed != nil)
+            options.all ? $0.isVisible : $0.isListedByDefault
         }
         return try encoder.encode(Document(provenance: provenance, items: items))
     }
@@ -98,6 +98,19 @@ public enum InboundReporting {
             }
         }
         provenance.examined("owed", result.owed.count)
+        // Reported beside `owed`, never folded into it: nothing is owed on these, but
+        // each carries a question no one has recorded an answer to.
+        provenance.examined("to re-read", result.toReRead.count)
+        if pr.isClosed {
+            let quiet = result.items.filter {
+                $0.isVisible && $0.state.needsLook && $0.changed == nil
+            }.count
+            if quiet > 0 {
+                provenance.note(
+                    "\(pr.state.lowercased()) — \(quiet) answered-claimed item(s) not listed; "
+                        + "owed items are listed regardless")
+            }
+        }
         provenance.examined("pages fetched", pr.pagesFetched)
         // A zero is a timestamp, not a state: acting on a PR *causes* the next review
         // wave, and an `owed 0` has twice been true at the fetch and false twenty
@@ -187,9 +200,9 @@ public enum InboundReporting {
         if let reply = item.text.reply {
             lines.append("\(indent)  my reply: \(oneLine(reply))")
         }
-        if item.state.isOwed {
+        if item.state.isOwed || item.state.needsLook {
             lines.append("\(indent)  → \(item.question)")
-            if item.kind != .inlineThread {
+            if item.kind != .inlineThread || item.state.needsLook {
                 lines.append("\(indent)    contrib ack \(item.id) --with none:\"…\"")
             }
         }

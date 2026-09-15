@@ -48,6 +48,11 @@ public struct InboundAudit: Sendable {
         /// until something about it moves; the provenance block reports how many were
         /// held back and by which boundary, so the number is never silently smaller.
         public var owed: [InboundItem] { items.filter { $0.state.isOwed && $0.isVisible } }
+        /// Answered but unconfirmed and unchecked, on an open subject — the list that
+        /// asks *is my reply actually responsive?*
+        public var toReRead: [InboundItem] {
+            items.filter { $0.isVisible && $0.state.needsLook && !$0.subjectClosed }
+        }
         /// Items the horizon is holding back this run.
         public var beyondHorizon: [InboundItem] { items.filter { !$0.isVisible } }
 
@@ -70,6 +75,7 @@ public struct InboundAudit: Sendable {
     }
 
     public func run(_ pr: PullRequestThreads, against previous: Snapshot?) -> Result {
+        let closed = pr.isClosed
         var items: [InboundItem] = []
         var examined: [Channel: Int] = [:]
         var ownAuthored: [Channel: Int] = [:]
@@ -109,6 +115,13 @@ public struct InboundAudit: Sendable {
                     state = .answeredConfirmed
                 } else if let edited = root.lastEditedAt, edited > lastMine.createdAt {
                     state = .editedAfterMyAnswer
+                } else if let check = previous?.entries[root.id]?.acknowledged,
+                    check.bodySha256AtAck == root.bodySHA256,
+                    check.replyIDAtAck == lastMine.id
+                {
+                    // Current only while it judged this ask and this reply. A new reply
+                    // or an edited ask lists the thread again.
+                    state = .answeredChecked
                 } else {
                     state = .answeredClaimed
                 }
@@ -131,7 +144,8 @@ public struct InboundAudit: Sendable {
                     roundID: root.reviewID, roundAt: root.createdAt, author: root.author,
                     previousState: before == state ? nil : before,
                     beyondHorizon: horizon.map { root.createdAt < $0 } ?? false,
-                    isNewToSnapshot: previous?.entries[root.id] == nil))
+                    isNewToSnapshot: previous?.entries[root.id] == nil,
+                    subjectClosed: closed))
         }
 
         // ---- channels 2 and 3: review bodies, then issue comments -----------------
@@ -176,7 +190,8 @@ public struct InboundAudit: Sendable {
                         roundID: nil, roundAt: comment.createdAt, author: comment.author,
                         previousState: before == state ? nil : before,
                         beyondHorizon: horizon.map { comment.createdAt < $0 } ?? false,
-                        isNewToSnapshot: previous?.entries[comment.id] == nil))
+                        isNewToSnapshot: previous?.entries[comment.id] == nil,
+                        subjectClosed: closed))
             }
         }
 
