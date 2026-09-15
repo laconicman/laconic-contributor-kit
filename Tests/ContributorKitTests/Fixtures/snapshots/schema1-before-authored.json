@@ -1,0 +1,36 @@
+{
+  "entries": {
+    "discussion_r1": {
+      "author": "devin-ai-integration",
+      "bodySha256": "0000000000000000000000000000000000000000000000000000000000000001",
+      "createdAt": "2026-09-10T08:00:00Z",
+      "firstSeen": "2026-09-13T10:00:00Z",
+      "kind": "inline-thread",
+      "myReplyAt": "2026-09-11T08:00:00Z",
+      "myReplyID": "discussion_r2",
+      "state": "answered-claimed",
+      "updatedAt": "2026-09-10T08:00:00Z",
+      "url": "https://github.com/o/r/pull/1#discussion_r1"
+    },
+    "pullrequestreview-3": {
+      "acknowledged": {
+        "at": "2026-09-13T10:30:00Z",
+        "bodySha256AtAck": "0000000000000000000000000000000000000000000000000000000000000003",
+        "kind": "commit",
+        "pointer": "1da04eb",
+        "verificationNote": "resolves in the local repository",
+        "verified": true
+      },
+      "author": "devin-ai-integration",
+      "bodySha256": "0000000000000000000000000000000000000000000000000000000000000003",
+      "createdAt": "2026-09-12T08:00:00Z",
+      "firstSeen": "2026-09-13T10:00:00Z",
+      "kind": "review-body",
+      "state": "obligation-acknowledged",
+      "url": "https://github.com/o/r/pull/1#pullrequestreview-3"
+    }
+  },
+  "repository": "o/r",
+  "schemaVersion": 1,
+  "updatedAt": "2026-09-13T10:30:00Z"
+}
