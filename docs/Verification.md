@@ -61,7 +61,7 @@ established, beyond the author's own runs:
 | **`answered-confirmed` against real data.** | No fixture and neither live PR contains a thread where the asker replied after our reply. Tested against a constructed thread only. |
 | **Pagination past one page.** | Every live subject fitted in one page of 100 — the largest across both trials carried 88 items on one page. The cursor loop, the `hasNextPage` ceiling and the `truncatedFetch` anomaly are exercised by unit test and by construction, never by a real oversized PR. |
 | ~~`lastEditedAt` on a real edited comment~~ | **Now verified** — six live instances in the second trial, plus an edited *review body* in the first. Moved to the executed table. |
-| **Issues, as opposed to pull requests.** | The query serves both through `issueOrPullRequest`, and the decoder treats every connection as optional, but no live run in either trial targeted an issue — the second found no live issue to run against. The issue-*comment* channel is well exercised; the issue *subject* is not. |
+| ~~Issues, as opposed to pull requests~~ | **Now verified** — a third session ran `contrib in` over five authored issues on `anthropics/claude-code`; the query serves both through `issueOrPullRequest` and needed no change. It found a maintainer's conditional close that a hand-applied reading of the same model had missed. |
 | **`commenter:` missing an inline-only PR.** | Requires `Candidates.graphql` and the enumeration union, which belong to `contrib out`. Not built. |
 | **Whether a fork issue backlinks onto an upstream thread.** | A write to a public repository. Not attempted. |
 | **Any platform other than macOS.** | `platforms: [.macOS(.v14)]`; CryptoKit and the XDG state path are the only platform-specific pieces. |
@@ -143,6 +143,85 @@ had failed to run, which is the same absence-of-evidence shape as the rest of th
 
 **And one non-defect worth recording:** the trial's `--json` parser broke because `text`
 is an object, not a string. The shape was right and undocumented; `--help` now states it.
+
+## The first true miss — a false negative this kit introduced
+
+**An `informational` state I added hid two real asks for about ten runs**, and a human
+found them in the GitHub UI instead. This is the failure class the whole tool exists to
+prevent, and it is worth recording in full because the mistake was in the *verification*,
+not only the code.
+
+The premise was that Devin Review's declared `"kind": "analysis"` marks a receipt rather
+than a request. Measured across `laconicman/YandexDeliveryExpress` and
+`laconicman/telegram-kb`: 13 analysis comments, every one a 📝 Info verification note.
+That looked conclusive. On `laconicman/YDelivery#28` the same kind carries 🔍 findings —
+*"Redirect refusal loses its reason"*, *"Dismissal leaves other work running"* — both
+genuine and both fix-producing.
+
+**Devin uses one kind for two purposes.** The marker cannot carry the decision.
+
+The verification that let it through said: *"9 of 9 items reclassified were
+reviewer-declared analysis; no bug was touched."* That is true, and it confirms the regex
+matched what it claimed to match. **It does not test the premise.** Checking that a
+mechanism works is not checking that the rule it implements is right — the distinction
+the field report's rule 5 draws between *ran and passed* and *tested the right thing*, one
+level up from where that rule usually bites.
+
+Withdrawn. What remains:
+
+- `informational` applies **only to review bodies and issue comments** — channels with no
+  reply relation. An inline thread's lifecycle is decidable from ids alone, so suppressing
+  one on a marker can only ever hide a real ask. This also removes the stickiness the
+  report found: the state sat outside the answered lifecycle, surviving replies that
+  should have moved it to `answered-claimed`.
+- The only shipped pattern is a bot's fixed announcement phrase.
+- The state is now **in the skill's decision table**, with its question and its response.
+  It was not, which is the deeper defect the report named: the table says it is the whole
+  contract, and an item outside it has no defined response.
+
+Regression test built from the two real bodies that were hidden.
+
+## The review horizon, and what it deliberately is not
+
+A second trial hit 44 never-answered threads on a June-era PR whose code a rewrite had
+deleted, and proposed an `ack --era` that would write one reason across all of them.
+
+Rejected in favour of `inbound.horizon` in `.contributorkit.yml`: items raised before it
+are **counted and not listed**. Nothing is cleared, nothing is claimed absorbed, and the
+declaration lives in a versioned file a human reads rather than as dozens of fabricated
+acknowledgements in a state directory.
+
+Measured on that PR: `owed` 53 → 28, with `37 item(s) before the review horizon — not
+listed (25 of them would otherwise be owed)`. The count of what is being held back, and
+how much of it is real, is printed every run.
+
+An item beyond the horizon still surfaces **the moment anything about it moves**. A
+reviewer editing an old comment today is today's activity, and a horizon that swallowed
+that would be the same wrong-set failure in a new place.
+
+## Six more defects, from two further trials
+
+7. **The baseline was announced per repository, not per item.** Sweeping five issues in
+   one repository, only the first printed `no snapshot … this run is the baseline` while
+   each of the others was also its own first run. Now reported after the audit, where the
+   per-item facts are known: `N known for this repository, age Xh; M new this run`.
+8. **The unverified-acknowledgement count had the same scope leak** — it counted
+   repository-wide, so an unverified ack on one issue was reported against another. Now
+   scoped to what the run examined.
+9. **A `comment:` pointer at my own comment could never verify.** The audit skips my
+   comments before recording anything, so the one comment worth pointing an
+   acknowledgement at was the one kind that always recorded `UNVERIFIED` — with a note
+   that repeated itself and named a fetch `ack` never makes. Authored ids are now
+   recorded as authored; verified live, 34 of them on one PR.
+10. **Setting one `inbound` key demanded restating the whole block**, failing with a
+    decoding error naming an unrelated key. `inbound:` now merges per sub-key. The
+    whole-key rule stays for `roles:`, where the *order* is the contract.
+11. **`owed 0` carried no expiry.** Acting on a PR causes the next review wave, so a zero
+    was twice true at the fetch and false twenty minutes later. The provenance block now
+    stamps `as of <time>`, and the skill carries the workflow rule: the audit that counts
+    is the one run after the reviewer's re-run, not after your push.
+12. **`contrib in` works unchanged on issues** — the first run against issues rather than
+    pull requests, five of them. Moved out of the not-verified list.
 
 ## A sharp edge, found while preparing a handoff
 

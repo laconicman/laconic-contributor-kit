@@ -111,13 +111,14 @@ extension Fixtures {
                 issueComments: try data("threads/pr-\(pr).issuecomments.json")))
     }
 
-    static func audit(me: String? = "laconicman") throws -> InboundAudit {
+    static func audit(me: String? = "laconicman", horizon: Date? = nil) throws -> InboundAudit {
         let config = try Configuration.builtInDefaults()
         return InboundAudit(
             me: me,
             stripper: try BoilerplateStripper(settings: config.inbound),
             supersession: SupersessionDetector(phrases: config.inbound.supersessionPhrases),
             informational: try InformationalDetector(
-                patterns: config.inbound.informationalPatterns))
+                patterns: config.inbound.informationalPatterns),
+            horizon: horizon)
     }
 }

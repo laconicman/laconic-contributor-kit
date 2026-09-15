@@ -226,6 +226,49 @@ test written to catch it. It now locates the table by its header and reads it wh
   fix. Nothing notices that a new ask sits on lines a previous fix touched. Recorded
   because it is the most consistent pattern observed, not because it is scoped.
 
+### The cold start: a horizon, not an era-acknowledgement
+
+**`inbound.horizon` in `.contributorkit.yml`.** Decided 2026-09-15, after a trial hit 44
+never-answered threads on a PR whose code a rewrite had since deleted.
+
+```yaml
+inbound:
+  horizon: "2026-07-01"   # or an ISO timestamp
+```
+
+Items raised before it are **counted and not listed**. The rejected alternative was
+`contrib ack --era --before <ref>`, writing one reason across every matching item.
+
+The difference is what gets asserted. An era-ack writes dozens of records saying *this was
+absorbed*, which did not happen — the bulk-ack the obligation model exists to refuse,
+made worse by living in a state directory nobody reads. A horizon asserts something true
+and smaller: *this repository is not auditing that era.* One line, in a file a human reads
+and git versions.
+
+Three properties make it safe rather than a quiet filter:
+
+- **Nothing is cleared.** The items stay in the snapshot, stay classified, stay counted.
+- **The provenance block prints what is held back and how much of it is real** —
+  `37 item(s) before the review horizon — not listed (25 of them would otherwise be owed)`.
+- **Movement beats the horizon.** An old item surfaces the instant its body changes or its
+  state transitions. A reviewer editing a June comment today is today's activity, and a
+  horizon that swallowed it would be a check quietly running against the wrong set.
+
+### Reading a reviewer's declared metadata — withdrawn
+
+Briefly, `contrib` read Devin Review's `"kind": "analysis"` marker as *a receipt, not an
+ask*, on the reasoning that metadata the asker emits about its own comment is not the CLI
+deciding a meaning question — the same move supersession makes.
+
+**The move is sound; the premise was false.** Devin uses `analysis` for both 📝 Info
+receipts and 🔍 real findings, and it hid two genuine asks for about ten runs. Withdrawn,
+with a regression test built from the two bodies it hid, and `informational` narrowed to
+channels with no reply relation and one fixed unambiguous phrase.
+
+The narrower lesson, worth keeping: *read metadata the asker emits about its own intent,
+and verify the reading against more than one repository before trusting it to suppress
+anything.* A category label is not intent.
+
 ## Still open
 - **Whether a backticked reference suppresses GitHub's cross-reference event.** Needed to
   choose `referenceStyle`; a write to a public repository, so not tested here.
@@ -233,3 +276,29 @@ test written to catch it. It now locates the table by its header and reads it wh
   register is anchored, since the schema keys on that id.
 - **An age threshold for the fork-issue escalation row class.** Arbitrary until there is
   more than one data point; the one observed case sat for months.
+- **`contrib lint <body-file>`** — an outbound check. A session pasted a comment onto a
+  public issue containing the literal token `PASTE_REFERENCE_ID_HERE`. Every guarantee
+  this kit makes is about what came *in*; nothing looks at what is about to be sent, and
+  the operator will assume it is covered. Should refuse on unresolved template tokens and
+  dead links, and — measured the hard way — also diff an edit against the live body and
+  render through `POST /markdown` to count the `<br>`s GitHub inserts for every newline.
+- **A corpus mode, `contrib in <repo> --mine`.** Every finding in the issue-author trial
+  was a *relation between two items*: one issue's close rationale being the principle
+  another says is broken; two issues of the same defect class held to different standards.
+  Neither is visible from inside either issue.
+- **Disposition states** — what *they* did with an item, as opposed to what I owe. A close
+  carrying a condition addressed to me, a bot-marked `stale`, and a close with no
+  rationale at all are all currently either invisible or flattened into `obligation-open`.
+- **Label provenance.** A `bug` label applied by `github-actions` and one applied by a
+  person look identical and mean opposite things; a session nearly wrote "they accepted
+  this as a bug" into a public comment on the strength of a bot label. Same argument as
+  *`isResolved` is not answered*, one layer up.
+- **`--with pr-body` acks reopen spuriously** where a bot re-appends a badge to the PR
+  description on every edit. Hashing the *stripped* body rather than the raw one would fix
+  it, at the cost of re-opening every existing acknowledgement once.
+- **`--all` then `--json` turns the second call into a second round**, because the first
+  wrote the snapshot. `--no-snapshot` on one of them is the workaround; one invocation
+  emitting both would remove the trap.
+- **A stray snapshot appeared in a repository work tree once** and could not be
+  reproduced. A guard refusing to write a snapshot inside a git work tree unless named
+  explicitly is cheap insurance.

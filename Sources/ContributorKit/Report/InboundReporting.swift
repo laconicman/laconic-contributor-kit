@@ -27,7 +27,9 @@ public enum InboundReporting {
         let title = pr.title.isEmpty ? "" : " — \(pr.title)"
         lines.append("\(pr.repository)#\(pr.number)\(title)")
 
-        let shown = result.items.filter { options.all || $0.state.isOwed || $0.changed != nil }
+        let shown = result.items.filter {
+            $0.isVisible && (options.all || $0.state.isOwed || $0.changed != nil)
+        }
         if shown.isEmpty {
             lines.append("")
             // Say what was compared. "Nothing moved" on its own cannot be told apart
@@ -75,14 +77,17 @@ public enum InboundReporting {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-        let items = result.items.filter { options.all || $0.state.isOwed || $0.changed != nil }
+        let items = result.items.filter {
+            $0.isVisible && (options.all || $0.state.isOwed || $0.changed != nil)
+        }
         return try encoder.encode(Document(provenance: provenance, items: items))
     }
 
     /// Fold the audit's counts into the provenance block. Called for every run, found
     /// or not.
     public static func record(
-        _ result: InboundAudit.Result, _ pr: PullRequestThreads, into provenance: inout Provenance
+        _ result: InboundAudit.Result, _ pr: PullRequestThreads,
+        previous: Snapshot?, into provenance: inout Provenance
     ) {
         for channel in Channel.allCases {
             let examined = result.examined[channel] ?? 0
@@ -94,6 +99,17 @@ public enum InboundReporting {
         }
         provenance.examined("owed", result.owed.count)
         provenance.examined("pages fetched", pr.pagesFetched)
+        // A zero is a timestamp, not a state: acting on a PR *causes* the next review
+        // wave, and an `owed 0` has twice been true at the fetch and false twenty
+        // minutes later. Stamping the fetch makes a quoted zero carry its own expiry.
+        provenance.note("as of \(GitHubTime.string(Date()))")
+
+        if !result.beyondHorizon.isEmpty {
+            let owed = result.beyondHorizon.filter(\.state.isOwed).count
+            provenance.note(
+                "\(result.beyondHorizon.count) item(s) before the review horizon — "
+                    + "not listed (\(owed) of them would otherwise be owed)")
+        }
 
         // Transitions, named. The run straight after a round of replies is the one most
         // likely to be read, and "nothing moved" was the wrong answer to it.
@@ -114,11 +130,24 @@ public enum InboundReporting {
                 provenance.note("\(count) item(s) \(state.rawValue) — counted, not owed")
             }
         }
-        let unverified = result.updatedSnapshot.entries.values.filter {
-            $0.acknowledged?.verified == false
-        }.count
+        // Scoped to what THIS run examined. Both of these counted over the whole
+        // repository, which is a different question: sweeping five issues in one repo,
+        // only the first announced a baseline while each of the others was also its own
+        // first run, and an unverified acknowledgement from one issue was reported
+        // against another.
+        let examinedIDs = Set(result.items.map(\.id))
+        let unverified = result.updatedSnapshot.entries
+            .filter { examinedIDs.contains($0.key) && $0.value.acknowledged?.verified == false }
+            .count
         if unverified > 0 {
-            provenance.note("\(unverified) acknowledgement(s) recorded but unverified")
+            provenance.note(
+                "\(unverified) acknowledgement(s) on this item recorded but unverified")
+        }
+        if let previous {
+            let newHere = result.items.filter(\.isNewToSnapshot).count
+            provenance.note(
+                "snapshot: \(previous.entries.count) item(s) known for this repository, "
+                    + "age \(Int(previous.age / 3600))h; \(newHere) new this run")
         }
         for connection in pr.truncatedConnections {
             provenance.anomaly("truncatedFetch", "\(connection) still had a next page")

@@ -41,22 +41,25 @@ inbound:
   # existence is checked only where it is free (see Acknowledgement.swift).
   acknowledgementKinds: ["comment", "commit", "pr-body", "none"]
 
-  # A reviewer that declares the KIND of each comment in machine-readable form can be
-  # taken at its word. This is metadata the asker emitted about their own comment, not
-  # the CLI deciding whether something "is really an ask" — the same move supersession
-  # makes, and the same reason it is allowed.
+  # A FIXED, UNAMBIGUOUS PHRASE ONLY. Matched against the raw body first, then the
+  # stripped prose. An item matching one is counted and never owed.
   #
-  # Matched against the raw body first (the marker lives inside an HTML comment, which
-  # stripping removes) and then the stripped prose.
+  # WITHDRAWN 2026-09-14: this list also carried a pattern for Devin Review's declared
+  # `"kind": "analysis"` marker, on the premise that analysis means "a receipt, not an
+  # ask". **That premise is false and it cost two real asks.** Measured across
+  # laconicman/{YandexDeliveryExpress,telegram-kb} the 13 analysis comments were all
+  # 📝 Info verification receipts, which looked conclusive; on laconicman/YDelivery#28
+  # the analysis comments are 🔍 findings — "Redirect refusal loses its reason",
+  # "Dismissal leaves other work running" — both genuine and both fix-producing. They
+  # were hidden from `owed` across roughly ten runs and found by a human in the GitHub
+  # UI instead.
   #
-  # Measured 2026-09-13 across laconicman/{YandexDeliveryExpress,telegram-kb}: the only
-  # two kinds Devin Review emits are "analysis" (13 occurrences, every one a 📝 Info
-  # receipt) and "bug" (11, every one a real finding). A trial session answered three
-  # analysis notes with one-liners to reach zero — harmless, and noise the marker
-  # already disambiguates.
+  # Devin uses one kind for two purposes, so the marker cannot carry this decision. The
+  # lesson is narrower than "do not read metadata": read metadata the asker emits about
+  # its own INTENT, and verify the reading against more than one repository before
+  # trusting it to suppress anything.
   #
-  # The dangerous direction is a false positive hiding a real ask, so these stay
-  # explicit and narrow. Delete them for a repository Devin does not review.
+  # Nothing may be added here that could suppress a real ask. A fixed bot announcement
+  # qualifies; a category label does not.
   informationalPatterns:
-    - '<!--\s*devin-review-comment\s+\{[^}]*"kind"\s*:\s*"analysis"'
     - '^Starting Devin Review\.$'
