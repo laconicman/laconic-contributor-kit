@@ -45,6 +45,25 @@ public struct Snapshot: Codable, Sendable {
         public var acknowledged: Acknowledgement?
     }
 
+    enum CodingKeys: String, CodingKey {
+        case schemaVersion, repository, updatedAt, entries, authored
+    }
+
+    /// Hand-written so that fields added after a snapshot was written decode as absent
+    /// rather than throwing. Synthesized `Decodable` ignores property defaults: adding
+    /// `authored` broke every existing state dir on upgrade with `keyNotFound`, thrown
+    /// before the schema-version guard could say anything useful. Every field added
+    /// from here on is `decodeIfPresent`, and gets a fixture in
+    /// `SnapshotCompatibilityTests`.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+        repository = try container.decode(String.self, forKey: .repository)
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+        entries = try container.decode([String: Entry].self, forKey: .entries)
+        authored = try container.decodeIfPresent(Set<String>.self, forKey: .authored) ?? []
+    }
+
     public init(
         repository: String, updatedAt: Date = Date(),
         entries: [String: Entry] = [:], authored: Set<String> = []

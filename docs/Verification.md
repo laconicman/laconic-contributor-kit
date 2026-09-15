@@ -231,6 +231,41 @@ that would be the same wrong-set failure in a new place.
 12. **`contrib in` works unchanged on issues** — the first run against issues rather than
     pull requests, five of them. Moved out of the not-verified list.
 
+## An upgrade crash, and a correction that corrected the wrong thing
+
+13. **Upgrading broke every existing state dir.** `authored` was added to `Snapshot` as a
+    non-optional property with a default. Synthesized `Decodable` ignores property
+    defaults, so a snapshot written by the previous build threw `keyNotFound 'authored'` —
+    before the schema-version guard could produce its own message, so it read like a
+    corrupt file. The only workaround was a new `--state-dir`, discarding the round history
+    the snapshot exists to keep. Reported by a trial session on its real state dir.
+
+    `Snapshot` now decodes by hand, with every post-release field `decodeIfPresent`.
+    `SnapshotCompatibilityTests` holds one fixture per historical shape — before per-entry
+    `state`, and before `authored` — and all three of its tests failed with the exact
+    reported error before the fix. Verified against a **copy** of the file that crashed:
+    it loads as a 56-hour-old previous round and reports five real transitions.
+
+    Adding a field to `Snapshot` now means adding a fixture, not only a property.
+
+**The trial session then retracted a claim that was true.** Its first report said the
+snapshot stored no `state` values; its later correction said the preserved file showed a
+`state` on every entry, and struck the original through. The preserved file was not
+written by the build that session trialled. It was written by the author of this kit,
+running a freshly installed build against *that session's* state dir to check a fix —
+**nine seconds after committing `66576ab`**, the commit that added per-entry `state`, and
+about half an hour after the report was filed. The file's own `updatedAt`
+(`2026-09-13T11:49:50Z`) and the commit time (`11:49:41Z`) pin it; `Snapshot.Entry` at the
+trialled build, `2709164`, has no `state` field, so nothing that build wrote could carry one.
+
+The original claim was correct, the gap was real, and `66576ab` is what closed it — which
+answers the question the correction left explicitly open. It is rule 7 a third time: the
+file differed in a variable nobody had isolated, and the variable was a second writer.
+
+The lesson for this document's own practice: **verify against a copy of another session's
+state, never the state itself.** The trial brief told every session to use its own state
+dir so they could not clobber each other, and the one that clobbered one was the author.
+
 ## A sharp edge, found while preparing a handoff
 
 **The binary is not portable on its own, and it hides that fact.** SwiftPM's generated

@@ -260,3 +260,64 @@ struct ContractTests {
         #expect(try !Glob("**/*.ac").matches("configure.bc"))
     }
 }
+
+/// **Every snapshot a released build has written must still decode.**
+///
+/// The snapshot is the capability — a state dir holds the round history the differ
+/// exists to keep, and the only workaround for a snapshot that will not load is a new
+/// state dir, which throws that history away. Adding `authored` as a non-optional
+/// property with a default broke every existing state dir on upgrade: synthesized
+/// `Decodable` ignores property defaults, so the decode threw `keyNotFound` before the
+/// schema-version guard was ever reached, and the error read like a corrupt file.
+///
+/// One fixture per historical shape, with no real PR data in either. Adding a field to
+/// `Snapshot` means adding a fixture here, not only a property.
+@Suite("snapshot compatibility")
+struct SnapshotCompatibilityTests {
+
+    private func decode(_ name: String) throws -> Snapshot {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(
+            Snapshot.self, from: try Fixtures.data("snapshots/\(name).json"))
+    }
+
+    /// Written by builds up to `2709164`: no per-entry `state`, no `authored`.
+    @Test("a schema-1 snapshot from before per-entry state decodes")
+    func beforeState() throws {
+        let snapshot = try decode("schema1-before-state")
+        #expect(snapshot.entries.count == 2)
+        #expect(snapshot.entries.values.allSatisfy { $0.state == nil })
+        #expect(snapshot.authored.isEmpty)
+        #expect(snapshot.entries["pullrequestreview-3"]?.acknowledged?.pointer == "1da04eb")
+    }
+
+    /// Written by `66576ab` and `273ea8b`: per-entry `state`, no `authored`. This is the
+    /// exact shape that crashed on upgrade to `3eaf469`.
+    @Test("a schema-1 snapshot from before authored ids decodes")
+    func beforeAuthored() throws {
+        let snapshot = try decode("schema1-before-authored")
+        #expect(snapshot.entries["discussion_r1"]?.state == .answeredClaimed)
+        #expect(snapshot.authored.isEmpty)
+    }
+
+    /// Decoding an old snapshot must not lose what it held: the next run compares
+    /// against it as a real previous round, not as a baseline.
+    @Test("an upgraded snapshot is a previous round, not a baseline")
+    func upgradedSnapshotIsUsable() throws {
+        let previous = try decode("schema1-before-authored")
+        let root = RemoteComment(
+            id: "discussion_r1", channel: .inlineThread, author: "devin-ai-integration",
+            viewerDidAuthor: false, createdAt: GitHubTime.parse("2026-09-10T08:00:00Z")!,
+            body: "body", permalink: "https://github.com/o/r/pull/1#discussion_r1")
+        let pr = PullRequestThreads(
+            repository: "o/r", number: 1, title: "", url: "", state: "OPEN", isMerged: false,
+            threads: [RemoteThread(comments: [root])], reviewBodies: [], issueComments: [],
+            pagesFetched: 1)
+
+        let result = try Fixtures.audit().run(pr, against: previous)
+        let item = try #require(result.items.first)
+        #expect(item.isNewToSnapshot == false)
+        #expect(item.previousState == .answeredClaimed)
+    }
+}
