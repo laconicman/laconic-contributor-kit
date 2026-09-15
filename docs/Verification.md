@@ -266,6 +266,16 @@ The lesson for this document's own practice: **verify against a copy of another 
 state, never the state itself.** The trial brief told every session to use its own state
 dir so they could not clobber each other, and the one that clobbered one was the author.
 
+## `answered-claimed` visibility, verified live
+
+| Claim | Evidence |
+|---|---|
+| Closure quiets the re-read list and nothing else | `pjsip/pjproject#5233`, merged: `owed 8` (review-body obligations, listed), `to re-read 0`, `merged — 24 answered-claimed item(s) not listed` |
+| A recorded check is a transition | Same PR: `1 × answered-claimed → answered-checked`, and the quiet count falls 24 → 23 |
+| An open ask cannot be checked away | `ack` on an `open-ask` refused with the reason, exit 1 |
+| A zero on an open PR is real, not a filter | `laconicman/telegram-kb#1`, open: `to re-read 0` checked against every state examined — 20 answered threads, all `answered-confirmed`, including the one thread the first trial noted as unconfirmed, which the reviewer has since confirmed |
+| Every state has a skill table row | Enforced by test; it failed on first run, before `answered-checked` had its row |
+
 ## A sharp edge, found while preparing a handoff
 
 **The binary is not portable on its own, and it hides that fact.** SwiftPM's generated

@@ -507,6 +507,92 @@ struct InboundTests {
         }
     }
 
+    // MARK: - Answered but unchecked
+
+    /// **An `answered-claimed` thread stays listed until the asker confirms or a check is
+    /// recorded.** It used to appear on the run it changed and vanish on the next, so the
+    /// one item carrying a live meaning question was hidden by default whether or not
+    /// anyone had looked. A trial session reported it on two separate rounds.
+    @Test("answered-claimed stays listed on an open PR, run after run")
+    func answeredClaimedStaysListed() throws {
+        let thread = RemoteThread(comments: [
+            comment("discussion_r1", "reviewer", at: 0),
+            comment("discussion_r2", "laconicman", at: 10),
+        ])
+        let first = try Fixtures.audit().run(pullRequest(threads: [thread]), against: nil)
+        let second = try Fixtures.audit().run(
+            pullRequest(threads: [thread]), against: first.updatedSnapshot)
+
+        let item = try #require(second.items.first)
+        #expect(item.state == .answeredClaimed)
+        #expect(item.changed == nil, "nothing moved")
+        #expect(item.isListedByDefault, "and it is listed anyway")
+        #expect(second.owed.isEmpty, "not owed — a separate count")
+        #expect(second.toReRead.count == 1)
+    }
+
+    /// Closure quiets the responsiveness question and **nothing else**. Reviewers post
+    /// rounds after a merge — a trial handled six findings posted on an already-merged PR
+    /// — and a close can carry a condition addressed to the contributor.
+    @Test("a closed PR quiets answered-claimed but never an ask")
+    func closureQuietsOnlyTheReReadList() throws {
+        let answered = RemoteThread(comments: [
+            comment("discussion_r1", "reviewer", at: 0),
+            comment("discussion_r2", "laconicman", at: 10),
+        ])
+        let postMergeAsk = RemoteThread(comments: [comment("discussion_r3", "reviewer", at: 50)])
+        var pr = pullRequest(threads: [answered, postMergeAsk])
+        pr.state = "MERGED"
+        pr.isMerged = true
+
+        let first = try Fixtures.audit().run(pr, against: nil)
+        let second = try Fixtures.audit().run(pr, against: first.updatedSnapshot)
+
+        let claimed = try #require(second.items.first { $0.id == "discussion_r1" })
+        let ask = try #require(second.items.first { $0.id == "discussion_r3" })
+        #expect(!claimed.isListedByDefault, "nobody is waiting on the check any more")
+        #expect(ask.isListedByDefault, "a post-merge ask is still owed")
+        #expect(second.owed.map(\.id) == ["discussion_r3"])
+        #expect(second.toReRead.isEmpty)
+    }
+
+    /// A recorded check is keyed to the ask and to the reply it judged. A new reply or an
+    /// edited ask must list the thread again rather than inherit a check it never had.
+    @Test("a responsiveness check holds until the reply or the ask changes")
+    func responsivenessCheckIsKeyed() throws {
+        let root = comment("discussion_r1", "reviewer", at: 0)
+        let reply = comment("discussion_r2", "laconicman", at: 10)
+        let pr = pullRequest(threads: [RemoteThread(comments: [root, reply])])
+
+        var snapshot = try Fixtures.audit().run(pr, against: nil).updatedSnapshot
+        snapshot.entries["discussion_r1"]?.acknowledged = Acknowledgement(
+            kind: .none, pointer: "covers both parts; tested",
+            bodySha256AtAck: root.bodySHA256, verified: true,
+            verificationNote: "explicit", replyIDAtAck: "discussion_r2")
+
+        let checked = try Fixtures.audit().run(pr, against: snapshot)
+        #expect(checked.items.first?.state == .answeredChecked)
+        #expect(checked.items.first?.changed == "answered-claimed → answered-checked")
+        #expect(checked.toReRead.isEmpty)
+
+        // I reply again: the check judged the old reply.
+        let secondReply = comment("discussion_r4", "laconicman", at: 20)
+        let replied = try Fixtures.audit().run(
+            pullRequest(threads: [RemoteThread(comments: [root, reply, secondReply])]),
+            against: checked.updatedSnapshot)
+        #expect(replied.items.first?.state == .answeredClaimed)
+        #expect(replied.toReRead.count == 1)
+
+        // The reviewer edits the ask: stale again, and the stronger state wins.
+        var edited = root
+        edited.body = "the ask, widened"
+        edited.lastEditedAt = Date(timeIntervalSince1970: 30)
+        let reopened = try Fixtures.audit().run(
+            pullRequest(threads: [RemoteThread(comments: [edited, reply])]),
+            against: checked.updatedSnapshot)
+        #expect(reopened.items.first?.state == .editedAfterMyAnswer)
+    }
+
     // MARK: - The review horizon
 
     /// A repository can declare an era out of audit. **Nothing is cleared** — the items

@@ -11,11 +11,17 @@ import Foundation
 ///
 /// Every case below is a fact about ids, authorship, timestamps and hashes. Not one of
 /// them required reading what a comment *says*.
-public enum ItemState: String, Codable, Sendable {
+public enum ItemState: String, Codable, Sendable, CaseIterable {
     /// Channel 1: a root ask from someone else with no reply from me.
     case openAsk = "open-ask"
     /// Channel 1: I replied. Whether the reply is *responsive* is the model's call.
     case answeredClaimed = "answered-claimed"
+    /// Channel 1: I replied, then re-read the reply against the ask and **recorded** that
+    /// it is responsive (`contrib ack <id> --with …`).
+    ///
+    /// The record is keyed to the ask's body hash and to the reply it judged, so a new
+    /// reply or an edit to the ask makes it stale and the thread is listed again.
+    case answeredChecked = "answered-checked"
     /// Channel 1: the asker themselves replied after my reply.
     ///
     /// Stronger evidence than anything else here, and the field report is right that
@@ -60,11 +66,19 @@ public enum ItemState: String, Codable, Sendable {
     public var isOwed: Bool {
         switch self {
         case .openAsk, .obligationOpen, .reopenedByEdit, .editedAfterMyAnswer: return true
-        case .answeredClaimed, .answeredConfirmed, .obligationAcknowledged,
+        case .answeredClaimed, .answeredChecked, .answeredConfirmed, .obligationAcknowledged,
             .superseded, .noProse, .informational:
             return false
         }
     }
+
+    /// Not owed, but carrying a question nobody has answered: *is my reply actually
+    /// responsive?* Listed by default until the asker confirms or a check is recorded.
+    ///
+    /// It used to appear only on the run it changed and vanish on the next, so the one
+    /// item carrying a live meaning question was the one hidden by default — whether or
+    /// not anyone had looked. Reported twice by the same trial session.
+    public var needsLook: Bool { self == .answeredClaimed }
 
     /// The meaning question this state hands to the model — the decision table
     /// `SKILL.md` carries, kept here so the two cannot drift.
@@ -74,6 +88,8 @@ public enum ItemState: String, Codable, Sendable {
             return "Answer it, or say why it should be left out — but it needs an answer."
         case .answeredClaimed:
             return "Is my reply actually responsive to the ask, or only adjacent to it?"
+        case .answeredChecked:
+            return "None. You re-read your reply against the ask and recorded that it answers it."
         case .answeredConfirmed:
             return "None. The asker confirmed it themselves; read only if you doubt the match."
         case .editedAfterMyAnswer:
@@ -136,6 +152,8 @@ public struct InboundItem: Codable, Sendable {
     /// True on the run that first records this item. "New since the last run" is a
     /// baseline artifact, not activity, and must not be read as one.
     public var isNewToSnapshot: Bool = false
+    /// The PR or issue is closed or merged.
+    public var subjectClosed: Bool = false
 
     /// Does this item belong in the output?
     ///
@@ -146,6 +164,18 @@ public struct InboundItem: Codable, Sendable {
     public var isVisible: Bool {
         guard beyondHorizon else { return true }
         return changed != nil && !isNewToSnapshot
+    }
+
+    /// Listed without `--all`?
+    ///
+    /// Owed items always, wherever the subject stands: reviewers post rounds after a
+    /// merge, and a close can carry a condition addressed to me. A `needsLook` item
+    /// only while the subject is open — once it is closed nobody is waiting on the
+    /// responsiveness check — unless something about it actually moved.
+    public var isListedByDefault: Bool {
+        guard isVisible else { return false }
+        if state.isOwed || changed != nil { return true }
+        return state.needsLook && !subjectClosed
     }
 
     enum CodingKeys: String, CodingKey {

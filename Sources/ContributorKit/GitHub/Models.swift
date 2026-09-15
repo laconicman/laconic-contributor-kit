@@ -148,6 +148,12 @@ public struct PullRequestThreads: Sendable {
         self.bodiesAreExcerpts = bodiesAreExcerpts
     }
 
+    /// Closed or merged. `UNKNOWN` — the REST fixtures carry no state — reads as open,
+    /// so a missing fact never hides anything.
+    public var isClosed: Bool {
+        isMerged || state == "CLOSED" || state == "MERGED"
+    }
+
     public var allComments: [RemoteComment] {
         threads.flatMap(\.comments) + reviewBodies + issueComments
     }
