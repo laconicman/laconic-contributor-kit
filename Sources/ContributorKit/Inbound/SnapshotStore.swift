@@ -39,6 +39,16 @@ public struct SnapshotStore: Sendable {
             .appending(path: sanitized(parts[1]) + ".json")
     }
 
+    /// Where snapshots lived before the collision fix: `<dir>/<owner>__<repo>.json`.
+    ///
+    /// Read for migration only. Changing a storage path silently abandons every
+    /// existing state directory, and a lost snapshot is not a cosmetic loss — the
+    /// history is what makes a second round a differ rather than a fresh baseline.
+    public func legacyURL(for repository: String) -> URL {
+        directory.appending(
+            path: repository.replacingOccurrences(of: "/", with: "__") + ".json")
+    }
+
     /// Defence for the one case the path split cannot cover: a name carrying `.` or `/`
     /// that GitHub would reject but a caller could still pass.
     private func sanitized(_ component: String) -> String {
@@ -49,7 +59,28 @@ public struct SnapshotStore: Sendable {
     /// `nil` when no snapshot exists yet — the first run, which every caller must
     /// report rather than silently treat as "nothing changed".
     public func load(repository: String) throws -> Snapshot? {
-        let url = url(for: repository)
+        let current = try decode(url(for: repository), expecting: repository)
+        let legacy = try decode(legacyURL(for: repository), expecting: repository)
+
+        // **Merged, never preferred.** Both files can exist and hold *different*
+        // subjects: a run on the new path after the collision fix leaves the old file
+        // untouched, so choosing one would make the other's pull requests invisible and
+        // the next save would delete them. Observed on a real state directory, where the
+        // two files held #28 and #29 of the same repository.
+        switch (current, legacy) {
+        case (nil, nil): return nil
+        case (let only?, nil): return only
+        case (nil, let only?): return only
+        case (var merged?, let old?):
+            for (id, entry) in old.entries where merged.entries[id] == nil {
+                merged.entries[id] = entry
+            }
+            merged.authored.formUnion(old.authored)
+            return merged
+        }
+    }
+
+    private func decode(_ url: URL, expecting repository: String) throws -> Snapshot? {
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
@@ -58,7 +89,6 @@ public struct SnapshotStore: Sendable {
             throw SnapshotError.schemaMismatch(
                 found: snapshot.schemaVersion, expected: Snapshot.currentSchemaVersion)
         }
-        // A file that names a different repository is an aliasing bug, not prior state.
         guard snapshot.repository == repository else {
             throw SnapshotError.repositoryMismatch(
                 found: snapshot.repository, expected: repository, path: url.path)
@@ -74,6 +104,14 @@ public struct SnapshotStore: Sendable {
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         try encoder.encode(snapshot).write(to: url, options: .atomic)
+
+        // The pre-collision-fix file has been superseded by this write. Removed only
+        // after the new one is safely on disk, and only when the two are different
+        // paths, so a failure here can never lose the snapshot.
+        let legacy = legacyURL(for: snapshot.repository)
+        if legacy != url, FileManager.default.fileExists(atPath: legacy.path) {
+            try? FileManager.default.removeItem(at: legacy)
+        }
     }
 
     /// Runs `body` holding an exclusive lock on this repository's snapshot.
