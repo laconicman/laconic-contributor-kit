@@ -1,6 +1,6 @@
 import Foundation
 
-/// Decoding `cloc --git --diff --json`, and the four traps TASK §3.2 records.
+/// Decoding `cloc --git --diff --json`, and the four traps <doc:Design> records.
 ///
 /// 1. **Two document shapes, one command.** Without `--by-file` the four sections are
 ///    keyed by *language*; with it, by *path*. One `Codable` type does not fit both,

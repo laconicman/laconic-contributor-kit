@@ -3,7 +3,7 @@ import Foundation
 /// Where the snapshot lives.
 ///
 /// **Outside the work tree**, under the XDG state directory, so "it must not reach an
-/// upstream-bound branch" (TASK §13.7.1) is true by construction rather than by an
+/// upstream-bound branch" (<doc:Design>) is true by construction rather than by an
 /// exclude file somebody has to maintain. `--state-dir` overrides it.
 public struct SnapshotStore: Sendable {
     public let directory: URL

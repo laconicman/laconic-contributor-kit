@@ -2,7 +2,7 @@ import Foundation
 
 /// `Foundation.Process` behind `CommandRunner`.
 ///
-/// TASK §2 prefers `swift-subprocess`; it is not used here because `Process` needs no
+/// <doc:Design> prefers `swift-subprocess`; it is not used here because `Process` needs no
 /// dependency and this protocol is the only thing any caller sees, so swapping it is
 /// one file. `stdout` and `stderr` are read on separate pipes and never merged: the
 /// feedback's rule 5 case 3 was a successful query returning a diagnostic as its

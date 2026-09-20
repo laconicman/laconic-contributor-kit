@@ -23,7 +23,7 @@ struct Contrib: AsyncParsableCommand {
 }
 
 /// Every command ends with a provenance block it cannot be run without, and exits
-/// non-zero on an anomaly (TASK §13.2). A guard you have to remember to invoke is a
+/// non-zero on an anomaly (<doc:Design>). A guard you have to remember to invoke is a
 /// guard that does not run.
 extension ParsableCommand {
     /// The block goes to stderr, so `--json` on stdout stays machine-readable while

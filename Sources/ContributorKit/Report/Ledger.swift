@@ -1,7 +1,7 @@
 import Foundation
 
 /// Append-only JSONL: it diffs, it greps, `jq` reads it, git versions it. No SQLite in
-/// pass 1 — `cloc --sql` exists if that ever changes (TASK §3.5).
+/// pass 1 — `cloc --sql` exists if that ever changes (<doc:Design>).
 public struct Ledger: Sendable {
     public let url: URL
 

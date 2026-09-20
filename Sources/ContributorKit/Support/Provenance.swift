@@ -1,6 +1,6 @@
 import Foundation
 
-/// The block every command ends with, and cannot be run without (TASK §13.2).
+/// The block every command ends with, and cannot be run without (<doc:Design>).
 ///
 /// A guard you have to remember to invoke is a guard that does not run: the 09-04
 /// miss happened inside a step nobody thought needed guarding. So this is not a
@@ -37,7 +37,7 @@ public struct Provenance: Codable, Sendable {
         self.startedAt = startedAt
     }
 
-    /// Print the count examined. TASK §12.3 rule 4, and the field report calls it the
+    /// Print the count examined. <doc:Design>, and the field report calls it the
     /// best rule in the document: it is the difference between "0 issue comments" as a
     /// *fact* and as an *assumption*.
     public mutating func examined(_ label: String, _ value: Int) {

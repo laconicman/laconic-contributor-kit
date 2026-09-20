@@ -2,7 +2,7 @@ import Foundation
 
 /// What the CLI settled about one item, deterministically.
 ///
-/// The boundary rule (TASK §13.3), stated so it can be enforced in review:
+/// The boundary rule (<doc:Design>), stated so it can be enforced in review:
 ///
 /// > The CLI decides everything decidable **without reading meaning**. It never
 /// > decides a meaning question. It emits the meaning question, pre-loaded with
@@ -25,24 +25,24 @@ public enum ItemState: String, Codable, Sendable, CaseIterable {
     /// Channel 1: the asker themselves replied after my reply.
     ///
     /// Stronger evidence than anything else here, and the field report is right that
-    /// §12 did not admit it: it is the asker confirming the answer, where my own reply
-    /// only records a claim. Not an inference from proximity — §4.6's rule is about
+    /// <doc:Design> did not admit it: it is the asker confirming the answer, where my own reply
+    /// only records a claim. Not an inference from proximity — <doc:Design>'s rule is about
     /// inferring acceptance from *timing*; this is the asker speaking.
     case answeredConfirmed = "answered-confirmed"
-    /// The ask was edited after my answer was posted. §13.4's sharpest check, and free
+    /// The ask was edited after my answer was posted. <doc:Design>'s sharpest check, and free
     /// given the snapshot: my answer may no longer address it.
     case editedAfterMyAnswer = "edited-after-my-answer"
-    /// Channels 2 and 3: listed, never auto-cleared, shown first (TASK §12.10).
+    /// Channels 2 and 3: listed, never auto-cleared, shown first (<doc:Design>).
     case obligationOpen = "obligation-open"
     /// An acknowledgement is recorded and the body has not moved since.
     case obligationAcknowledged = "obligation-acknowledged"
     /// An acknowledgement is recorded but the body hash changed under it, so the item
     /// re-opens by itself. For review bodies the hash is not an optimisation — it is
-    /// the only mechanism REST leaves available (§12.10, §13.4).
+    /// the only mechanism REST leaves available (<doc:Design>).
     case reopenedByEdit = "reopened-by-edit"
     /// The reviewer retracted it — *"This report is out of date."*
     ///
-    /// Without this, §12.10's never-auto-cleared rule holds open an ask the asker has
+    /// Without this, <doc:Design>'s never-auto-cleared rule holds open an ask the asker has
     /// themselves withdrawn, forever, requiring a human acknowledgement of something
     /// nobody is asking for any more.
     case superseded = "superseded"
@@ -58,7 +58,7 @@ public enum ItemState: String, Codable, Sendable, CaseIterable {
     /// are explicit, configurable, and counted in the provenance block.
     case informational = "informational"
     /// Nothing but badge markup once boilerplate is stripped. Counted in the examined
-    /// total so the count stays honest, but not owed: §12.3 rule 4's argument for
+    /// total so the count stays honest, but not owed: <doc:Design>'s argument for
     /// noise over silence does not extend to noise that is *definitionally* empty.
     case noProse = "no-prose"
 

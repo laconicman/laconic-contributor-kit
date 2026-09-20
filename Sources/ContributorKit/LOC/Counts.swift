@@ -1,6 +1,6 @@
 import Foundation
 
-/// Code, comment and blank — **never summed** (TASK §1, §3.4). There is deliberately
+/// Code, comment and blank — **never summed** (<doc:Design>). There is deliberately
 /// no `total` property on this type; a quality score built from one number is the
 /// thing the whole LOC half exists to not produce.
 public struct Counts: Codable, Sendable, Equatable, CustomStringConvertible {

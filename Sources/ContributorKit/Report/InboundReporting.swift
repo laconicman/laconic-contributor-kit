@@ -4,9 +4,9 @@ import Foundation
 ///
 /// Two rules shape it. **Review bodies come first** — the channel that cannot be
 /// replied to is the one most easily dropped, so it gets the most visible treatment
-/// rather than a trailing section (TASK §12.10). And **the count examined is printed
+/// rather than a trailing section (<doc:Design>). And **the count examined is printed
 /// whether or not anything was found**, because that is the difference between "0
-/// issue comments" as a fact and as an assumption (§12.3 rule 4).
+/// issue comments" as a fact and as an assumption (<doc:Design>).
 public enum InboundReporting {
 
     public struct Options: Sendable {
@@ -49,7 +49,7 @@ public enum InboundReporting {
             if channel == .inlineThread {
                 // Grouped by the review that carried them: "two threads open from the
                 // round three days ago" is actionable in a way a flat list is not, and
-                // it is how the maintainer experiences it (§12.4).
+                // it is how the maintainer experiences it (the Design article).
                 let rounds = Dictionary(grouping: items) { $0.roundID ?? "—" }
                 for round in rounds.keys.sorted(by: { roundOrder(rounds, $0, $1) }) {
                     let group = rounds[round]!
@@ -66,7 +66,7 @@ public enum InboundReporting {
 
     /// The `--json` contract, exactly: a provenance block, and per item `id`, `kind`,
     /// `permalink`, `state`, `question`, `changed` and the minimum text. **Nothing
-    /// else** (TASK §13.3).
+    /// else** (<doc:Design>).
     public static func json(
         _ result: InboundAudit.Result, provenance: Provenance, options: Options = .init()
     ) throws -> Data {

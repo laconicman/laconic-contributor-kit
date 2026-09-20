@@ -3,7 +3,7 @@ import Testing
 
 @testable import ContributorKit
 
-/// `contrib in` against the thread fixtures — TASK §12, and the four gaps two live
+/// `contrib in` against the thread fixtures — <doc:Design>, and the four gaps two live
 /// review rounds exposed in the field report.
 @Suite("contrib in — three channels, obligations, and the differ")
 struct InboundTests {
@@ -28,7 +28,7 @@ struct InboundTests {
 
     /// **All three channels, on one PR.** The inline channel is 2 open; the review-body
     /// channel is 8 open obligations, because a review body cannot be replied to and
-    /// none of them carries a recorded acknowledgement yet (§12.10). That is the
+    /// none of them carries a recorded acknowledgement yet (<doc:Design>). That is the
     /// capability working, not a false positive: the two historical #5233 misses were
     /// both review bodies, and an inline-only run reports this PR as two items rather
     /// than ten.
@@ -50,7 +50,7 @@ struct InboundTests {
         #expect(result.owed.count == 10)
     }
 
-    /// #5234 is the negative case in the two channels §12.7 measured — and a real one:
+    /// #5234 is the negative case in the two channels <doc:Design> measured — and a real one:
     /// every review there carried inline comments with an empty body, so
     /// `pr-5234.reviews.json` is `[]`. A tool that only read review bodies would report
     /// nothing at all for this PR.
@@ -66,7 +66,7 @@ struct InboundTests {
     }
 
     /// The third channel is not empty on #5234, and saying so is the point. One of its
-    /// two issue comments is the maintainer's; under §12.10 that is an obligation until
+    /// two issue comments is the maintainer's; under <doc:Design> that is an obligation until
     /// something is recorded against it, and the CLI does not get to decide whether it
     /// is "really" an ask — that is the meaning question it hands to the model.
     @Test("#5234: the issue-comment channel carries one obligation, ours excluded")
@@ -121,7 +121,7 @@ struct InboundTests {
 
     /// Four of six bodies in the field round were badge markup only. Counted in the
     /// examined total so the count stays honest; excluded from the worklist, because
-    /// §12.3 rule 4's argument for noise over silence does not extend to noise that is
+    /// <doc:Design>'s argument for noise over silence does not extend to noise that is
     /// definitionally empty.
     @Test("a badge-only review body is counted but not owed")
     func boilerplateOnlyBodyIsNotOwed() throws {
@@ -295,7 +295,7 @@ struct InboundTests {
 
     // MARK: - Gap 2.3: supersession
 
-    /// A reviewer can retract an obligation. Without this, §12.10's never-auto-cleared
+    /// A reviewer can retract an obligation. Without this, <doc:Design>'s never-auto-cleared
     /// rule holds open an ask the asker has themselves withdrawn — forever.
     @Test("a retracted review body is superseded, not owed")
     func supersededBodyIsNotOwed() throws {
@@ -312,7 +312,7 @@ struct InboundTests {
 
     /// The asker replying in the thread, describing the fix in their own words, is
     /// better evidence than our own claim to have fixed something — it is the asker
-    /// confirming the answer. Not an inference from proximity: §4.6's rule is about
+    /// confirming the answer. Not an inference from proximity: <doc:Design>'s rule is about
     /// inferring acceptance from *timing*, and this is the asker speaking.
     ///
     /// No current fixture contains one, so this is constructed. Said plainly rather
@@ -340,7 +340,7 @@ struct InboundTests {
         #expect(confirmed.items.first?.state == .answeredConfirmed)
     }
 
-    /// §13.4's sharpest check, and free given the snapshot:
+    /// <doc:Design>'s sharpest check, and free given the snapshot:
     /// `lastEditedAt > myReplyAt` means the ask was edited after I answered it.
     @Test("an ask edited after my answer re-opens as its own state")
     func editedAfterMyAnswer() throws {
@@ -355,7 +355,7 @@ struct InboundTests {
 
     // MARK: - The differ
 
-    /// §13's "since the last iteration" is the load-bearing piece. Without
+    /// <doc:Design>'s "since the last iteration" is the load-bearing piece. Without
     /// round-over-round state, a second round re-lists everything already answered.
     @Test("a second run reports only what moved")
     func secondRunReportsOnlyTheDelta() throws {
@@ -481,7 +481,7 @@ struct InboundTests {
         #expect(reopened.owed.count == 1)
     }
 
-    /// Root comments only — a reply inside a thread is not a new ask (§12.2).
+    /// Root comments only — a reply inside a thread is not a new ask (<doc:Design>).
     @Test("replies inside a thread are never counted as roots")
     func repliesAreNotRoots() throws {
         let pr = try Fixtures.threads(pr: 5233, comments: "pr-5233.positive.comments.json")
@@ -492,7 +492,7 @@ struct InboundTests {
 
     /// Rounds are unevenly sized — #5233's carry 2, 4, 5, 5, 3, 2, 2 and 1 threads.
     /// Grouping by review is therefore not cosmetic; a flat list of 24 loses which
-    /// round is open (§12.4).
+    /// round is open (<doc:Design>).
     @Test("threads group into the rounds that carried them")
     func roundGrouping() throws {
         let pr = try Fixtures.threads(pr: 5233, comments: "pr-5233.positive.comments.json")

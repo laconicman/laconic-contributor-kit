@@ -6,7 +6,7 @@ import Foundation
 /// `issueState` and no reviews, a PullRequest carries `pullRequestState` and all
 /// three connections. The two `state` aliases are load-bearing rather than cosmetic —
 /// `Issue.state` and `PullRequest.state` return different enums, so the same response
-/// key across both fragments is a hard validation error (TASK §4.3).
+/// key across both fragments is a hard validation error (<doc:Design>).
 struct ThreadDetailResponse: Decodable {
     var data: Payload?
     var errors: [GraphQLError]?

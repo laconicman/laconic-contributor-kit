@@ -1,6 +1,6 @@
 import Foundation
 
-/// Fixture playback — the whole testability story (TASK §2.1).
+/// Fixture playback — the whole testability story (<doc:Design>).
 ///
 /// A recording matches when every one of its `match` fragments appears in the joined
 /// argv. Unmatched commands throw rather than returning empty output: a recorded

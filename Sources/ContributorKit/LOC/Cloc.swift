@@ -1,7 +1,7 @@
 import Foundation
 
 /// Invokes `cloc --git --diff` and decodes it. **`cloc` is the classifier; this
-/// package does not contain a line counter** (TASK §3.1) — writing one means
+/// package does not contain a line counter** (<doc:Design>) — writing one means
 /// re-deriving a 300-language comment table to arrive at the same numbers, with the
 /// `*p = x;` bug waiting at the end of it.
 public struct Cloc: Sendable {
@@ -14,7 +14,7 @@ public struct Cloc: Sendable {
     }
 
     /// `--cloc <path>` if given, else the first of the well-known locations that
-    /// exists, else `cloc` on `PATH`. Neither is hardcoded (TASK §2).
+    /// exists, else `cloc` on `PATH`. Neither is hardcoded (<doc:Design>).
     public static func locate(explicit: String?, repository: URL) -> String {
         if let explicit { return explicit }
         let vendored = repository.appending(path: "node_modules/cloc/lib/cloc")
@@ -49,7 +49,7 @@ public struct Cloc: Sendable {
         if !options.languages.isEmpty {
             // ONE argument whose value contains a comma, a slash and a space. Through
             // `Process` it must be a single element of the array, never split on
-            // spaces (TASK §3.2).
+            // spaces (the Design article).
             argv.append("--include-lang=" + options.languages.joined(separator: ","))
         }
         for (ext, language) in options.forceLang.sorted(by: { $0.key < $1.key }) {

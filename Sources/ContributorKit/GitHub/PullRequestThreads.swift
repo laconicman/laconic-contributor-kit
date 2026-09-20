@@ -17,7 +17,7 @@ public struct PullRequestThreads: Sendable {
     public var pagesFetched: Int
     /// Any connection that still reported `hasNextPage` when fetching stopped.
     ///
-    /// **Never trust a truncated fetch** (§12.3 rule 4). The 09-04 miss was literally
+    /// **Never trust a truncated fetch** (<doc:Design>). The 09-04 miss was literally
     /// `sort | tail -6`: the earliest comment fell off and the truncation propagated
     /// silently into "the round is done". A non-empty list here is an anomaly, not a
     /// footnote.

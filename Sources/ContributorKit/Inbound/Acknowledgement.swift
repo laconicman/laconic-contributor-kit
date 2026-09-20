@@ -2,11 +2,11 @@ import Foundation
 
 /// A **recorded** acknowledgement — a pointer to where the content was absorbed.
 ///
-/// TASK §12.10 settles the model and left the mechanics open: which forms of pointer
+/// <doc:Design> settles the model and left the mechanics open: which forms of pointer
 /// the tool accepts, and whether it verifies them. Settled here:
 ///
 /// - Four forms — `comment:`, `commit:`, `pr-body`, `none:<reason>`. The last is the
-///   *"no action needed, because …"* §12.10 names explicitly; it demands a reason, so
+///   *"no action needed, because …"* <doc:Design> names explicitly; it demands a reason, so
 ///   dismissing something still costs a sentence.
 /// - **Shape is always checked. Existence is checked only where it is free** — an id
 ///   already present in the fetch, a sha the local repo can resolve. Never a network
@@ -26,7 +26,7 @@ public struct Acknowledgement: Codable, Sendable {
     public var pointer: String
     public var at: Date
     /// The body hash at the moment of acknowledgement. An edit after this re-opens the
-    /// item by itself — the hash is doing real work, not belt-and-braces (§13.4).
+    /// item by itself — the hash is doing real work, not belt-and-braces (<doc:Design>).
     public var bodySha256AtAck: String
     public var verified: Bool
     public var verificationNote: String

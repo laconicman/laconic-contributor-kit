@@ -1,6 +1,6 @@
 import Foundation
 
-/// `contrib loc` output. Three columns, always, and never a sum (TASK §3.4).
+/// `contrib loc` output. Three columns, always, and never a sum (<doc:Design>).
 public enum LocReporting {
 
     public static func terminal(_ report: LocReport) -> String {
