@@ -68,6 +68,12 @@ line; do not let it be no line.
 stamps `as of <time>` for this reason. **The audit that counts is the one run after the
 reviewer's re-run, not after your push.**
 
+**Run one view, not both.** The table and `--json` carry the same bodies, so running
+both doubles the cost of an audit for nothing — measured at roughly 2,300 tokens a run
+against ~24,900 for a hand-rolled `jq` fetch and ~193,000 raw. Use the table to triage and
+`--json` when you are acting on items programmatically; `--no-snapshot` on the second call
+if you genuinely need both on the same baseline.
+
 ## Acknowledging
 
 ```bash

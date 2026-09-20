@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    name: Build, test and render docs (macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Validate the package manifest
+        run: swift package dump-package > /dev/null && echo "Package.swift evaluates"
+
+      - name: Build
+        run: swift build -c release
+
+      # The whole suite is offline: it asserts against captured `cloc` documents and real
+      # captured GitHub threads, never against the network. A test needing `gh` or a
+      # remote would break this, which is the point.
+      - name: Test
+        run: swift test
+
+      # DocC is the home of Design / Roadmap / TechDebt, so a broken symbol link is a
+      # broken direction doc. Warnings are failures here for that reason.
+      - name: Render the documentation catalogue
+        run: |
+          swift package generate-documentation --target ContributorKit --warnings-as-errors
+
+      - name: Check REVIEW.md paths still resolve
+        run: |
+          missing=0
+          while read -r path; do
+            [ -e "$path" ] || { echo "REVIEW.md names a path that does not exist: $path" >&2; missing=1; }
+          done < <(grep -oE '`[A-Za-z0-9_./*-]+\.(swift|md|yml|awk|json)`' REVIEW.md \
+                   | tr -d '`' | grep -v '[*]' | sort -u)
+          exit $missing
+
+      - name: Shellcheck the scripts
+        run: |
+          brew list shellcheck >/dev/null 2>&1 || brew install shellcheck
+          shellcheck scripts/*.sh

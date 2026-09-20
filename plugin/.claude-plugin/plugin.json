@@ -3,6 +3,6 @@
   "description": "Answer two questions about contributing to someone else's repo: what was asked of me that I have not demonstrably absorbed, and is what I ship getting more laconic?",
   "version": "0.1.0",
   "author": { "name": "laconicman" },
-  "homepage": "https://github.com/laconicman/swift-contributor-kit",
+  "homepage": "https://github.com/laconicman/laconic-contributor-kit",
   "keywords": ["code-review", "github", "upstream", "contribution", "loc"]
 }

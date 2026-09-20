@@ -23,7 +23,10 @@ BUNDLE="$(find "$BUILD" -maxdepth 1 -name '*_ContributorKit.bundle' -print -quit
 
 mkdir -p "$PREFIX"
 install -m 0755 "$BUILD/contrib" "$PREFIX/contrib"
-rm -rf "$PREFIX/$(basename "$BUNDLE")"
+# Remove every ContributorKit bundle, not just this build's: the package has been
+# renamed once, and a stale bundle beside the binary is exactly the kind of thing
+# that works until it doesn't.
+rm -rf "$PREFIX"/*_ContributorKit.bundle
 cp -R "$BUNDLE" "$PREFIX/"
 
 echo "installed:"

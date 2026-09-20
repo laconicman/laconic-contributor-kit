@@ -593,6 +593,75 @@ struct InboundTests {
         #expect(reopened.items.first?.state == .editedAfterMyAnswer)
     }
 
+    /// A reviewer that appends its badge to a superseded body re-opens every
+    /// acknowledged item in that round for no semantic reason — observed twice in one
+    /// morning on one thread. The item still re-opens and a stale check is still
+    /// refused; what changes is that the contributor is told which kind of edit it was.
+    @Test("a markup-only edit says so, and still re-opens the item")
+    func markupOnlyEditIsNamed() throws {
+        let ask = "🔴 **Same-channel syncs remain concurrent**\n\nTwo syncs can overlap."
+        let badge = "\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://x\">\n"
+            + "  <picture><img src=\"https://x/l.svg\"></picture>\n</a>\n"
+            + "<!-- devin-review-badge-end -->"
+
+        var body = RemoteComment(
+            id: "pullrequestreview-1", channel: .reviewBody, author: "devin-ai-integration",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: ask, permalink: "https://github.com/o/r/pull/1#pullrequestreview-1")
+        let first = try Fixtures.audit().run(
+            pullRequest(reviewBodies: [body]), against: nil)
+
+        body.body = ask + badge
+        let markupOnly = try Fixtures.audit().run(
+            pullRequest(reviewBodies: [body]), against: first.updatedSnapshot)
+        let changed = try #require(markupOnly.items.first?.changed)
+        #expect(changed.contains("markup only, prose unchanged"))
+
+        body.body = ask + "\n\nAlso: the retry path." + badge
+        let proseMoved = try Fixtures.audit().run(
+            pullRequest(reviewBodies: [body]), against: first.updatedSnapshot)
+        let changed2 = try #require(proseMoved.items.first?.changed)
+        #expect(!changed2.contains("markup only"))
+    }
+
+    /// **The baseline run lists what is actionable, not everything it has ever seen.**
+    /// Treating "new since the last run" as movement made the first run on a real PR print
+    /// 49 badge-only review bodies, none of them actionable. They stay counted.
+    @Test("a first run lists owed and re-read items, not definitionally empty ones")
+    func baselineRunListsOnlyActionableItems() throws {
+        func body(_ id: String, _ text: String) -> RemoteComment {
+            RemoteComment(
+                id: id, channel: .reviewBody, author: "devin-ai-integration",
+                viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+                body: text, permalink: "https://github.com/o/r/pull/1#\(id)")
+        }
+        let badge = "<!-- devin-review-badge-begin -->\n<a href=\"https://x\"></a>\n"
+            + "<!-- devin-review-badge-end -->"
+
+        let pr = pullRequest(
+            threads: [
+                RemoteThread(comments: [comment("discussion_r1", "reviewer", at: 0)]),
+                RemoteThread(comments: [
+                    comment("discussion_r2", "reviewer", at: 0),
+                    comment("discussion_r3", "laconicman", at: 10),
+                ]),
+            ],
+            reviewBodies: [
+                body("pullrequestreview-1", badge),
+                body("pullrequestreview-2", badge),
+                body("pullrequestreview-3", "**Devin Review** found 2 potential issues."),
+            ])
+
+        let first = try Fixtures.audit().run(pr, against: nil)
+        let listed = first.items.filter(\.isListedByDefault).map(\.id).sorted()
+        #expect(
+            listed == ["discussion_r1", "discussion_r2", "pullrequestreview-3"],
+            "one open ask, one to re-read, one obligation — and neither badge")
+        // Counted, all the same.
+        #expect(first.items.count == 5)
+        #expect(first.count(of: .noProse, in: .reviewBody) == 2)
+    }
+
     // MARK: - The review horizon
 
     /// A repository can declare an era out of audit. **Nothing is cleared** — the items
