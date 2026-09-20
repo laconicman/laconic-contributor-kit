@@ -41,8 +41,14 @@ struct LocCommand: AsyncParsableCommand {
     @Option(name: .long, help: "Languages to include, comma separated.")
     var lang: String?
 
+    /// An enum, so ArgumentParser rejects a typo rather than the switch defaulting to
+    /// the human format — automation that asked for `jsonn` used to get a table, exit 0.
+    enum Format: String, ExpressibleByArgument, CaseIterable {
+        case table, markdown, json
+    }
+
     @Option(name: .long, help: "table | markdown | json")
-    var format: String = "table"
+    var format: Format = .table
 
     @Option(name: .long, help: "Append the result to a JSONL ledger.")
     var record: String?
@@ -85,13 +91,13 @@ struct LocCommand: AsyncParsableCommand {
         }
 
         switch format {
-        case "markdown": print(LocReporting.markdown(report))
-        case "json":
+        case .markdown: print(LocReporting.markdown(report))
+        case .json:
             let encoder = JSONEncoder()
             encoder.dateEncodingStrategy = .iso8601
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
             print(String(decoding: try encoder.encode(report), as: UTF8.self))
-        default: print(LocReporting.terminal(report))
+        case .table: print(LocReporting.terminal(report))
         }
 
         if let record {

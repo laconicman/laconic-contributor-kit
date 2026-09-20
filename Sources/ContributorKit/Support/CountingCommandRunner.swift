@@ -21,8 +21,15 @@ public final class CountingCommandRunner: CommandRunner, @unchecked Sendable {
 
     public func run(_ argv: [String], cwd: URL?) async throws -> CommandOutput {
         lock.withLock { _count += 1 }
-        let out = try await wrapped.run(argv, cwd: cwd)
-        if out.status != 0 { lock.withLock { _failures += 1 } }
-        return out
+        do {
+            let out = try await wrapped.run(argv, cwd: cwd)
+            if out.status != 0 { lock.withLock { _failures += 1 } }
+            return out
+        } catch {
+            // A command that could not be launched at all is the most complete failure
+            // there is; counting only non-zero exits left it out of the tally.
+            lock.withLock { _failures += 1 }
+            throw error
+        }
     }
 }

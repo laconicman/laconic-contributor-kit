@@ -59,9 +59,7 @@ struct InCommand: AsyncParsableCommand {
         if let horizon = configuration.inbound.horizon {
             provenance.note("review horizon \(horizon) — earlier items counted, not listed")
         }
-        if previous == nil {
-            provenance.note("no snapshot for \(repository) — this run is the baseline")
-        }
+
 
         let runner = CountingCommandRunner(SystemCommandRunner())
         let client = GHCommandClient(
@@ -91,8 +89,33 @@ struct InCommand: AsyncParsableCommand {
             print(InboundReporting.terminal(threads, result, options: options))
         }
 
-        if !noSnapshot {
-            try store.save(result.updatedSnapshot)
+        // An anomalous run must not become the next run's baseline. A truncated fetch
+        // that saved its partial pages would have the retry treat them as established
+        // history, and the items it never saw would look like nothing had changed —
+        // the differ silently built on a fetch it had already declared untrustworthy.
+        provenance.finish()
+        if noSnapshot {
+            provenance.note("--no-snapshot: this run cannot inform the next one")
+        } else if provenance.hasAnomaly {
+            provenance.note("snapshot NOT written — this run is anomalous; fix and re-run")
+        } else {
+            // Locked read-modify-write, and only our own subject's entries are applied.
+            // The snapshot holds every PR and issue in the repository, so a plain save
+            // of `updatedSnapshot` would drop whatever another audit wrote between our
+            // load and our save. The lock is held for the file transaction only, never
+            // across the network fetch.
+            let subject = "\(repository)#\(pr)"
+            try store.withLock(repository: repository) {
+                var merged =
+                    try store.load(repository: repository)
+                    ?? Snapshot(repository: repository)
+                for (id, entry) in result.updatedSnapshot.entries where entry.subject == subject {
+                    merged.entries[id] = entry
+                }
+                merged.authored.formUnion(result.updatedSnapshot.authored)
+                merged.updatedAt = Date()
+                try store.save(merged)
+            }
             provenance.note("snapshot written to \(store.url(for: repository).path)")
         }
 

@@ -63,16 +63,32 @@ public struct RangeWalker: Sendable {
     public struct Commit: Sendable {
         public var sha: String
         public var subject: String
+        /// True when the commit has no first parent.
+        public var isRoot: Bool = false
     }
 
+    /// Git's empty tree. A root commit has no `<sha>^` to compare against, so it is
+    /// compared with the state before anything existed — which is what it added.
+    public static let emptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+
     public func commits(in range: Range) async throws -> [Commit] {
+        // `%P` is the parent list: empty for a root commit, which has no `<sha>^`.
         let out = try await runner.runExpectingOutput(
-            ["git", "log", "--reverse", "--format=%H%x1f%s", "\(range.base)..\(range.head)"],
+            [
+                "git", "log", "--reverse", "--format=%H%x1f%P%x1f%s",
+                "\(range.base)..\(range.head)",
+            ],
             cwd: repository)
         return out.stdoutText.split(separator: "\n").compactMap { line in
-            let parts = line.split(separator: "\u{1f}", maxSplits: 1)
-            guard parts.count == 2 else { return nil }
-            return Commit(sha: String(parts[0]), subject: String(parts[1]))
+            // `omittingEmptySubsequences: false` is load-bearing: a root commit's
+            // parent list is empty, and dropping that field made the line unparseable —
+            // so the commit this fix exists for vanished from the walk entirely.
+            let parts = line.split(
+                separator: "\u{1f}", maxSplits: 2, omittingEmptySubsequences: false)
+            guard parts.count == 3 else { return nil }
+            let parents = parts[1].trimmingCharacters(in: .whitespaces)
+            return Commit(
+                sha: String(parts[0]), subject: String(parts[2]), isRoot: parents.isEmpty)
         }
     }
 
@@ -120,7 +136,8 @@ public struct RangeWalker: Sendable {
             var reports: [LocReport.CommitReport] = []
             for commit in try await commits(in: range) {
                 let doc = try await cloc.diff(
-                    refA: "\(commit.sha)^", refB: commit.sha, options: plain, cwd: repository)
+                    refA: commit.isRoot ? Self.emptyTree : "\(commit.sha)^",
+                    refB: commit.sha, options: plain, cwd: repository)
                 reports.append(
                     .init(sha: commit.sha, subject: commit.subject, stats: doc.stats))
             }

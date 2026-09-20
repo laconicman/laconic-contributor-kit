@@ -52,7 +52,10 @@ public struct Provenance: Codable, Sendable {
         anomalies.append(Anomaly(kind: kind, detail: detail))
     }
 
+    /// Idempotent: callers finish early to decide whether a run may be trusted, and
+    /// the emitter finishes again on the way out.
     public mutating func finish() {
+        guard finishedAt == nil else { return }
         finishedAt = Date()
         if counters.isEmpty {
             anomaly(

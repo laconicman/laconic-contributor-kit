@@ -174,6 +174,29 @@ struct LocTests {
         #expect(runner.unusedRecordings.isEmpty, "merge-base was actually consulted")
     }
 
+    /// A root commit has no `<sha>^`, so `--per-commit` aborted on any range including
+    /// one. It is compared against git's empty tree instead — which is what it added.
+    ///
+    /// The empty-parent field is why this test exists twice over: Swift's `split` drops
+    /// empty subsequences by default, so the first version of the fix parsed the root
+    /// commit's line into two fields and skipped the commit entirely.
+    @Test("a root commit is walked against the empty tree, not an unresolvable parent")
+    func rootCommitUsesTheEmptyTree() async throws {
+        let log = "aaa1111\u{1f}\u{1f}root commit\nbbb2222\u{1f}aaa1111\u{1f}second\n"
+        let runner = RecordedCommandRunner([
+            .init(match: ["git", "log", "--reverse"], stdout: Data(log.utf8))
+        ])
+        let walker = RangeWalker(
+            repository: URL(fileURLWithPath: "."), runner: runner,
+            cloc: Cloc(executable: "cloc", runner: runner))
+
+        let commits = try await walker.commits(in: .init(base: "x", head: "y"))
+        #expect(commits.count == 2, "the root commit is not dropped")
+        #expect(commits[0].isRoot)
+        #expect(!commits[1].isRoot)
+        #expect(RangeWalker.emptyTree == "4b825dc642cb6eb9a060e54bf8d69288fbee4904")
+    }
+
     /// `--include-lang` is ONE argument whose value contains a comma, a slash and a
     /// space. Through `Process` it must be a single element of the argv array.
     @Test("--include-lang is one argv element, never split on spaces")
