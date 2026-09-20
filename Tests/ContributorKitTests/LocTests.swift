@@ -233,6 +233,23 @@ struct LocTests {
         }
     }
 
+    /// The provenance block must name the base that figures were measured from. A
+    /// three-dot range measures from the merge base, and recording the left ref instead
+    /// named a commit no figure came from.
+    @Test("a three-dot range is resolved before its base is recorded")
+    func provenanceNamesTheMeasuredBase() async throws {
+        let runner = RecordedCommandRunner([
+            .init(match: ["merge-base", "main", "feature"], stdout: Data("mmmbase\n".utf8))
+        ])
+        let walker = RangeWalker(
+            repository: URL(fileURLWithPath: "."), runner: runner,
+            cloc: Cloc(executable: "cloc", runner: runner))
+
+        let resolved = try await walker.resolved(try RangeWalker.parseRange("main...feature"))
+        #expect(resolved.base == "mmmbase", "not `main`")
+        #expect(resolved.head == "feature")
+    }
+
     /// `--include-lang` is ONE argument whose value contains a comma, a slash and a
     /// space. Through `Process` it must be a single element of the argv array.
     @Test("--include-lang is one argv element, never split on spaces")

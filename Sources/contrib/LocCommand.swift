@@ -64,10 +64,11 @@ struct LocCommand: AsyncParsableCommand {
         provenance.note("cloc \(clocPath)")
         provenance.note("cloc version \(try await clocTool.version(cwd: repository))")
 
-        let parsed = try RangeWalker.parseRange(range)
         let walker = RangeWalker(repository: repository, runner: runner, cloc: clocTool)
-        // Resolve both ends so the provenance block names commits, not branch tips that
-        // will have moved by the time anyone reads it.
+        // Resolved FIRST, so the provenance block names the base that was actually
+        // measured. A three-dot range measures from the merge base, and recording the
+        // left ref instead named a commit no figure came from.
+        let parsed = try await walker.resolved(try RangeWalker.parseRange(range))
         provenance.note("base \(try await walker.resolve(parsed.base))")
         provenance.note("head \(try await walker.resolve(parsed.head))")
 

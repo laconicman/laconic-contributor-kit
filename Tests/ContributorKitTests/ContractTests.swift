@@ -539,6 +539,21 @@ struct SecondRoundTests {
         #expect(FileManager.default.fileExists(atPath: store.legacyURL(for: "a/b__c").path))
     }
 
+    /// **A reviewer's own ask must not verify its own acknowledgement.** The known-ids
+    /// set included `snapshot.entries`, which holds the reviewers' comments, so
+    /// `--with comment:<the ask's id>` passed verification.
+    @Test("only my own comments verify a comment pointer")
+    func onlyAuthoredCommentsVerify() async throws {
+        // An ask from a reviewer, and a reply of mine — the shape every thread has.
+        let parser = AcknowledgementParser(knownCommentIDs: ["discussion_r2"])
+
+        let mine = try await parser.parse("comment:discussion_r2", bodySha256: "h")
+        #expect(mine.verified)
+
+        let theirs = try await parser.parse("comment:discussion_r1", bodySha256: "h")
+        #expect(!theirs.verified, "the ask cannot vouch for its own answer")
+    }
+
     /// **A legacy file that is ours and unreadable must not be silently dropped.** The
     /// previous fix used `try?`, which swallowed malformed JSON, I/O failures and schema
     /// mismatches alike — so an audit would re-baseline over stored history without a
