@@ -5,7 +5,7 @@ import Foundation
 ///
 /// The one rule worth stating: **a leading `**​/` also matches nothing at all**, so
 /// `**/CMakeLists.txt` matches a bare `CMakeLists.txt` at the repo root. Naïve glob
-/// matching does not do that, and TASK §3.3 asks for the case to be tested explicitly.
+/// matching does not do that, and <doc:Design> asks for the case to be tested explicitly.
 ///
 /// `@unchecked Sendable`: the only stored reference is an `NSRegularExpression`, which
 /// Foundation documents as immutable and safe to use from multiple threads.

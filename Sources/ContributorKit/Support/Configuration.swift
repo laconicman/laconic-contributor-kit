@@ -120,7 +120,7 @@ public struct Configuration: Codable, Sendable {
     }
 
     /// The defaults as shipped. Two files, because they have two different
-    /// provenances and TASK §9 states provenance per claim.
+    /// provenances and <doc:Design> states provenance per claim.
     public static func builtInDefaults() throws -> Configuration {
         let measured = try Partial.from(resource: "contributorkit.default.yml")
         let reasoned = try Partial.from(resource: "inbound.default.yml")
@@ -147,7 +147,7 @@ public struct Configuration: Codable, Sendable {
     /// Defaults, then `.contributorkit.yml` from `directory` if one is there.
     /// Overriding is per top-level key, not a deep merge: a file that supplies
     /// `roles:` replaces the whole ordered list, because the *order* is the contract
-    /// (TASK §3.3) and a merged order is nobody's.
+    /// (<doc:Design>) and a merged order is nobody's.
     public static func load(directory: URL) throws -> Configuration {
         var config = try builtInDefaults()
         let url = directory.appending(path: ".contributorkit.yml")

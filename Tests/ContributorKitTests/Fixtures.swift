@@ -3,7 +3,7 @@ import Testing
 
 @testable import ContributorKit
 
-/// The fixtures are the specification (TASK §6). Assertions read `manifest.json`
+/// The fixtures are the specification (<doc:Design>). Assertions read `manifest.json`
 /// rather than numbers retyped into Swift, so a figure that drifts shows up as a
 /// failing comparison against a measured document instead of against a memory.
 enum Fixtures {

@@ -108,6 +108,6 @@ cloc:
     ".m": "Objective-C"
   defaultLanguages: ["C", "C/C++ Header", "Objective-C"]
 
-# See TASK-code-contributorkit.md §7 — verify empirically before choosing.
+# Verify empirically before choosing; see the Design article.
 register:
   referenceStyle: permalink   # permalink | shorthand

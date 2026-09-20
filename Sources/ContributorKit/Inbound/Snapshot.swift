@@ -2,7 +2,7 @@ import Foundation
 
 /// The local, per-repository record of what the world looked like last run.
 ///
-/// This is the piece §§1–12 do not have, and the field report is right that it is the
+/// This is the piece the original specification did not have, and the field report is right that it is the
 /// capability rather than an optimisation: one round's raw fetch was 18 inline
 /// comments, of which six were new findings, four were reviewer resolutions, four were
 /// our own replies and four were already answered. Set arithmetic over

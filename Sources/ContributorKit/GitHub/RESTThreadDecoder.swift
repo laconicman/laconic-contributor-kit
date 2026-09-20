@@ -3,8 +3,8 @@ import Foundation
 /// Decodes the REST-shaped capture the fixtures hold — and the same shape live from
 /// `gh api repos/{owner}/{repo}/pulls/{n}/comments`.
 ///
-/// The fixtures are the specification (TASK §6), and they are REST-shaped, so this
-/// path has to exist regardless of §13.4's requirement that the *live* per-thread
+/// The fixtures are the specification (<doc:Design>), and they are REST-shaped, so this
+/// path has to exist regardless of <doc:Design>'s requirement that the *live* per-thread
 /// fetch be GraphQL. The two produce the same `RemoteComment.id`, so a snapshot
 /// written by one is comparable with a fetch by the other.
 public enum RESTThreadDecoder {
@@ -105,7 +105,7 @@ public enum RESTThreadDecoder {
                 .sorted { $0.createdAt < $1.createdAt }
             let path = inline.first { $0.id == rootID }?.path
             // The REST capture carries no `isResolved`; `false` is the honest default,
-            // and §12.3 rule 3 says resolution is not "answered" anyway.
+            // and the Design article says resolution is not "answered" anyway.
             return RemoteThread(comments: [root] + replies, path: path)
         }
 

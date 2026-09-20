@@ -3,7 +3,7 @@ import Testing
 
 @testable import ContributorKit
 
-/// TASK §6, day one: the regression test with a known answer.
+/// <doc:Design>, day one: the regression test with a known answer.
 ///
 /// Every figure asserted here comes from `manifest.json`, which `make_manifest.py`
 /// derived from 13 `cloc` documents captured twice and compared byte-for-byte.
@@ -30,7 +30,7 @@ struct LocTests {
 
     /// The headline row: `tls-restart` branch total, added/removed/modified code
     /// 107 / 82 / 35 and comment 109 / 0 / 8, netting code +25, comment +109, blank +21.
-    @Test("tls-restart branch total reproduces TASK §6's net figures")
+    @Test("tls-restart branch total reproduces the Design article's net figures")
     func tlsRestartBranchTotal() async throws {
         let runner = try Fixtures.clocRunner("cloc/tls-restart.branch.json")
         let document = try await Fixtures.cloc(runner).diff(
@@ -48,10 +48,10 @@ struct LocTests {
         #expect(runner.unusedRecordings.isEmpty)
     }
 
-    /// **Gross churn deliberately does not agree with §6 and must not be asserted
-    /// against it.** §6's heuristic gave `+148 −123`; cloc splits the same edits into
+    /// **Gross churn deliberately does not agree with <doc:Design> and must not be asserted
+    /// against it.** <doc:Design>'s heuristic gave `+148 −123`; cloc splits the same edits into
     /// 107 added, 82 removed and 35 modified in place. Same net, truer churn.
-    @Test("net agrees with the §6 heuristic; gross is asserted only against cloc")
+    @Test("net agrees with the the Design article heuristic; gross is asserted only against cloc")
     func netAgreesGrossDoesNot() throws {
         let manifest = try Fixtures.manifest()
         for fixture in manifest.fixtures {
@@ -64,9 +64,9 @@ struct LocTests {
         }
     }
 
-    /// The one fixture that disagrees, and that is the point: §6's awk heuristic files
+    /// The one fixture that disagrees, and that is the point: <doc:Design>'s awk heuristic files
     /// two `*p_min = …;` dereferences as comments. The manifest carries both figures.
-    @Test("darwin-tls is code +32 / comment +30 — deliberately not §6's +30/+32")
+    @Test("darwin-tls is code +32 / comment +30 — deliberately not the Design article's +30/+32")
     func darwinTlsDisagreesWithTheHeuristic() throws {
         let manifest = try Fixtures.manifest()
         let fixture = try #require(
@@ -91,7 +91,7 @@ struct LocTests {
     }
 
     /// Commit `56e706f7d` is `code −33 / comment +21`. A ratio field there prints
-    /// `−0.64`, which is worse than printing nothing (TASK §3.4).
+    /// `−0.64`, which is worse than printing nothing (<doc:Design>).
     @Test("the comment-to-code ratio is suppressed when net code ≤ 0")
     func ratioSuppressedOnNegativeNetCode() throws {
         let document = try ClocDocument(

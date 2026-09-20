@@ -1,7 +1,7 @@
 import Foundation
 
 /// Ordered, first match wins. The order is part of the contract, not an accident
-/// (TASK §3.3): `tests/automated/Makefile` lands in `build`, and
+/// (<doc:Design>): `tests/automated/Makefile` lands in `build`, and
 /// `third_party/**/test/**` lands in `vendor`. Both are defensible; both are one move
 /// in `.contributorkit.yml` to change.
 public struct FileRoleClassifier: Sendable {

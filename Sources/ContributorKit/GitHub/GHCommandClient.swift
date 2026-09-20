@@ -5,13 +5,13 @@ import Foundation
 /// Shelling out rather than generating a client: GitHub's REST OpenAPI description is
 /// 12.9 MB over 813 paths, GraphQL cannot be generated from it at all, and `gh`
 /// already solves auth, pagination, retries, rate-limit backoff and Enterprise hosts
-/// (TASK §4.1). **No credential is ever read, stored or invented here** — `gh` holds
+/// (<doc:Design>). **No credential is ever read, stored or invented here** — `gh` holds
 /// the token and this never asks for it.
 ///
 /// The per-thread fetch is GraphQL and not REST because of one measured fact: REST's
 /// review schema carries `submitted_at` and nothing else — no `created_at`, no
 /// `updated_at` — so the channel with no reply mechanism, the one that carried the
-/// historical misses, is also the one REST cannot diff (TASK §13.4).
+/// historical misses, is also the one REST cannot diff (<doc:Design>).
 public struct GHCommandClient: GitHubClient {
     public let runner: any CommandRunner
     public let queryPath: String
@@ -53,7 +53,7 @@ public struct GHCommandClient: GitHubClient {
                 "-f", "owner=\(owner)",
                 "-f", "name=\(name)",
                 // `-F` sends a typed value: `number` is `Int!` and fails with `-f`,
-                // which sends a String (TASK §4.4 trap 3).
+                // which sends a String (the Design article).
                 "-F", "number=\(number)",
             ]
             if let commentCursor { argv += ["-f", "commentCursor=\(commentCursor)"] }

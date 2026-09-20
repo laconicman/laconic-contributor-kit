@@ -4,7 +4,7 @@ import Testing
 @testable import ContributorKit
 
 /// File roles: ordered, first match wins, and the order is part of the contract
-/// (TASK §3.3). These assertions are against `manifest.json`'s own `paths` and
+/// (<doc:Design>). These assertions are against `manifest.json`'s own `paths` and
 /// `byRole` blocks, which `make_manifest.py` produced with the same ordered list the
 /// 39/33/18/7/1 distribution was measured with.
 struct ConsequenceTableMissing: Error {}
@@ -17,7 +17,7 @@ struct RoleTests {
     }
 
     /// `**/x` must also match a bare `x` at the repo root, which naïve glob matching
-    /// does not do. TASK §3.3 asks for this case explicitly.
+    /// does not do. <doc:Design> asks for this case explicitly.
     @Test("a bare CMakeLists.txt at the repo root is `build`")
     func bareNameGlobAtRoot() throws {
         #expect(try classifier().role(of: "CMakeLists.txt") == "build")

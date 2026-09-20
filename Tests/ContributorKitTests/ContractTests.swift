@@ -8,7 +8,7 @@ import Testing
 @Suite("contracts")
 struct ContractTests {
 
-    /// TASK §13.3: per item `id`, `kind`, `permalink`, `state`, `question`, `changed`
+    /// <doc:Design>: per item `id`, `kind`, `permalink`, `state`, `question`, `changed`
     /// and the minimum text — **nothing else**. Both failure modes cost the same
     /// thing, so this is pinned as an exact key set rather than a superset.
     @Test("--json emits exactly the seven keys, and no more")

@@ -12,7 +12,7 @@ public struct LocReport: Codable, Sendable {
     public var total: DiffStats
     /// Modified *code* with `--ignore-whitespace`, when it was measured.
     /// Reported beside the raw figure in one row — `churn 35 (20 excluding whitespace)`
-    /// — because hiding the reindentation share overstates the work (TASK §3.4).
+    /// — because hiding the reindentation share overstates the work (<doc:Design>).
     public var modifiedCodeIgnoringWhitespace: Int?
 
     public var byRole: [String: DiffStats]?

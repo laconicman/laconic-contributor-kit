@@ -22,7 +22,7 @@ public struct RemoteComment: Codable, Sendable, Equatable {
     /// matching — is working on a fragment and must say so (fixtures README).
     public var bodyIsExcerpt: Bool
     public var permalink: String
-    /// The review that carried an inline comment — the round it belongs to (§12.4).
+    /// The review that carried an inline comment — the round it belongs to (<doc:Design>).
     public var reviewID: String?
 
     public init(
@@ -46,6 +46,6 @@ public struct RemoteComment: Codable, Sendable, Equatable {
 
     /// The API-independent backstop for edit detection. For review bodies it is not an
     /// optimisation: REST's review schema carries `submitted_at` and nothing else, so
-    /// the channel with no reply mechanism is also the one REST cannot diff (§13.4).
+    /// the channel with no reply mechanism is also the one REST cannot diff (<doc:Design>).
     public var bodySHA256: String { SHA256.hex(of: body) }
 }

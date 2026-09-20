@@ -2,7 +2,7 @@ import Foundation
 
 /// One line of `contrib in`'s worklist.
 ///
-/// The `--json` shape is exactly TASK §13.3's contract: `id`, `kind`, `permalink`,
+/// The `--json` shape is exactly <doc:Design>'s contract: `id`, `kind`, `permalink`,
 /// `state`, `question`, `changed`, and the minimum text — the ask, and my reply if
 /// there is one. **Nothing else.** Both failure modes cost the same thing: if the CLI
 /// judges meaning it will be wrong and the model re-derives anyway; if it dumps raw
@@ -30,7 +30,7 @@ public struct InboundItem: Codable, Sendable {
     public var text: Text
 
     /// Not part of the `--json` item contract — carried for terminal grouping only
-    /// (TASK §12.4), and stripped before encoding.
+    /// (<doc:Design>), and stripped before encoding.
     public var roundID: String?
     public var roundAt: Date?
     public var author: String?

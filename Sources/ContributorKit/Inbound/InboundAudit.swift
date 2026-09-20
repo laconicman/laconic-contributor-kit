@@ -2,15 +2,15 @@ import Foundation
 
 /// `contrib in` — *what was asked of me that I have not demonstrably absorbed?*
 ///
-/// Three channels, not one (TASK §12.3 rule 1). Inline review comments, review
+/// Three channels, not one (<doc:Design>). Inline review comments, review
 /// **bodies**, and issue comments. A run that skips review bodies reproduces the
 /// original bug: on #5233 the same ask was raised in review bodies on 09-02, 09-03 and
 /// 09-04 and missed every time, because only inline comments were being read — the
 /// fourth time by an audit script written specifically to prevent the first failure.
 ///
-/// The set arithmetic in §12.2 applies to channel 1 only, and is deliberately **not**
+/// The set arithmetic in <doc:Design> applies to channel 1 only, and is deliberately **not**
 /// extended to the other two: *"a review body is answered if I posted any top-level
-/// comment after it"* is row 1 of §12.10's rejection table, a silent false negative.
+/// comment after it"* is row 1 of <doc:Design>'s rejection table, a silent false negative.
 public struct InboundAudit: Sendable {
     public let me: String?
     public let stripper: BoilerplateStripper
@@ -34,7 +34,7 @@ public struct InboundAudit: Sendable {
         /// Every item examined, in every state — the reporter filters, not the audit.
         public var items: [InboundItem]
         /// Everything examined, per channel — printed whether or not anything was
-        /// found. §12.3 rule 4, and the difference between "0 issue comments" as a
+        /// found. <doc:Design>, and the difference between "0 issue comments" as a
         /// fact and as an assumption.
         public var examined: [Channel: Int]
         /// How many of those were **mine**, per channel, and therefore never
@@ -151,7 +151,7 @@ public struct InboundAudit: Sendable {
 
         // ---- channels 2 and 3: review bodies, then issue comments -----------------
         // Review bodies go first: the channel that cannot be replied to is the one most
-        // easily dropped, so it gets the most visible treatment (§12.10).
+        // easily dropped, so it gets the most visible treatment (the Design article).
         for (channel, comments) in [
             (Channel.reviewBody, pr.reviewBodies), (Channel.issueComment, pr.issueComments),
         ] {

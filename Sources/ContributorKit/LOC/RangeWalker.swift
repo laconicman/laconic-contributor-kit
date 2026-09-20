@@ -4,7 +4,7 @@ import Foundation
 /// per-commit loop when asked for.
 ///
 /// `--range` never touches the network, and must stay that way: the LOC half has to
-/// remain usable offline and on a repo with no GitHub remote at all (TASK §3.6).
+/// remain usable offline and on a repo with no GitHub remote at all (<doc:Design>).
 public struct RangeWalker: Sendable {
     public let repository: URL
     public let runner: any CommandRunner
