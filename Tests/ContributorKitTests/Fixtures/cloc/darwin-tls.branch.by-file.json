@@ -1,0 +1,90 @@
+{"header" : {
+  "cloc_url"           : "github.com/AlDanial/cloc",
+  "cloc_version"       : "2.06",
+  "elapsed_seconds"    : 0.431696891784668,
+  "n_files"            : 0,
+  "n_lines"            : 3161,
+  "files_per_second"   : 0,
+  "lines_per_second"   : 7322.26722071633},
+ "added" : {
+  "pjlib/src/pj/ssl_sock_darwin.c" : {
+    "code" : 54,
+    "blank" : 8,
+    "nFiles" : 0,
+    "comment" : 28
+  },
+  "pjlib/src/pjlib-test/ssl_sock.c" : {
+    "code" : 4,
+    "nFiles" : 0,
+    "blank" : 0,
+    "comment" : 7
+  }
+  },
+ "same" : {
+  "pjlib/src/pj/ssl_sock_darwin.c" : {
+    "code" : 806,
+    "blank" : 0,
+    "nFiles" : 0,
+    "comment" : 132
+  },
+  "pjlib/src/pjlib-test/ssl_sock.c" : {
+    "code" : 1881,
+    "nFiles" : 0,
+    "blank" : 0,
+    "comment" : 201
+  }
+  },
+ "modified" : {
+  "pjlib/src/pj/ssl_sock_darwin.c" : {
+    "code" : 7,
+    "blank" : 0,
+    "nFiles" : 0,
+    "comment" : 0
+  },
+  "pjlib/src/pjlib-test/ssl_sock.c" : {
+    "code" : 1,
+    "nFiles" : 0,
+    "blank" : 0,
+    "comment" : 1
+  }
+  },
+ "removed" : {
+  "pjlib/src/pj/ssl_sock_darwin.c" : {
+    "code" : 26,
+    "blank" : 0,
+    "nFiles" : 0,
+    "comment" : 5
+  },
+  "pjlib/src/pjlib-test/ssl_sock.c" : {
+    "code" : 0,
+    "nFiles" : 0,
+    "blank" : 0,
+    "comment" : 0
+  }
+  },
+  "SUM" : {
+  "added" : {
+    "blank" : 8,
+    "nFiles" : 0,
+    "comment" : 35,
+    "code" : 58
+},
+  "same" : {
+    "blank" : 0,
+    "nFiles" : 0,
+    "comment" : 333,
+    "code" : 2687
+},
+  "modified" : {
+    "blank" : 0,
+    "nFiles" : 0,
+    "comment" : 1,
+    "code" : 8
+},
+  "removed" : {
+    "blank" : 0,
+    "nFiles" : 0,
+    "comment" : 5,
+    "code" : 26
+}
+} }

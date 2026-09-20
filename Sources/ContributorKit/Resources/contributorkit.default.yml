@@ -1,0 +1,113 @@
+# ContributorKit — default configuration
+#
+# Ship this as the built-in default; `.contributorkit.yml` in a repo overrides it.
+# Generated from contributorkit-fixtures/make_manifest.py's ROLE_RULES, which is the
+# list the verified role distribution was measured with — keep the two in step.
+#
+# Verified 2026-09-05 over pjproject upstream/master (3,435 tracked files):
+#   source 39%  ·  vendor 33%  ·  test 18%  ·  build 7%  ·  docs 1%
+
+# Ordered, FIRST MATCH WINS. The order is part of the contract, not an accident:
+# `tests/automated/Makefile` lands in `build`, and `third_party/**/test/**` lands in
+# `vendor`. Both are defensible; both are one move in this list to change.
+#
+# `**/x` must also match a bare `x` at the repo root (CMakeLists.txt) — naive glob
+# matching does not do that. Test the case.
+roles:
+  - role: vendor
+    globs:
+      - "third_party/**"
+      - "**/vendor/**"
+      - "**/node_modules/**"
+      - "Pods/**"
+      - ".build/**"
+  - role: test
+    globs:
+      - "tests/**"
+      - "**/test/**"
+      - "**/tests/**"
+      - "**/*-test/**"
+      - "**/Tests/**"
+      - "**/*Tests.swift"
+      - "**/*_test.*"
+      - "**/test_*.*"
+  - role: build
+    globs:
+      - "**/Makefile"
+      - "**/Makefile.*"
+      - "**/*.mak"
+      - "**/CMakeLists.txt"
+      - "**/*.cmake"
+      - "**/configure"
+      - "**/configure-*"
+      - "**/aconfigure*"
+      - "**/*.ac"
+      - "**/*.m4"
+      - "**/*.vcxproj*"
+      - "**/*.vcproj"
+      - "**/*.vsprops"
+      - "**/*.pbxproj"
+      - "**/*.xcscheme"
+      - "**/*.xcworkspacedata"
+      - "**/*.pc.in"
+      - ".github/**"
+      - "**/*.yml"
+      - "**/*.yaml"
+      - "**/*.sh"
+      - "**/*.bat"
+      - "**/*.cmd"
+      - "**/Package.swift"
+      - "**/*.plist"
+      - "**/*.xcsettings"
+      - "**/*.props"
+      - "**/*.sln"
+      - "**/*.gradle"
+      - "**/gradlew*"
+      - "**/install-sh"
+      - "**/*.pri"
+      - "**/*.pro"
+  - role: docs
+    globs:
+      - "docs/**"
+      - "doc/**"
+      - "**/*.md"
+      - "**/*.MD"
+      - "**/*.rst"
+      - "**/*.adoc"
+      - "**/*.txt"
+      - "README*"
+      - "CHANGES*"
+      - "NEWS*"
+      - "LICENSE*"
+      - "AUTHORS*"
+      - "COPYING*"
+      - "NOTICE*"
+      - "**/*.htm"
+      - "**/*.html"
+  - role: source
+    globs:
+      - "**"
+
+# Matched case-insensitively against comment bodies. Strip markdown blockquotes and
+# fenced code before matching, or a reply quoting our own offer counts twice.
+offerPhrases:
+  - "happy to"
+  - "glad to"
+  - "say the word"
+  - "if you want"
+  - "if you would"
+  - "raise it separately"
+  - "separate PR"
+  - "separate issue"
+  - "can be split"
+  - "could be split"
+
+# cloc must resolve `.m` against MATLAB, Mercury and MUMPS. Pin it in C-family repos.
+cloc:
+  forceLang:
+    ".m": "Objective-C"
+  defaultLanguages: ["C", "C/C++ Header", "Objective-C"]
+
+# Verify empirically before choosing; see the Design article.
+register:
+  referenceStyle: permalink   # permalink | shorthand
