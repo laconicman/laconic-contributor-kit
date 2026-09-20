@@ -1,0 +1,111 @@
+import Foundation
+
+/// The local, per-repository record of what the world looked like last run.
+///
+/// This is the piece the original specification did not have, and the field report is right that it is the
+/// capability rather than an optimisation: one round's raw fetch was 18 inline
+/// comments, of which six were new findings, four were reviewer resolutions, four were
+/// our own replies and four were already answered. Set arithmetic over
+/// `in_reply_to_id` does not distinguish any of those. **A `contrib in` run without
+/// prior-round state is not a weaker version of the tool — on a second round it is
+/// actively misleading.**
+public struct Snapshot: Codable, Sendable {
+    public static let currentSchemaVersion = 1
+
+    public var schemaVersion: Int = Snapshot.currentSchemaVersion
+    public var repository: String
+    public var updatedAt: Date
+    public var entries: [String: Entry]
+    /// Ids of comments **I** authored, recorded as authored rather than as items.
+    ///
+    /// My own comments are never entries — the audit skips them before it records
+    /// anything — so without this the one comment worth pointing an acknowledgement at
+    /// is the one kind that could never verify.
+    public var authored: Set<String> = []
+
+    public struct Entry: Codable, Sendable {
+        public var kind: Channel
+        public var url: String
+        public var author: String
+        public var createdAt: Date
+        public var updatedAt: Date?
+        public var lastEditedAt: Date?
+        public var bodySha256: String
+        /// `owner/repo#number` this item was fetched from.
+        ///
+        /// The snapshot is per repository and a run is per pull request, so without this
+        /// there is no way to ask "which items did this subject have last time?" —
+        /// which is what makes a disappearance detectable. Optional: snapshots written
+        /// before it existed decode without it, and simply record it on the next run.
+        public var subject: String?
+        /// The body with boilerplate stripped, as of the last run.
+        ///
+        /// Kept so a re-opened item can say whether the *prose* moved or only the
+        /// markup around it. Optional: snapshots written before it existed decode
+        /// without it, and their first run after upgrade simply records it.
+        public var prose: String?
+        /// What the audit concluded about this item last run.
+        ///
+        /// Without it the differ compares bodies and authorship only, so it can see a
+        /// new or edited comment and **structurally cannot see a resolution** — it
+        /// reported "nothing moved" in the run immediately after six threads were
+        /// answered and one obligation acknowledged. That is a report of absence that
+        /// cannot tell *nothing happened* from *this check cannot see what happened*.
+        public var state: ItemState?
+        public var firstSeen: Date
+        public var myReplyID: String?
+        public var myReplyAt: Date?
+        public var acknowledged: Acknowledgement?
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case schemaVersion, repository, updatedAt, entries, authored
+    }
+
+    /// Hand-written so that fields added after a snapshot was written decode as absent
+    /// rather than throwing. Synthesized `Decodable` ignores property defaults: adding
+    /// `authored` broke every existing state dir on upgrade with `keyNotFound`, thrown
+    /// before the schema-version guard could say anything useful. Every field added
+    /// from here on is `decodeIfPresent`, and gets a fixture in
+    /// `SnapshotCompatibilityTests`.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+        repository = try container.decode(String.self, forKey: .repository)
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+        entries = try container.decode([String: Entry].self, forKey: .entries)
+        authored = try container.decodeIfPresent(Set<String>.self, forKey: .authored) ?? []
+    }
+
+    public init(
+        repository: String, updatedAt: Date = Date(),
+        entries: [String: Entry] = [:], authored: Set<String> = []
+    ) {
+        self.repository = repository
+        self.updatedAt = updatedAt
+        self.entries = entries
+        self.authored = authored
+    }
+
+    public var age: TimeInterval { Date().timeIntervalSince(updatedAt) }
+}
+
+public enum SnapshotError: Error, CustomStringConvertible {
+    case schemaMismatch(found: Int, expected: Int)
+    case unknownItem(String)
+    case repositoryMismatch(found: String, expected: String, path: String)
+    case lockFailed(path: String, errno: Int32)
+
+    public var description: String {
+        switch self {
+        case .schemaMismatch(let found, let expected):
+            return "snapshot schema v\(found) cannot be read by this build (expects v\(expected)) — delete it to start a fresh baseline"
+        case .unknownItem(let id):
+            return "no item `\(id)` in the snapshot — run `contrib in` for this PR first"
+        case .repositoryMismatch(let found, let expected, let path):
+            return "\(path) holds a snapshot for `\(found)`, not `\(expected)` — refusing to read another repository's history as this one's"
+        case .lockFailed(let path, let code):
+            return "could not lock \(path): \(String(cString: strerror(code)))"
+        }
+    }
+}

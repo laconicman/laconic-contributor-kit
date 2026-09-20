@@ -1,0 +1,135 @@
+import ArgumentParser
+import ContributorKit
+import Foundation
+
+struct AckCommand: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "ack",
+        abstract: "Record where an obligation was absorbed.",
+        discussion: """
+            A review body and an issue comment cannot be replied to, so nothing about
+            them says "answered" on its own. They leave the worklist only when an
+            acknowledgement is RECORDED — a pointer to where the content was absorbed:
+
+              --with comment:<id>        a comment of mine, by permalink or fragment
+              --with commit:<sha>        a commit that carries the change
+              --with pr-body             the PR description was edited
+              --with none:"<reason>"     no action needed, and why
+
+            Shape is always checked. Existence is checked only where it is free — an id
+            already in this run's fetch, a sha the local repository resolves — and the
+            result is recorded per acknowledgement, so an unverified one reads as
+            unverified rather than as fine.
+
+            The record is keyed by comment id AND body hash, so an edit after
+            acknowledgement re-opens the item by itself.
+            """
+    )
+
+    @Argument(help: "The item id, as printed by `contrib in`.")
+    var id: String
+
+    @Option(name: .long, help: "Where the content was absorbed.")
+    var with: String
+
+    @Argument(help: "<owner>/<repo>")
+    var repository: String
+
+    @Option(name: .long, help: "Repository path for resolving a commit sha.")
+    var repo: String = "."
+
+    @Option(name: .long, help: "Where the snapshot lives (default: XDG state dir).")
+    var stateDir: String?
+
+    enum AckError: Error, CustomStringConvertible {
+        case refused(String)
+
+        var description: String {
+            switch self {
+            case .refused(let why): return why
+            }
+        }
+    }
+
+    func run() async throws {
+        var provenance = Provenance(command: "contrib ack \(id)")
+        let store = SnapshotStore(directory: stateDir.map { URL(fileURLWithPath: $0) })
+        guard var snapshot = try store.load(repository: repository) else {
+            throw SnapshotError.unknownItem(id)
+        }
+        guard let entry = snapshot.entries[id] else {
+            throw SnapshotError.unknownItem(id)
+        }
+        if let refusal = AcknowledgementEligibility.refusal(for: entry, id: id) {
+            throw AckError.refused(refusal)
+        }
+
+        let workingCopy = URL(fileURLWithPath: repo).standardizedFileURL
+        let runner = CountingCommandRunner(SystemCommandRunner())
+        // **Only what I wrote.** `snapshot.entries` holds the reviewers' comments — the
+        // asks themselves — so including them let an ask verify its own
+        // acknowledgement. Authored ids are the replies a `comment:` pointer means.
+        let parser = AcknowledgementParser(
+            knownCommentIDs: snapshot.authored,
+            resolveCommit: { sha in
+                let out = try? await runner.run(
+                    ["git", "cat-file", "-e", "\(sha)^{commit}"], cwd: workingCopy)
+                return out?.status == 0
+            })
+
+        var acknowledgement = try await parser.parse(with, bodySha256: entry.bodySha256)
+        // The target repository's rules, not the one this shell happens to sit in.
+        let configuration = try Configuration.load(directory: workingCopy)
+        if let refusal = AcknowledgementEligibility.refusal(
+            forKind: acknowledgement.kind,
+            allowed: configuration.inbound.acknowledgementKinds, id: id)
+        {
+            throw AckError.refused(refusal)
+        }
+        if entry.kind == .inlineThread {
+            // A responsiveness check judges one reply. Remember which, so a later reply
+            // lists the thread again instead of inheriting a check it never had.
+            acknowledgement.replyIDAtAck = entry.myReplyID
+        }
+        // Same transaction rule as `contrib in`: re-read under the lock and apply only
+        // this one entry, so an audit running alongside is not overwritten.
+        //
+        // Eligibility is checked AGAIN here, against the state actually being written.
+        // The check above ran before the lock, so an audit landing in between could have
+        // moved the item — the asker confirming it, or an edit arriving — and the
+        // acknowledgement would be recorded against state that no longer permits it.
+        try store.withLock(repository: repository) {
+            var current = try store.load(repository: repository) ?? snapshot
+            guard let fresh = current.entries[id] else {
+                throw SnapshotError.unknownItem(id)
+            }
+            if let refusal = AcknowledgementEligibility.refusal(for: fresh, id: id) {
+                throw AckError.refused(refusal)
+            }
+            if fresh.bodySha256 != entry.bodySha256 {
+                throw AckError.refused(
+                    """
+                    \(id) changed while this acknowledgement was being prepared. \
+                    Re-read it and run the command again.
+                    """)
+            }
+            acknowledgement.bodySha256AtAck = fresh.bodySha256
+            if fresh.kind == .inlineThread { acknowledgement.replyIDAtAck = fresh.myReplyID }
+            current.entries[id]?.acknowledged = acknowledgement
+            current.updatedAt = Date()
+            try store.save(current)
+        }
+
+        print("\(id) acknowledged with \(acknowledgement.rendered)")
+        print("  \(acknowledgement.verified ? "verified" : "UNVERIFIED"): \(acknowledgement.verificationNote)")
+        print("  it re-opens by itself if the body changes (sha256 \(entry.bodySha256.prefix(12)))")
+
+        provenance.subprocessCalls = runner.count
+        provenance.examined("items in snapshot", snapshot.entries.count)
+        provenance.examined("acknowledged now", 1)
+        if !acknowledgement.verified {
+            provenance.note("recorded unverified — \(acknowledgement.verificationNote)")
+        }
+        try Self.emit(provenance)
+    }
+}

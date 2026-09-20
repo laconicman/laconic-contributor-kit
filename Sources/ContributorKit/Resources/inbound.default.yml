@@ -1,0 +1,69 @@
+# ContributorKit — inbound (`contrib in`) defaults.
+#
+# A SEPARATE file from contributorkit.default.yml on purpose. That one is generated
+# from the fixtures and every figure in it was MEASURED over pjproject's 3,435 files.
+# Nothing here was measured. All of it is REASONED from one field report — two live
+# Devin review rounds on laconicman/telegram-kb#1, 2026-09-12 — and the Design article's rule is
+# that provenance is stated per claim. Keeping the two apart is how that stays visible.
+
+inbound:
+  # A review body whose prose is only badge markup is not an obligation; it is a
+  # no-op. Four of six bodies in the field report's round 2 were exactly this.
+  # Stripped before the emptiness test, in this order. The body is still COUNTED in
+  # the examined total (the Design article) — it is only excluded from the worklist.
+  boilerplateBlocks:
+    # PAIRED MARKERS FIRST. Stripping `<!--…-->` generically destroys the begin/end
+    # pairing that would remove a wrapped block whole, and leaves its contents behind —
+    # for Devin's badge that means a bare `<a href=…>` / `</a>` trailing every excerpt.
+    # Measured 2026-09-13 on laconicman/YandexDeliveryExpress#3.
+    - "<!-- devin-review-badge-begin -->...<!-- devin-review-badge-end -->"
+    - "<!--...-->"        # HTML comments
+    - "<picture>...</picture>"
+    - "<details>...</details>"
+  boilerplatePatterns:    # whole lines matching these are dropped
+    - "^\\s*!\\[[^]]*\\]\\([^)]*\\)\\s*$"           # a lone markdown image
+    - "^\\s*\\[!\\[[^]]*\\]\\([^)]*\\)\\]\\([^)]*\\)\\s*$"  # a lone linked badge
+    - "^\\s*<img[^>]*>\\s*$"
+    - "^\\s*<a[^>]*>\\s*</a>\\s*$"
+    - "^\\s*-{3,}\\s*$"
+
+  # A reviewer can RETRACT an obligation. Matched case-insensitively against the
+  # stripped prose; a match marks the item superseded, which is reported and counted
+  # but is not owed. Without this, the Design article's never-auto-cleared rule holds open an
+  # ask the asker has themselves withdrawn.
+  supersessionPhrases:
+    # Whole retraction sentences only, and matched against the opening lines of the
+    # stripped prose. A bare fragment like "superseded by" is not a retraction — it is
+    # ordinary prose ("this API was superseded by fetchV2; please update this caller"),
+    # and matching it anywhere in a body removed a live request from `owed`.
+    - "this report is out of date"
+    - "this review is obsolete"
+    - "please disregard this review"
+    - "this report has been superseded"
+
+  # Forms of acknowledgement `contrib ack --with` accepts. Shape is always checked;
+  # existence is checked only where it is free (see Acknowledgement.swift).
+  acknowledgementKinds: ["comment", "commit", "pr-body", "none"]
+
+  # A FIXED, UNAMBIGUOUS PHRASE ONLY. Matched against the raw body first, then the
+  # stripped prose. An item matching one is counted and never owed.
+  #
+  # WITHDRAWN 2026-09-14: this list also carried a pattern for Devin Review's declared
+  # `"kind": "analysis"` marker, on the premise that analysis means "a receipt, not an
+  # ask". **That premise is false and it cost two real asks.** Measured across
+  # laconicman/{YandexDeliveryExpress,telegram-kb} the 13 analysis comments were all
+  # 📝 Info verification receipts, which looked conclusive; on laconicman/YDelivery#28
+  # the analysis comments are 🔍 findings — "Redirect refusal loses its reason",
+  # "Dismissal leaves other work running" — both genuine and both fix-producing. They
+  # were hidden from `owed` across roughly ten runs and found by a human in the GitHub
+  # UI instead.
+  #
+  # Devin uses one kind for two purposes, so the marker cannot carry this decision. The
+  # lesson is narrower than "do not read metadata": read metadata the asker emits about
+  # its own INTENT, and verify the reading against more than one repository before
+  # trusting it to suppress anything.
+  #
+  # Nothing may be added here that could suppress a real ask. A fixed bot announcement
+  # qualifies; a category label does not.
+  informationalPatterns:
+    - '^Starting Devin Review\.$'

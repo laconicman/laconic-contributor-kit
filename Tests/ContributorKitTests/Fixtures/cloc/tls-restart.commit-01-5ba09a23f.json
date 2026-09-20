@@ -1,0 +1,66 @@
+{"header" : {
+  "cloc_url"           : "github.com/AlDanial/cloc",
+  "cloc_version"       : "2.06",
+  "elapsed_seconds"    : 0.341366052627563,
+  "n_files"            : 1,
+  "n_lines"            : 2033,
+  "files_per_second"   : 2.92940669496219,
+  "lines_per_second"   : 5955.48381085813},
+ "added" : {
+  "C" : {
+    "code" : 5,
+    "comment" : 6,
+    "nFiles" : 0,
+    "blank" : 0
+  }
+  },
+ "same" : {
+  "C" : {
+    "code" : 1637,
+    "comment" : 382,
+    "nFiles" : 0,
+    "blank" : 0
+  }
+  },
+ "modified" : {
+  "C" : {
+    "code" : 2,
+    "comment" : 1,
+    "nFiles" : 1,
+    "blank" : 0
+  }
+  },
+ "removed" : {
+  "C" : {
+    "code" : 0,
+    "comment" : 0,
+    "nFiles" : 0,
+    "blank" : 0
+  }
+  },
+  "SUM" : {
+  "added" : {
+    "blank" : 0,
+    "nFiles" : 0,
+    "code" : 5,
+    "comment" : 6
+},
+  "same" : {
+    "blank" : 0,
+    "nFiles" : 0,
+    "code" : 1637,
+    "comment" : 382
+},
+  "modified" : {
+    "blank" : 0,
+    "nFiles" : 1,
+    "code" : 2,
+    "comment" : 1
+},
+  "removed" : {
+    "blank" : 0,
+    "nFiles" : 0,
+    "code" : 0,
+    "comment" : 0
+}
+} }
