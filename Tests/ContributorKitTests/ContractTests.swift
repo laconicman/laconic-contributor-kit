@@ -539,6 +539,42 @@ struct SecondRoundTests {
         #expect(FileManager.default.fileExists(atPath: store.legacyURL(for: "a/b__c").path))
     }
 
+    /// **A legacy file that is ours and unreadable must not be silently dropped.** The
+    /// previous fix used `try?`, which swallowed malformed JSON, I/O failures and schema
+    /// mismatches alike — so an audit would re-baseline over stored history without a
+    /// word. Only an established *repository mismatch* is safe to ignore.
+    @Test("an unreadable legacy snapshot is an error, not an empty history")
+    func unreadableLegacyIsNotSilent() throws {
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appending(path: "ck-legacy-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = SnapshotStore(directory: directory)
+
+        // Ours, but written by a future schema. There is no current-path file.
+        var future = Snapshot(repository: "o/r")
+        future.schemaVersion = Snapshot.currentSchemaVersion + 1
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        try encoder.encode(future).write(to: store.legacyURL(for: "o/r"))
+
+        #expect(throws: SnapshotError.self) {
+            _ = try store.load(repository: "o/r")
+        }
+
+        // Malformed JSON is likewise not an empty history.
+        try Data("{ not json".utf8).write(to: store.legacyURL(for: "o/r"))
+        #expect(throws: (any Error).self) {
+            _ = try store.load(repository: "o/r")
+        }
+
+        // A file naming a *different* repository stays ignorable — that is the aliasing
+        // the new layout exists to retire.
+        try encoder.encode(Snapshot(repository: "someone/else"))
+            .write(to: store.legacyURL(for: "o/r"))
+        #expect(try store.load(repository: "o/r") == nil)
+    }
+
     /// A commit subject is arbitrary text and `|` ends a Markdown cell.
     @Test("a pipe in a commit subject does not break the table")
     func markdownCellsAreEscaped() {

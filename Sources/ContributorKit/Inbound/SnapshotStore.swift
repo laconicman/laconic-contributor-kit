@@ -60,11 +60,17 @@ public struct SnapshotStore: Sendable {
     /// report rather than silently treat as "nothing changed".
     public func load(repository: String) throws -> Snapshot? {
         let current = try decode(url(for: repository), expecting: repository)
-        // A legacy file is best-effort: the old layout was not injective, so the path
-        // this repository would have used may belong to a different one. That is the
-        // collision being migrated away from — it must not make a perfectly good current
-        // snapshot unreadable.
-        let legacy = (try? decode(legacyURL(for: repository), expecting: repository)) ?? nil
+        // A legacy file is ignored on **one** established ground: it names a different
+        // repository, which is the aliasing being migrated away from. Every other
+        // failure — malformed JSON, an unreadable file, an unsupported schema — is
+        // propagated, because a legacy file that is ours and unreadable holds history
+        // the next audit would otherwise re-baseline over without a word.
+        let legacy: Snapshot?
+        do {
+            legacy = try decode(legacyURL(for: repository), expecting: repository)
+        } catch SnapshotError.repositoryMismatch {
+            legacy = nil
+        }
 
         // **Merged, never preferred.** Both files can exist and hold *different*
         // subjects: a run on the new path after the collision fix leaves the old file

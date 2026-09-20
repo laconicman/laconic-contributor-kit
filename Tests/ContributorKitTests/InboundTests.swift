@@ -622,6 +622,17 @@ struct InboundTests {
             pullRequest(reviewBodies: [body]), against: first.updatedSnapshot)
         let changed2 = try #require(proseMoved.items.first?.changed)
         #expect(!changed2.contains("markup only"))
+
+        // The same annotation must reach the acknowledged branch: an acknowledged item
+        // re-opened by a re-appended badge is the commonest case of all.
+        var acknowledged = first.updatedSnapshot
+        acknowledged.entries["pullrequestreview-1"]?.acknowledged = Acknowledgement(
+            kind: .none, pointer: "absorbed", bodySha256AtAck: SHA256.hex(of: ask),
+            verified: true, verificationNote: "test")
+        body.body = ask + badge
+        let reopened = try Fixtures.audit().run(
+            pullRequest(reviewBodies: [body]), against: acknowledged)
+        #expect(reopened.items.first?.changed?.contains("markup only") == true)
     }
 
     /// **The baseline run lists what is actionable, not everything it has ever seen.**
