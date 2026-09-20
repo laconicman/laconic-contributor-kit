@@ -93,6 +93,8 @@ public struct Snapshot: Codable, Sendable {
 public enum SnapshotError: Error, CustomStringConvertible {
     case schemaMismatch(found: Int, expected: Int)
     case unknownItem(String)
+    case repositoryMismatch(found: String, expected: String, path: String)
+    case lockFailed(path: String, errno: Int32)
 
     public var description: String {
         switch self {
@@ -100,6 +102,10 @@ public enum SnapshotError: Error, CustomStringConvertible {
             return "snapshot schema v\(found) cannot be read by this build (expects v\(expected)) — delete it to start a fresh baseline"
         case .unknownItem(let id):
             return "no item `\(id)` in the snapshot — run `contrib in` for this PR first"
+        case .repositoryMismatch(let found, let expected, let path):
+            return "\(path) holds a snapshot for `\(found)`, not `\(expected)` — refusing to read another repository's history as this one's"
+        case .lockFailed(let path, let code):
+            return "could not lock \(path): \(String(cString: strerror(code)))"
         }
     }
 }

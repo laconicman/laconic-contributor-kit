@@ -64,7 +64,7 @@ struct AckCommand: AsyncParsableCommand {
             throw AckError.refused(refusal)
         }
 
-        let repository = URL(fileURLWithPath: repo).standardizedFileURL
+        let workingCopy = URL(fileURLWithPath: repo).standardizedFileURL
         let runner = CountingCommandRunner(SystemCommandRunner())
         // Both what others wrote and what I wrote: a `comment:` pointer almost always
         // names one of my own replies, which are authored rather than items.
@@ -72,13 +72,13 @@ struct AckCommand: AsyncParsableCommand {
             knownCommentIDs: Set(snapshot.entries.keys).union(snapshot.authored),
             resolveCommit: { sha in
                 let out = try? await runner.run(
-                    ["git", "cat-file", "-e", "\(sha)^{commit}"], cwd: repository)
+                    ["git", "cat-file", "-e", "\(sha)^{commit}"], cwd: workingCopy)
                 return out?.status == 0
             })
 
         var acknowledgement = try await parser.parse(with, bodySha256: entry.bodySha256)
-        let configuration = try Configuration.load(
-            directory: URL(fileURLWithPath: FileManager.default.currentDirectoryPath))
+        // The target repository's rules, not the one this shell happens to sit in.
+        let configuration = try Configuration.load(directory: workingCopy)
         if let refusal = AcknowledgementEligibility.refusal(
             forKind: acknowledgement.kind,
             allowed: configuration.inbound.acknowledgementKinds, id: id)
@@ -90,8 +90,14 @@ struct AckCommand: AsyncParsableCommand {
             // lists the thread again instead of inheriting a check it never had.
             acknowledgement.replyIDAtAck = entry.myReplyID
         }
-        snapshot.entries[id]?.acknowledged = acknowledgement
-        try store.save(snapshot)
+        // Same transaction rule as `contrib in`: re-read under the lock and apply only
+        // this one entry, so an audit running alongside is not overwritten.
+        try store.withLock(repository: repository) {
+            var current = try store.load(repository: repository) ?? snapshot
+            current.entries[id]?.acknowledged = acknowledgement
+            current.updatedAt = Date()
+            try store.save(current)
+        }
 
         print("\(id) acknowledged with \(acknowledgement.rendered)")
         print("  \(acknowledgement.verified ? "verified" : "UNVERIFIED"): \(acknowledgement.verificationNote)")

@@ -156,6 +156,15 @@ public enum InboundReporting {
             provenance.note(
                 "\(unverified) acknowledgement(s) on this item recorded but unverified")
         }
+        let subject = "\(pr.repository)#\(pr.number)"
+        let knownHere = (previous?.entries.values ?? [:].values)
+            .filter { $0.subject == subject }.count
+        if knownHere == 0 {
+            // Said per subject, not per repository: sweeping five issues in one repo,
+            // only the first announced a baseline while each of the others was also its
+            // own first run.
+            provenance.note("no prior items for \(subject) — this run is its baseline")
+        }
         if let previous {
             let newHere = result.items.filter(\.isNewToSnapshot).count
             provenance.note(

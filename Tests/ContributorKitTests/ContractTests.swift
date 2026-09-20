@@ -229,8 +229,26 @@ struct ContractTests {
         let reloaded = try #require(try store.load(repository: "pjsip/pjproject"))
         #expect(reloaded.entries.count == result.updatedSnapshot.entries.count)
 
-        // The path is derived from the repository, so two repos never collide.
-        #expect(store.url(for: "a/b").lastPathComponent == "a__b.json")
+        // **A path component per name, because `__` was not injective**: `a/b__c` and
+        // `a__b/c` are both valid GitHub names and both mapped to `a__b__c.json`, so
+        // auditing one could load and then overwrite the other's history.
+        #expect(store.url(for: "a/b").pathComponents.suffix(2) == ["a", "b.json"])
+        #expect(store.url(for: "a/b__c") != store.url(for: "a__b/c"))
+
+        // And a file naming a different repository is an aliasing bug, not prior state.
+        var alias = result.updatedSnapshot
+        alias.repository = "someone/else"
+        let aliasStore = SnapshotStore(directory: directory)
+        try FileManager.default.createDirectory(
+            at: aliasStore.url(for: "pjsip/pjproject").deletingLastPathComponent(),
+            withIntermediateDirectories: true)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        try encoder.encode(alias).write(to: aliasStore.url(for: "pjsip/pjproject"))
+        #expect(throws: SnapshotError.self) {
+            _ = try aliasStore.load(repository: "pjsip/pjproject")
+        }
+        try store.save(result.updatedSnapshot)
 
         var future = result.updatedSnapshot
         future.schemaVersion = Snapshot.currentSchemaVersion + 1
@@ -368,5 +386,129 @@ struct SnapshotCompatibilityTests {
         let item = try #require(result.items.first)
         #expect(item.isNewToSnapshot == false)
         #expect(item.previousState == .answeredClaimed)
+    }
+}
+
+/// Round 2 of this repository's own review. Each test fails against the old behaviour.
+@Suite("second review round")
+struct SecondRoundTests {
+
+    /// **A retraction leads a body; a mention of one can appear anywhere.** Matching
+    /// `superseded by` as a substring meant ordinary prose retracted itself and a live
+    /// request left `owed`.
+    @Test("prose mentioning a supersession is not a retraction")
+    func retractionMustLeadTheBody() throws {
+        let detector = SupersessionDetector(
+            phrases: try Configuration.builtInDefaults().inbound.supersessionPhrases)
+
+        let realRetraction = """
+            > [!NOTE]
+            > **This report is out of date.** Scroll down for the latest report.
+
+            **Devin Review** found 7 potential issues.
+            """
+        #expect(detector.supersedes(realRetraction) != nil)
+
+        let liveRequest =
+            "This API was superseded by `fetchV2`; please update this caller before merging."
+        #expect(detector.supersedes(liveRequest) == nil, "that request is still owed")
+
+        // A retraction phrase buried far down a long body is not a retraction either.
+        let buried = "Please add a regression test.\n\n" + String(repeating: "detail\n", count: 20)
+            + "\nThis report is out of date."
+        #expect(detector.supersedes(buried) == nil)
+    }
+
+    /// `a/b__c` and `a__b/c` are both valid GitHub names, and both used to address
+    /// `a__b__c.json` — so auditing one could load and overwrite the other's history.
+    @Test("snapshot paths cannot alias one another")
+    func snapshotPathsAreInjective() {
+        let store = SnapshotStore(directory: URL(fileURLWithPath: "/tmp/ck"))
+        #expect(store.url(for: "a/b__c") != store.url(for: "a__b/c"))
+        #expect(store.url(for: "o/r").pathComponents.suffix(2) == ["o", "r.json"])
+    }
+
+    /// Two audits of different pull requests in one repository must not lose each
+    /// other's entries: the snapshot is a read-modify-write over the whole file.
+    @Test("a locked merge keeps another subject's entries")
+    func lockedMergeKeepsOtherSubjects() throws {
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appending(path: "ck-lock-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = SnapshotStore(directory: directory)
+
+        func entry(_ subject: String) -> Snapshot.Entry {
+            Snapshot.Entry(
+                kind: .inlineThread, url: "u", author: "reviewer", createdAt: Date(),
+                updatedAt: nil, lastEditedAt: nil, bodySha256: "h", subject: subject,
+                prose: nil, state: .openAsk, firstSeen: Date(),
+                myReplyID: nil, myReplyAt: nil, acknowledged: nil)
+        }
+
+        // Audit of #1 lands.
+        var first = Snapshot(repository: "o/r")
+        first.entries["discussion_r1"] = entry("o/r#1")
+        try store.withLock(repository: "o/r") { try store.save(first) }
+
+        // Audit of #2 merges rather than replacing.
+        try store.withLock(repository: "o/r") {
+            var merged = try store.load(repository: "o/r") ?? Snapshot(repository: "o/r")
+            merged.entries["discussion_r2"] = entry("o/r#2")
+            try store.save(merged)
+        }
+
+        let final = try #require(try store.load(repository: "o/r"))
+        #expect(final.entries.keys.sorted() == ["discussion_r1", "discussion_r2"])
+    }
+
+    /// A subprocess that never launched is the most complete failure there is; counting
+    /// only non-zero exits left it out of the tally.
+    @Test("a launch failure counts as a failure")
+    func launchFailuresAreCounted() async throws {
+        let counting = CountingCommandRunner(RecordedCommandRunner([]))
+        await #expect(throws: CommandError.self) {
+            try await counting.run(["nothing-recorded"], cwd: nil)
+        }
+        #expect(counting.count == 1)
+        #expect(counting.failures == 1, "a throw is a failure, not an absence")
+    }
+
+    /// An anomalous run must not become the next run's baseline: a truncated fetch that
+    /// saved its partial pages would have the retry treat them as established history.
+    @Test("an anomalous run is recognisable before the snapshot is written")
+    func anomalyIsKnownBeforeSaving() throws {
+        let pr = PullRequestThreads(
+            repository: "o/r", number: 1, title: "", url: "", state: "OPEN", isMerged: false,
+            threads: [], reviewBodies: [], issueComments: [], pagesFetched: 50,
+            truncatedConnections: ["reviews"])
+        let result = try Fixtures.audit().run(pr, against: nil)
+
+        var provenance = Provenance(command: "contrib in")
+        InboundReporting.record(result, pr, previous: nil, into: &provenance)
+        provenance.finish()
+        #expect(provenance.hasAnomaly, "and the command skips the save on exactly this")
+
+        // finish() is idempotent, because the command finishes early to make that
+        // decision and the emitter finishes again on the way out.
+        let anomalies = provenance.anomalies.count
+        provenance.finish()
+        #expect(provenance.anomalies.count == anomalies)
+    }
+
+    /// The baseline is a property of the subject, not the repository: sweeping five
+    /// issues in one repo, only the first used to announce a baseline.
+    @Test("a first run on a new PR in a known repository says it is a baseline")
+    func baselineIsPerSubject() throws {
+        let one = PullRequestThreads(
+            repository: "o/r", number: 1, title: "", url: "", state: "OPEN", isMerged: false,
+            threads: [], reviewBodies: [], issueComments: [], pagesFetched: 1)
+        var two = one
+        two.number = 2
+
+        let first = try Fixtures.audit().run(one, against: nil)
+        var provenance = Provenance(command: "contrib in")
+        let second = try Fixtures.audit().run(two, against: first.updatedSnapshot)
+        InboundReporting.record(second, two, previous: first.updatedSnapshot, into: &provenance)
+        #expect(provenance.notes.contains { $0.contains("o/r#2") && $0.contains("baseline") })
     }
 }

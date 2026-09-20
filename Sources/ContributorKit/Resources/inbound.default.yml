@@ -32,10 +32,14 @@ inbound:
   # but is not owed. Without this, the Design article's never-auto-cleared rule holds open an
   # ask the asker has themselves withdrawn.
   supersessionPhrases:
+    # Whole retraction sentences only, and matched against the opening lines of the
+    # stripped prose. A bare fragment like "superseded by" is not a retraction — it is
+    # ordinary prose ("this API was superseded by fetchV2; please update this caller"),
+    # and matching it anywhere in a body removed a live request from `owed`.
     - "this report is out of date"
-    - "superseded by"
     - "this review is obsolete"
     - "please disregard this review"
+    - "this report has been superseded"
 
   # Forms of acknowledgement `contrib ack --with` accepts. Shape is always checked;
   # existence is checked only where it is free (see Acknowledgement.swift).
