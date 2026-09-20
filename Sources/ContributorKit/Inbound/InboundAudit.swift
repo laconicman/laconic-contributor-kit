@@ -250,7 +250,13 @@ public struct InboundAudit: Sendable {
         } else if previous.acknowledged != nil,
             previous.acknowledged?.bodySha256AtAck != comment.bodySHA256
         {
-            parts.append("edited after it was acknowledged")
+            // Same annotation as the branch above: a reviewer that re-appends its badge
+            // re-opens an acknowledged item for no semantic reason, and the contributor
+            // should be told which kind of edit it was before re-reading.
+            let proseMoved = stripper.prose(of: comment.body) != previousProse
+            parts.append(
+                "edited after it was acknowledged"
+                    + (proseMoved ? "" : " — markup only, prose unchanged"))
         }
         return parts.isEmpty ? nil : parts.joined(separator: "; ")
     }

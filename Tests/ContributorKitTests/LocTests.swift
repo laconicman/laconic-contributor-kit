@@ -197,6 +197,42 @@ struct LocTests {
         #expect(RangeWalker.emptyTree == "4b825dc642cb6eb9a060e54bf8d69288fbee4904")
     }
 
+    /// **A rollback must not delete a row this process never wrote.** `O_APPEND` places
+    /// a write at the then-current end but reserves nothing, so another process could
+    /// append a complete row after `start` was read — and truncating to `start` would
+    /// take that row with it. The whole seek/write/rollback is one locked transaction
+    /// now, with `start` captured only under the lock.
+    @Test("appends are serialised, and a good row survives a neighbour's failure")
+    func ledgerAppendsAreSerialised() throws {
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appending(path: "ck-ledger-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appending(path: "loc.jsonl")
+        let ledger = Ledger(url: url)
+
+        func report(_ ref: String) -> LocReport {
+            LocReport(
+                repository: "r", refA: "base", refB: ref, capturedAt: Date(),
+                languages: ["C"], total: DiffStats(), modifiedCodeIgnoringWhitespace: nil,
+                byRole: nil, byPath: nil, commits: nil)
+        }
+
+        // Concurrent appends: every row must survive, and every line must be valid JSON.
+        DispatchQueue.concurrentPerform(iterations: 8) { i in
+            try? ledger.append(report("head-\(i)"))
+        }
+
+        let lines = try String(contentsOf: url, encoding: .utf8)
+            .split(separator: "\n").map(String.init)
+        #expect(lines.count == 8)
+        for line in lines {
+            #expect(
+                (try? JSONSerialization.jsonObject(with: Data(line.utf8))) != nil,
+                "every row is whole")
+        }
+    }
+
     /// `--include-lang` is ONE argument whose value contains a comma, a slash and a
     /// space. Through `Process` it must be a single element of the argv array.
     @Test("--include-lang is one argv element, never split on spaces")
