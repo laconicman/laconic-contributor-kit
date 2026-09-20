@@ -461,6 +461,50 @@ struct SecondRoundTests {
         #expect(final.entries.keys.sorted() == ["discussion_r1", "discussion_r2"])
     }
 
+    /// **Changing the snapshot path must not abandon existing history.** The collision
+    /// fix moved snapshots from `<dir>/<owner>__<repo>.json` to a path component per
+    /// name, which silently turned every existing state directory into a fresh baseline
+    /// — the same class as the upgrade crash the first round found, one layer up.
+    @Test("a snapshot written at the legacy path is read and then migrated")
+    func legacySnapshotPathMigrates() throws {
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appending(path: "ck-migrate-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = SnapshotStore(directory: directory)
+
+        var old = Snapshot(repository: "o/r")
+        old.entries["discussion_r1"] = Snapshot.Entry(
+            kind: .inlineThread, url: "u", author: "reviewer", createdAt: Date(),
+            updatedAt: nil, lastEditedAt: nil, bodySha256: "h", subject: "o/r#1",
+            prose: nil, state: .openAsk, firstSeen: Date(), myReplyID: nil,
+            myReplyAt: nil, acknowledged: nil)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        try encoder.encode(old).write(to: store.legacyURL(for: "o/r"))
+
+        // Read from the legacy path rather than reported as a first run.
+        let loaded = try #require(try store.load(repository: "o/r"))
+        #expect(loaded.entries.keys.contains("discussion_r1"))
+
+        // When BOTH files exist they are merged, never chosen between: they can hold
+        // different subjects, and preferring one would make the other's pull requests
+        // invisible and delete them on the next save.
+        var newer = Snapshot(repository: "o/r")
+        newer.entries["discussion_r2"] = old.entries["discussion_r1"]
+        try FileManager.default.createDirectory(
+            at: store.url(for: "o/r").deletingLastPathComponent(),
+            withIntermediateDirectories: true)
+        try encoder.encode(newer).write(to: store.url(for: "o/r"))
+        let both = try #require(try store.load(repository: "o/r"))
+        #expect(both.entries.keys.sorted() == ["discussion_r1", "discussion_r2"])
+
+        // And migrated on the next save, without leaving the old file behind.
+        try store.save(both)
+        #expect(FileManager.default.fileExists(atPath: store.url(for: "o/r").path))
+        #expect(!FileManager.default.fileExists(atPath: store.legacyURL(for: "o/r").path))
+    }
+
     /// A subprocess that never launched is the most complete failure there is; counting
     /// only non-zero exits left it out of the tally.
     @Test("a launch failure counts as a failure")
