@@ -79,13 +79,6 @@ struct InCommand: AsyncParsableCommand {
 
         provenance.subprocessCalls = runner.count
         InboundReporting.record(result, threads, previous: previous, into: &provenance)
-        if let previous, result.updatedSnapshot.entries.count < previous.entries.count {
-            provenance.anomaly(
-                "itemsVanished",
-                "\(previous.entries.count - result.updatedSnapshot.entries.count) item(s) "
-                    + "in the snapshot were not in this fetch")
-        }
-
         let options = InboundReporting.Options(all: all)
         if json {
             var forJSON = provenance

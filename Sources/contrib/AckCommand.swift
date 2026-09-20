@@ -77,6 +77,14 @@ struct AckCommand: AsyncParsableCommand {
             })
 
         var acknowledgement = try await parser.parse(with, bodySha256: entry.bodySha256)
+        let configuration = try Configuration.load(
+            directory: URL(fileURLWithPath: FileManager.default.currentDirectoryPath))
+        if let refusal = AcknowledgementEligibility.refusal(
+            forKind: acknowledgement.kind,
+            allowed: configuration.inbound.acknowledgementKinds, id: id)
+        {
+            throw AckError.refused(refusal)
+        }
         if entry.kind == .inlineThread {
             // A responsiveness check judges one reply. Remember which, so a later reply
             // lists the thread again instead of inheriting a check it never had.

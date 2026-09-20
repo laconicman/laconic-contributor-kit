@@ -263,7 +263,7 @@ report and says so. Provenance is stated per claim, not per project.
 swift test
 ```
 
-68 tests, entirely offline. They assert against captured `cloc` documents and real
+Entirely offline. The tests assert against captured `cloc` documents and real
 captured GitHub threads rather than against numbers retyped into Swift — if a figure
 drifts it shows up as a comparison against a measured document.
 

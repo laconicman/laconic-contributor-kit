@@ -31,6 +31,13 @@ public struct Snapshot: Codable, Sendable {
         public var updatedAt: Date?
         public var lastEditedAt: Date?
         public var bodySha256: String
+        /// `owner/repo#number` this item was fetched from.
+        ///
+        /// The snapshot is per repository and a run is per pull request, so without this
+        /// there is no way to ask "which items did this subject have last time?" —
+        /// which is what makes a disappearance detectable. Optional: snapshots written
+        /// before it existed decode without it, and simply record it on the next run.
+        public var subject: String?
         /// The body with boilerplate stripped, as of the last run.
         ///
         /// Kept so a re-opened item can say whether the *prose* moved or only the
