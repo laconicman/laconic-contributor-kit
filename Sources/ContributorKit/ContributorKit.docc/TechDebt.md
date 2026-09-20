@@ -119,6 +119,27 @@ directory's location exists to make impossible.
 **Discharge.** Refuse to write a snapshot inside a git work tree unless the path was named
 explicitly.
 
+### TD-11 — `ack` refuses against stale state with an unhelpful error · open
+
+`contrib ack` reads the snapshot, so a reply posted on GitHub since the last `contrib in`
+leaves the item in its old state and the acknowledgement is refused.
+
+**Cost.** Hit eight times in one round. The refusal is correct — the eligibility rule is
+about the state being written — but the message explains the state rather than the
+staleness, so the fix ("`contrib in` first") has to be inferred.
+
+**Discharge.** Name the remedy in the refusal when the entry's state would permit the
+acknowledgement after a refresh.
+
+### TD-12 — no reply shape in the skill · open
+
+<doc:Roadmap> records the reply discipline three rounds converged on; `SKILL.md` carries
+the decision table for *states*, not for *answering*.
+
+**Cost.** Every round re-derives the shape of a good reply.
+
+**Discharge.** A second decision table in the skill, mirroring the review skill's rubric.
+
 ## See Also
 
 - <doc:Design>
