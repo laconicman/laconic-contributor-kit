@@ -53,14 +53,11 @@ struct InCommand: AsyncParsableCommand {
         var provenance = Provenance(command: "contrib in \(repository) --pr \(pr)")
         let configuration = try Configuration.load(
             directory: URL(fileURLWithPath: FileManager.default.currentDirectoryPath))
-
-        let store = SnapshotStore(directory: stateDir.map { URL(fileURLWithPath: $0) })
-        let previous = try store.load(repository: repository)
         if let horizon = configuration.inbound.horizon {
             provenance.note("review horizon \(horizon) — earlier items counted, not listed")
         }
 
-
+        let store = SnapshotStore(directory: stateDir.map { URL(fileURLWithPath: $0) })
         let runner = CountingCommandRunner(SystemCommandRunner())
         let client = GHCommandClient(
             runner: runner, queryPath: try GHCommandClient.bundledQueryPath())
@@ -73,50 +70,55 @@ struct InCommand: AsyncParsableCommand {
             informational: try InformationalDetector(
                 patterns: configuration.inbound.informationalPatterns),
             horizon: try configuration.inbound.horizonDate())
-        let result = audit.run(threads, against: previous)
 
-        provenance.subprocessCalls = runner.count
-        InboundReporting.record(result, threads, previous: previous, into: &provenance)
-        let options = InboundReporting.Options(all: all)
-        if json {
-            var forJSON = provenance
-            forJSON.finish()
-            print(
-                String(
-                    decoding: try InboundReporting.json(
-                        result, provenance: forJSON, options: options), as: UTF8.self))
-        } else {
-            print(InboundReporting.terminal(threads, result, options: options))
-        }
+        // Load, audit and save all happen under the repository lock, and the audit is
+        // RE-RUN against the snapshot loaded inside it.
+        //
+        // Merging a result computed from a pre-fetch snapshot was not enough: a
+        // concurrent audit of the same subject could record an acknowledgement in that
+        // window, and applying our stale entries on top would erase it. The audit is
+        // pure given (threads, previous), so re-running it costs microseconds and makes
+        // what is saved a function of the state actually on disk. The network fetch
+        // stays outside the lock.
+        let subject = "\(repository)#\(pr)"
+        var locked = provenance
+        let result = try store.withLock(repository: repository) { () -> InboundAudit.Result in
+            let previous = try store.load(repository: repository)
+            let result = audit.run(threads, against: previous)
 
-        // An anomalous run must not become the next run's baseline. A truncated fetch
-        // that saved its partial pages would have the retry treat them as established
-        // history, and the items it never saw would look like nothing had changed —
-        // the differ silently built on a fetch it had already declared untrustworthy.
-        provenance.finish()
-        if noSnapshot {
-            provenance.note("--no-snapshot: this run cannot inform the next one")
-        } else if provenance.hasAnomaly {
-            provenance.note("snapshot NOT written — this run is anomalous; fix and re-run")
-        } else {
-            // Locked read-modify-write, and only our own subject's entries are applied.
-            // The snapshot holds every PR and issue in the repository, so a plain save
-            // of `updatedSnapshot` would drop whatever another audit wrote between our
-            // load and our save. The lock is held for the file transaction only, never
-            // across the network fetch.
-            let subject = "\(repository)#\(pr)"
-            try store.withLock(repository: repository) {
-                var merged =
-                    try store.load(repository: repository)
-                    ?? Snapshot(repository: repository)
+            locked.subprocessCalls = runner.count
+            InboundReporting.record(result, threads, previous: previous, into: &locked)
+            locked.finish()
+
+            // An anomalous run must not become the next run's baseline: a truncated
+            // fetch that saved its partial pages would have the retry treat them as
+            // established history.
+            if noSnapshot {
+                locked.note("--no-snapshot: this run cannot inform the next one")
+            } else if locked.hasAnomaly {
+                locked.note("snapshot NOT written — this run is anomalous; fix and re-run")
+            } else {
+                var merged = previous ?? Snapshot(repository: repository)
                 for (id, entry) in result.updatedSnapshot.entries where entry.subject == subject {
                     merged.entries[id] = entry
                 }
                 merged.authored.formUnion(result.updatedSnapshot.authored)
                 merged.updatedAt = Date()
                 try store.save(merged)
+                locked.note("snapshot written to \(store.url(for: repository).path)")
             }
-            provenance.note("snapshot written to \(store.url(for: repository).path)")
+            return result
+        }
+        provenance = locked
+
+        let options = InboundReporting.Options(all: all)
+        if json {
+            print(
+                String(
+                    decoding: try InboundReporting.json(
+                        result, provenance: provenance, options: options), as: UTF8.self))
+        } else {
+            print(InboundReporting.terminal(threads, result, options: options))
         }
 
         try Self.emit(provenance)

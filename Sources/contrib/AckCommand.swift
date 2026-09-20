@@ -66,10 +66,11 @@ struct AckCommand: AsyncParsableCommand {
 
         let workingCopy = URL(fileURLWithPath: repo).standardizedFileURL
         let runner = CountingCommandRunner(SystemCommandRunner())
-        // Both what others wrote and what I wrote: a `comment:` pointer almost always
-        // names one of my own replies, which are authored rather than items.
+        // **Only what I wrote.** `snapshot.entries` holds the reviewers' comments — the
+        // asks themselves — so including them let an ask verify its own
+        // acknowledgement. Authored ids are the replies a `comment:` pointer means.
         let parser = AcknowledgementParser(
-            knownCommentIDs: Set(snapshot.entries.keys).union(snapshot.authored),
+            knownCommentIDs: snapshot.authored,
             resolveCommit: { sha in
                 let out = try? await runner.run(
                     ["git", "cat-file", "-e", "\(sha)^{commit}"], cwd: workingCopy)
