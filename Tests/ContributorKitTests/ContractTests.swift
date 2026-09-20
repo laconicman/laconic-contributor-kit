@@ -505,6 +505,48 @@ struct SecondRoundTests {
         #expect(!FileManager.default.fileExists(atPath: store.legacyURL(for: "o/r").path))
     }
 
+    /// The old layout could alias, so the legacy path this repository *would* have used
+    /// may belong to a different one. That must not make a perfectly good current
+    /// snapshot unreadable — the collision is the thing being migrated away from.
+    @Test("a legacy file owned by another repository does not block this one")
+    func legacyCollisionDoesNotBlockLoad() throws {
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appending(path: "ck-collide-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = SnapshotStore(directory: directory)
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+
+        // A legacy file at the path `a/b__c` would use, but owned by `a__b/c`.
+        try encoder.encode(Snapshot(repository: "a__b/c"))
+            .write(to: store.legacyURL(for: "a/b__c"))
+
+        // A perfectly good current snapshot for `a/b__c`.
+        var mine = Snapshot(repository: "a/b__c")
+        mine.authored = ["discussion_r1"]
+        try FileManager.default.createDirectory(
+            at: store.url(for: "a/b__c").deletingLastPathComponent(),
+            withIntermediateDirectories: true)
+        try encoder.encode(mine).write(to: store.url(for: "a/b__c"))
+
+        let loaded = try #require(try store.load(repository: "a/b__c"))
+        #expect(loaded.authored == ["discussion_r1"])
+
+        // And saving must not delete the other repository's file.
+        try store.save(loaded)
+        #expect(FileManager.default.fileExists(atPath: store.legacyURL(for: "a/b__c").path))
+    }
+
+    /// A commit subject is arbitrary text and `|` ends a Markdown cell.
+    @Test("a pipe in a commit subject does not break the table")
+    func markdownCellsAreEscaped() {
+        #expect(LocReporting.escapedCell("pjsip: fix a|b") == "pjsip: fix a\\|b")
+        #expect(LocReporting.escapedCell("no pipes here") == "no pipes here")
+        #expect(!LocReporting.escapedCell("multi\nline").contains("\n"))
+    }
+
     /// A subprocess that never launched is the most complete failure there is; counting
     /// only non-zero exits left it out of the tally.
     @Test("a launch failure counts as a failure")

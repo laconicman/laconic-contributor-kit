@@ -98,7 +98,8 @@ public enum LocReporting {
             for commit in commits {
                 lines.append(
                     "| `\(commit.sha.prefix(9))` | \(Self.signed(commit.stats.net.code)) "
-                        + "| \(Self.signed(commit.stats.net.comment)) | \(commit.subject) |")
+                        + "| \(Self.signed(commit.stats.net.comment)) "
+                        + "| \(Self.escapedCell(commit.subject)) |")
             }
         }
         lines.append("")
@@ -127,6 +128,14 @@ public enum LocReporting {
         func format(_ value: Int) -> String { isSigned ? Self.signed(value) : "\(value)" }
         return "| \(label) | \(format(counts.code)) | \(format(counts.comment)) "
             + "| \(format(counts.blank)) |"
+    }
+
+    /// A commit subject is arbitrary text, and `|` ends a Markdown cell. `pjsip: fix
+    /// a|b` would otherwise gain a column and shift every later cell.
+    static func escapedCell(_ text: String) -> String {
+        text.replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "|", with: "\\|")
+            .replacingOccurrences(of: "\n", with: " ")
     }
 
     private static func signed(_ value: Int) -> String {
