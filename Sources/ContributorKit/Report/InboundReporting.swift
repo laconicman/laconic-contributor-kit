@@ -162,6 +162,12 @@ public enum InboundReporting {
                 "snapshot: \(previous.entries.count) item(s) known for this repository, "
                     + "age \(Int(previous.age / 3600))h; \(newHere) new this run")
         }
+        if !result.vanished.isEmpty {
+            provenance.anomaly(
+                "itemsVanished",
+                "\(result.vanished.count) item(s) this subject carried last run were not in "
+                    + "this fetch: \(result.vanished.prefix(5).joined(separator: ", "))")
+        }
         for connection in pr.truncatedConnections {
             provenance.anomaly("truncatedFetch", "\(connection) still had a next page")
         }

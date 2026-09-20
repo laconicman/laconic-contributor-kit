@@ -149,6 +149,31 @@ struct LocTests {
         }
     }
 
+    /// A three-dot comparison measures from the two refs' **merge base**. Treating it
+    /// as two-dot reports everything the base branch gained since the divergence as
+    /// branch churn, in reverse.
+    @Test("a three-dot range resolves through git merge-base")
+    func threeDotRangeUsesMergeBase() async throws {
+        let two = try RangeWalker.parseRange("main..feature")
+        #expect(two.base == "main" && two.head == "feature")
+        #expect(!two.usesMergeBase)
+
+        let three = try RangeWalker.parseRange("main...feature")
+        #expect(three.usesMergeBase, "and it is resolved before any cloc call")
+
+        let runner = RecordedCommandRunner([
+            .init(match: ["merge-base", "main", "feature"], stdout: Data("abc1234\n".utf8))
+        ])
+        let walker = RangeWalker(
+            repository: URL(fileURLWithPath: "."), runner: runner,
+            cloc: Cloc(executable: "cloc", runner: runner))
+        let resolved = try await walker.resolved(three)
+        #expect(resolved.base == "abc1234")
+        #expect(resolved.head == "feature")
+        #expect(!resolved.usesMergeBase)
+        #expect(runner.unusedRecordings.isEmpty, "merge-base was actually consulted")
+    }
+
     /// `--include-lang` is ONE argument whose value contains a comma, a slash and a
     /// space. Through `Process` it must be a single element of the argv array.
     @Test("--include-lang is one argv element, never split on spaces")

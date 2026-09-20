@@ -662,6 +662,81 @@ struct InboundTests {
         #expect(first.count(of: .noProse, in: .reviewBody) == 2)
     }
 
+    // MARK: - From Devin's review of this kit
+
+    /// **An item that leaves the fetch must not leave silently.** The guard for this
+    /// compared snapshot entry counts — and the snapshot only ever grows, so it could
+    /// never fire. The comparison is now over ids actually fetched, scoped to this
+    /// subject because the snapshot is per repository and a run is per pull request.
+    @Test("an item this subject had last run and no longer has is an anomaly")
+    func vanishedItemsAreDetected() throws {
+        let a = comment("discussion_r1", "reviewer", at: 0)
+        let b = comment("discussion_r2", "reviewer", at: 10)
+        let both = pullRequest(
+            threads: [RemoteThread(comments: [a]), RemoteThread(comments: [b])])
+
+        let first = try Fixtures.audit().run(both, against: nil)
+        #expect(first.vanished.isEmpty)
+
+        // `b` disappears from the fetch.
+        let fewer = pullRequest(threads: [RemoteThread(comments: [a])])
+        let second = try Fixtures.audit().run(fewer, against: first.updatedSnapshot)
+        #expect(second.vanished == ["discussion_r2"])
+        // The snapshot still holds it, which is exactly why counting entries could not
+        // have noticed.
+        #expect(second.updatedSnapshot.entries.count == 2)
+
+        var provenance = Provenance(command: "test")
+        InboundReporting.record(second, fewer, previous: first.updatedSnapshot, into: &provenance)
+        #expect(provenance.anomalies.contains { $0.kind == "itemsVanished" })
+    }
+
+    /// Another subject's items are not this subject's business. The snapshot is shared
+    /// per repository, so an unscoped comparison would report every other PR's items as
+    /// vanished on every run.
+    @Test("items belonging to another pull request are never reported as vanished")
+    func vanishedIsScopedToTheSubject() throws {
+        let one = pullRequest(threads: [RemoteThread(comments: [comment("discussion_r1", "reviewer", at: 0)])])
+        var two = pullRequest(threads: [RemoteThread(comments: [comment("discussion_r9", "reviewer", at: 0)])])
+        two.number = 2
+
+        let first = try Fixtures.audit().run(one, against: nil)
+        let second = try Fixtures.audit().run(two, against: first.updatedSnapshot)
+        #expect(second.vanished.isEmpty, "PR #1's item is not missing from PR #2")
+    }
+
+    /// **A whole-body phrase must not match one line of a longer body.** Line anchoring
+    /// let a bot's announcement suppress an ask that shared the comment — the same
+    /// false-negative class that already cost this kit two real asks once.
+    @Test("an announcement line does not suppress an ask in the same body")
+    func announcementDoesNotSuppressAnAsk() throws {
+        let detector = try InformationalDetector(
+            patterns: try Configuration.builtInDefaults().inbound.informationalPatterns)
+
+        let announcementOnly = "Starting Devin Review."
+        #expect(detector.isInformational(raw: announcementOnly, prose: announcementOnly) != nil)
+
+        let announcementPlusAsk = "Starting Devin Review.\n\nPlease add a regression test."
+        #expect(
+            detector.isInformational(raw: announcementPlusAsk, prose: announcementPlusAsk) == nil,
+            "the regression-test request is still owed")
+    }
+
+    /// A configured value that changes nothing is worse than no setting: a repository
+    /// could disable a pointer form and still record one.
+    @Test("acknowledgementKinds actually restricts the pointer forms")
+    func acknowledgementKindsIsEnforced() {
+        let onlyNone = ["none"]
+        #expect(
+            AcknowledgementEligibility.refusal(forKind: .none, allowed: onlyNone, id: "x") == nil)
+        let refused = AcknowledgementEligibility.refusal(
+            forKind: .commit, allowed: onlyNone, id: "x")
+        #expect(refused?.contains("not an accepted acknowledgement") == true)
+        // An empty list means "unconfigured", not "forbid everything".
+        #expect(
+            AcknowledgementEligibility.refusal(forKind: .commit, allowed: [], id: "x") == nil)
+    }
+
     // MARK: - The review horizon
 
     /// A repository can declare an era out of audit. **Nothing is cleared** — the items

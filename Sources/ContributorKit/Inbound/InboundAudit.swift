@@ -43,6 +43,13 @@ public struct InboundAudit: Sendable {
         /// number is what makes the filter visible instead of assumed.
         public var ownAuthored: [Channel: Int]
         public var updatedSnapshot: Snapshot
+        /// Ids this subject carried last run and does not carry now.
+        ///
+        /// A disappearance is an anomaly, not a quiet omission: an item that leaves the
+        /// fetch leaves the worklist, and the one thing this kit must never do is drop
+        /// an ask silently. Counting snapshot entries could not detect this — the
+        /// snapshot only ever grows — so the comparison is over ids actually fetched.
+        public var vanished: [String]
 
         /// Owed **and** in scope. An item beyond the declared horizon is not owed
         /// until something about it moves; the provenance block reports how many were
@@ -76,6 +83,7 @@ public struct InboundAudit: Sendable {
 
     public func run(_ pr: PullRequestThreads, against previous: Snapshot?) -> Result {
         let closed = pr.isClosed
+        let subject = "\(pr.repository)#\(pr.number)"
         var items: [InboundItem] = []
         var examined: [Channel: Int] = [:]
         var ownAuthored: [Channel: Int] = [:]
@@ -130,7 +138,7 @@ public struct InboundAudit: Sendable {
             }
 
             let before = previous?.entries[root.id]?.state
-            upsert(&snapshot, comment: root, myReply: mine.last, state: state)
+            upsert(&snapshot, comment: root, myReply: mine.last, state: state, subject: subject)
             items.append(
                 InboundItem(
                     id: root.id, kind: .inlineThread, permalink: root.permalink,
@@ -179,7 +187,7 @@ public struct InboundAudit: Sendable {
                     state = .obligationOpen
                 }
                 let before = previous?.entries[comment.id]?.state
-                upsert(&snapshot, comment: comment, myReply: nil, state: state)
+                upsert(&snapshot, comment: comment, myReply: nil, state: state, subject: subject)
                 items.append(
                     InboundItem(
                         id: comment.id, kind: channel, permalink: comment.permalink,
@@ -197,9 +205,17 @@ public struct InboundAudit: Sendable {
             }
         }
 
+        // Ids this subject had last run, minus the ones it still has. Authored ids are
+        // excluded: our own comments are recorded as authored, never as items.
+        let seen = Set(items.map(\.id)).union(snapshot.authored)
+        let vanished =
+            (previous?.entries ?? [:])
+            .filter { $0.value.subject == subject && !seen.contains($0.key) }
+            .keys.sorted()
+
         return Result(
             items: items, examined: examined, ownAuthored: ownAuthored,
-            updatedSnapshot: snapshot)
+            updatedSnapshot: snapshot, vanished: vanished)
     }
 
     /// `nil` when the snapshot had it and nothing moved — the majority of items on any
@@ -241,7 +257,7 @@ public struct InboundAudit: Sendable {
 
     private func upsert(
         _ snapshot: inout Snapshot, comment: RemoteComment, myReply: RemoteComment?,
-        state: ItemState
+        state: ItemState, subject: String
     ) {
         var entry =
             snapshot.entries[comment.id]
@@ -258,6 +274,7 @@ public struct InboundAudit: Sendable {
         entry.myReplyID = myReply?.id ?? entry.myReplyID
         entry.myReplyAt = myReply?.createdAt ?? entry.myReplyAt
         entry.state = state
+        entry.subject = subject
         snapshot.entries[comment.id] = entry
     }
 

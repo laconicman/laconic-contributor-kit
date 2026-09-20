@@ -70,7 +70,16 @@ query ThreadDetail(
             resolvedBy { login }
             comments(first: 100) {
               pageInfo { hasNextPage endCursor }
-              nodes { body url createdAt updatedAt lastEditedAt editor { login } viewerDidAuthor author { login } }
+              # `pullRequestReview.databaseId` is the round this comment was carried in,
+              # and is the same integer REST calls `pull_request_review_id` — verified
+              # against both APIs on a live PR. Without it the live path loses round
+              # grouping entirely while the REST-shaped fixtures keep it, so the tests
+              # pass and the tool collapses every finding into one unknown round.
+              nodes {
+                body url createdAt updatedAt lastEditedAt editor { login }
+                viewerDidAuthor author { login }
+                pullRequestReview { databaseId }
+              }
             }
           }
         }

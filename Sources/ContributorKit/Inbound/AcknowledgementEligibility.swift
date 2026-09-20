@@ -8,6 +8,21 @@ import Foundation
 /// has not confirmed. Anything else would write a record the audit never reads — a silent
 /// no-op that reports success, which this tool refuses everywhere.
 public enum AcknowledgementEligibility {
+    /// `nil` when `kind` is permitted by the repository's configuration.
+    ///
+    /// `acknowledgementKinds` used to be inert: it merged into the configuration and
+    /// nothing read it, so a repository could disable a pointer form and still record
+    /// one. A configured value that changes nothing is worse than no setting at all.
+    public static func refusal(
+        forKind kind: Acknowledgement.Kind, allowed: [String], id: String
+    ) -> String? {
+        guard !allowed.isEmpty, !allowed.contains(kind.rawValue) else { return nil }
+        return """
+            `\(kind.rawValue)` is not an accepted acknowledgement in this repository. \
+            `.contributorkit.yml` allows: \(allowed.joined(separator: ", ")).
+            """
+    }
+
     /// `nil` when `entry` may be acknowledged; otherwise the reason it may not.
     public static func refusal(for entry: Snapshot.Entry, id: String) -> String? {
         guard entry.kind == .inlineThread else { return nil }

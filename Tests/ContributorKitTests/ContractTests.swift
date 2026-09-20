@@ -181,6 +181,36 @@ struct ContractTests {
         }
     }
 
+    /// **The live decoder must carry the round.** It set `reviewID` to `nil` on every
+    /// inline comment while the REST-shaped fixtures populated it, so round grouping was
+    /// green in tests and collapsed into one unknown round against the real API.
+    ///
+    /// `pullRequestReview.databaseId` is the same integer REST calls
+    /// `pull_request_review_id` — verified against both APIs on a live pull request.
+    @Test("the GraphQL decoder carries the review that held each inline comment")
+    func liveDecoderKeepsTheRound() throws {
+        let payload = """
+            {"data":{"repository":{"issueOrPullRequest":{
+              "__typename":"PullRequest","number":1,"title":"t","url":"u",
+              "pullRequestState":"OPEN",
+              "reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[
+                {"isResolved":false,"isOutdated":false,"path":"a.swift",
+                 "comments":{"pageInfo":{"hasNextPage":false},"nodes":[
+                   {"body":"ask","url":"https://github.com/o/r/pull/1#discussion_r1",
+                    "createdAt":"2026-09-20T08:00:00Z","viewerDidAuthor":false,
+                    "author":{"login":"devin"},
+                    "pullRequestReview":{"databaseId":5260120440}}]}}]}}}}}
+            """
+        let response = try JSONDecoder().decode(
+            ThreadDetailResponse.self, from: Data(payload.utf8))
+        let node = try #require(
+            response.data?.repository?.issueOrPullRequest?.reviewThreads?.nodes?.first?
+                .comments?.nodes?.first)
+        let comment = try #require(node.remoteComment(channel: .inlineThread))
+        #expect(comment.reviewID == "5260120440")
+        #expect(comment.id == "discussion_r1")
+    }
+
     // MARK: - Snapshot
 
     @Test("a snapshot round-trips, and a future schema is refused rather than guessed at")

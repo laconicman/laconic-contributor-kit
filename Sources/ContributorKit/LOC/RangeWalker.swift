@@ -19,13 +19,17 @@ public struct RangeWalker: Sendable {
     public struct Range: Sendable {
         public var base: String
         public var head: String
+        /// `a...b` — `base` is the two refs' merge base, resolved before use.
+        public var usesMergeBase: Bool = false
     }
 
     public static func parseRange(_ text: String) throws -> Range {
         // `a...b` (merge base) and `a..b` mean different things to git; cloc is handed
         // two refs either way, so resolve the three-dot form to a merge base first.
         if let r = text.range(of: "...") {
-            return Range(base: String(text[..<r.lowerBound]), head: String(text[r.upperBound...]))
+            let base = String(text[..<r.lowerBound]), head = String(text[r.upperBound...])
+            guard !base.isEmpty, !head.isEmpty else { throw LocError.badRange(text) }
+            return Range(base: base, head: head, usesMergeBase: true)
         }
         guard let r = text.range(of: "..") else {
             throw LocError.badRange(text)
@@ -33,6 +37,21 @@ public struct RangeWalker: Sendable {
         let base = String(text[..<r.lowerBound]), head = String(text[r.upperBound...])
         guard !base.isEmpty, !head.isEmpty else { throw LocError.badRange(text) }
         return Range(base: base, head: head)
+    }
+
+    /// Turns `a...b` into the range git means by it.
+    ///
+    /// A three-dot comparison measures from the two refs' **merge base**, not from the
+    /// left ref. Treating it as two-dot reports every commit the base branch gained
+    /// since the divergence as branch churn, in reverse.
+    public func resolved(_ range: Range) async throws -> Range {
+        guard range.usesMergeBase else { return range }
+        let out = try await runner.runExpectingOutput(
+            ["git", "merge-base", range.base, range.head], cwd: repository)
+        var resolved = range
+        resolved.base = out.stdoutText.trimmingCharacters(in: .whitespacesAndNewlines)
+        resolved.usesMergeBase = false
+        return resolved
     }
 
     public func resolve(_ ref: String) async throws -> String {
@@ -60,10 +79,11 @@ public struct RangeWalker: Sendable {
     /// The whole report for a range. `perCommit` and `byRole` are opt-in because each
     /// costs a `cloc` run per commit and a second run of the range respectively.
     public func report(
-        range: Range, languages: [String], forceLang: [String: String],
+        range unresolved: Range, languages: [String], forceLang: [String: String],
         perCommit: Bool, byRole: Bool, ignoreWhitespace: Bool,
         classifier: FileRoleClassifier
     ) async throws -> LocReport {
+        let range = try await resolved(unresolved)
         let plain = Cloc.Options(languages: languages, forceLang: forceLang)
         let total = try await cloc.diff(
             refA: range.base, refB: range.head, options: plain, cwd: repository)

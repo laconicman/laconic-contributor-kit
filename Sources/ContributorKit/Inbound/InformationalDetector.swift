@@ -12,9 +12,11 @@ public struct InformationalDetector: Sendable {
 
     public init(patterns: [String]) throws {
         self.sources = patterns
-        self.patterns = try patterns.map {
-            try NSRegularExpression(pattern: $0, options: [.anchorsMatchLines])
-        }
+        // NOT `.anchorsMatchLines`. These patterns are whole-body phrases, and line
+        // anchoring let `^Starting Devin Review\.$` match one line of a longer body —
+        // suppressing every ask that shared the comment. That is the false negative this
+        // detector has already produced once, in a different form.
+        self.patterns = try patterns.map { try NSRegularExpression(pattern: $0) }
     }
 
     public func isInformational(raw: String, prose: String) -> String? {

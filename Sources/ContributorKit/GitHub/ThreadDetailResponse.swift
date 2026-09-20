@@ -59,6 +59,10 @@ struct ThreadDetailResponse: Decodable {
         var login: String?
     }
 
+    struct ReviewRef: Decodable {
+        var databaseId: Int?
+    }
+
     struct CommentNode: Decodable {
         var body: String?
         var url: String?
@@ -70,6 +74,8 @@ struct ThreadDetailResponse: Decodable {
         var editor: Actor?
         var viewerDidAuthor: Bool?
         var author: Actor?
+        /// Present on inline comments only: the review that carried this one.
+        var pullRequestReview: ReviewRef?
 
         /// `nil` when the node carries no permalink — the id is the permalink
         /// fragment, so a node without one cannot be tracked across runs and is worse
@@ -89,7 +95,7 @@ struct ThreadDetailResponse: Decodable {
                 updatedAt: GitHubTime.parse(updatedAt),
                 lastEditedAt: GitHubTime.parse(lastEditedAt),
                 body: body ?? "", bodyIsExcerpt: false, permalink: url,
-                reviewID: nil)
+                reviewID: pullRequestReview?.databaseId.map(String.init))
         }
     }
 }
