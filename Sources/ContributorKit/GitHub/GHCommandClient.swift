@@ -95,6 +95,12 @@ public struct GHCommandClient: GitHubClient {
 
             // Always advance to the page just read, even on a connection that is
             // finished: re-sending a stale cursor re-reads page one and double-counts.
+            //
+            // Re-sending a *finished* connection's own `endCursor` is safe — verified
+            // live against this repository's PR: `after:` the final cursor returns
+            // `nodes: []` and `hasNextPage: false`, because a cursor marks the position
+            // after the last item rather than the item itself. So an exhausted
+            // connection contributes nothing while the others keep paging.
             commentCursor = subject.comments?.pageInfo?.endCursor ?? commentCursor
             reviewCursor = subject.reviews?.pageInfo?.endCursor ?? reviewCursor
             threadCursor = subject.reviewThreads?.pageInfo?.endCursor ?? threadCursor

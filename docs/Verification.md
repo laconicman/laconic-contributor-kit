@@ -11,7 +11,7 @@ Verified on 2026-09-13, macOS 26.0, Swift 6.3.3, `cloc` 2.06, `gh` authenticated
 | Claim | How | Result |
 |---|---|---|
 | Package builds clean, debug and release | `swift build`, `swift build -c release` | no errors, no warnings |
-| 47 tests pass, entirely offline | `swift test` | 47/47 in 5 suites |
+| The suite passes, entirely offline | `swift test` | green; CI reports the count, which no document repeats by hand |
 | `contrib loc` reproduces the captured branch total | real run against `pjproject` at `2ba80f1ed..fd5394aed` | added 107/109/21 · removed 82/0/0 · modified 35/8/0 · net +25/+109/+21 — identical to `manifest.json` |
 | Comment-to-code ratio | same run | 4.36, matching the manifest |
 | `--ignore-whitespace` churn correction | same run | modified code 35 → 20, net unchanged at +25 |

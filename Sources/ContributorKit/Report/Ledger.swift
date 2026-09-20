@@ -28,11 +28,16 @@ public struct Ledger: Sendable {
         }
         defer { close(descriptor) }
 
+        // A short write followed by a failure would leave half a JSON object in the
+        // file, which makes every later reader of the ledger fail on a row nobody wrote
+        // deliberately. Truncate back to where this append started instead.
+        let start = lseek(descriptor, 0, SEEK_END)
         try line.withUnsafeBytes { buffer in
             var written = 0
             while written < buffer.count {
                 let n = write(descriptor, buffer.baseAddress! + written, buffer.count - written)
                 guard n > 0 else {
+                    if start >= 0, written > 0 { ftruncate(descriptor, start) }
                     throw LedgerError.writeFailed(path: url.path, errno: errno)
                 }
                 written += n

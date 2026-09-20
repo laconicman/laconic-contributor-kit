@@ -79,12 +79,18 @@ memory to preserve, and two names for one verb is a cost forever.
 
 ### Where the snapshot lives
 
-`~/.local/state/contributorkit/<owner>__<repo>.json` — outside any work tree, honouring
+`~/.local/state/contributorkit/<owner>/<repo>.json` — outside any work tree, honouring
 `XDG_STATE_HOME`, overridable with `--state-dir`.
 
 The requirement is that it must never reach an upstream-bound branch. Putting it
 outside the tree makes that true **by construction**, rather than by an exclude file
 somebody has to maintain and can forget.
+
+The layout is one path component per name. It began as `<owner>__<repo>.json`, which is
+**not injective**: `a/b__c` and `a__b/c` are both valid GitHub names and both addressed
+`a__b__c.json`, so auditing one could load and then overwrite the other's history.
+Snapshots written at the old path are read and merged, never chosen between — both files
+can exist holding different pull requests.
 
 ### Guards
 

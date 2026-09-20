@@ -92,8 +92,28 @@ struct AckCommand: AsyncParsableCommand {
         }
         // Same transaction rule as `contrib in`: re-read under the lock and apply only
         // this one entry, so an audit running alongside is not overwritten.
+        //
+        // Eligibility is checked AGAIN here, against the state actually being written.
+        // The check above ran before the lock, so an audit landing in between could have
+        // moved the item — the asker confirming it, or an edit arriving — and the
+        // acknowledgement would be recorded against state that no longer permits it.
         try store.withLock(repository: repository) {
             var current = try store.load(repository: repository) ?? snapshot
+            guard let fresh = current.entries[id] else {
+                throw SnapshotError.unknownItem(id)
+            }
+            if let refusal = AcknowledgementEligibility.refusal(for: fresh, id: id) {
+                throw AckError.refused(refusal)
+            }
+            if fresh.bodySha256 != entry.bodySha256 {
+                throw AckError.refused(
+                    """
+                    \(id) changed while this acknowledgement was being prepared. \
+                    Re-read it and run the command again.
+                    """)
+            }
+            acknowledgement.bodySha256AtAck = fresh.bodySha256
+            if fresh.kind == .inlineThread { acknowledgement.replyIDAtAck = fresh.myReplyID }
             current.entries[id]?.acknowledged = acknowledgement
             current.updatedAt = Date()
             try store.save(current)

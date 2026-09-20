@@ -60,7 +60,11 @@ public struct SnapshotStore: Sendable {
     /// report rather than silently treat as "nothing changed".
     public func load(repository: String) throws -> Snapshot? {
         let current = try decode(url(for: repository), expecting: repository)
-        let legacy = try decode(legacyURL(for: repository), expecting: repository)
+        // A legacy file is best-effort: the old layout was not injective, so the path
+        // this repository would have used may belong to a different one. That is the
+        // collision being migrated away from — it must not make a perfectly good current
+        // snapshot unreadable.
+        let legacy = (try? decode(legacyURL(for: repository), expecting: repository)) ?? nil
 
         // **Merged, never preferred.** Both files can exist and hold *different*
         // subjects: a run on the new path after the collision fix leaves the old file
@@ -106,10 +110,12 @@ public struct SnapshotStore: Sendable {
         try encoder.encode(snapshot).write(to: url, options: .atomic)
 
         // The pre-collision-fix file has been superseded by this write. Removed only
-        // after the new one is safely on disk, and only when the two are different
-        // paths, so a failure here can never lose the snapshot.
+        // after the new one is safely on disk, only when the two are different paths,
+        // and only when it actually belongs to this repository — the old layout could
+        // alias, so deleting on filename alone would destroy another repo's history.
         let legacy = legacyURL(for: snapshot.repository)
-        if legacy != url, FileManager.default.fileExists(atPath: legacy.path) {
+        let owned = (try? decode(legacy, expecting: snapshot.repository)) ?? nil
+        if legacy != url, owned != nil {
             try? FileManager.default.removeItem(at: legacy)
         }
     }
