@@ -31,6 +31,12 @@ public struct Snapshot: Codable, Sendable {
         public var updatedAt: Date?
         public var lastEditedAt: Date?
         public var bodySha256: String
+        /// The body with boilerplate stripped, as of the last run.
+        ///
+        /// Kept so a re-opened item can say whether the *prose* moved or only the
+        /// markup around it. Optional: snapshots written before it existed decode
+        /// without it, and their first run after upgrade simply records it.
+        public var prose: String?
         /// What the audit concluded about this item last run.
         ///
         /// Without it the differ compares bodies and authorship only, so it can see a

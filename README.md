@@ -1,5 +1,8 @@
 # ContributorKit
 
+[![CI](https://github.com/laconicman/laconic-contributor-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/laconicman/laconic-contributor-kit/actions/workflows/ci.yml)
+
+
 Two questions, for anyone contributing to somebody else's repository.
 
 **What was asked of me that I have not demonstrably absorbed?**
@@ -18,6 +21,22 @@ That is the whole tool. Everything below is how it answers them, and what it ref
 to do.
 
 ---
+
+## Direction docs
+
+The architecture, the decisions and the register of known debt live in the DocC catalogue
+and are authoritative over anything said here or in code comments:
+
+- **Design** — every decision, why it was taken, and what was rejected.
+- **Roadmap** — what is built, what is next, what is deliberately not being built.
+- **TechDebt** — a numbered register, each item with its cost and its discharge.
+
+```bash
+swift package generate-documentation --target ContributorKit
+```
+
+They render on the [Swift Package Index](https://swiftpackageindex.com) too — `.spi.yml`
+names the documentation target.
 
 ## Why it exists
 
@@ -209,8 +228,8 @@ Needs `gh` (authenticated) for `contrib in`, and `cloc` for `contrib loc`. Neith
 bundled and neither path is hardcoded.
 
 ```bash
-git clone https://github.com/laconicman/swift-contributor-kit
-cd swift-contributor-kit
+git clone https://github.com/laconicman/laconic-contributor-kit
+cd laconic-contributor-kit
 swift build -c release
 ./scripts/install.sh          # or: ./scripts/install.sh ~/.local/bin
 ```
@@ -244,15 +263,15 @@ report and says so. Provenance is stated per claim, not per project.
 swift test
 ```
 
-47 tests, entirely offline. They assert against captured `cloc` documents and real
+68 tests, entirely offline. They assert against captured `cloc` documents and real
 captured GitHub threads rather than against numbers retyped into Swift — if a figure
 drifts it shows up as a comparison against a measured document.
 
 ## What this deliberately does not do
 
 No MCP server. No `gh` extension. No Swift line counter. No commit-type classifier. No
-second storage engine. No comment-orphan detector. Each of those was considered and
-has a reason written down.
+second storage engine. No comment-orphan detector. No bulk "era" acknowledgement. Each was
+considered and the reason is in the Design article.
 
 `contrib out` — *what did I say that is still owed, or has gone stale or false?* — is
 specified and not yet built. It depends on a register schema with one genuinely

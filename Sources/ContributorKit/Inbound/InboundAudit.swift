@@ -137,7 +137,8 @@ public struct InboundAudit: Sendable {
                     state: state, question: state.question,
                     changed: changeDescription(
                         for: root, previous: previous?.entries[root.id],
-                        was: before, now: state),
+                        was: before, now: state,
+                        previousProse: previous?.entries[root.id]?.prose),
                     text: .init(
                         ask: rootProse.isEmpty ? root.body : rootProse,
                         reply: mine.last.map { stripper.prose(of: $0.body) }),
@@ -185,7 +186,8 @@ public struct InboundAudit: Sendable {
                         state: state, question: state.question,
                         changed: changeDescription(
                             for: comment, previous: previous?.entries[comment.id],
-                            was: before, now: state),
+                            was: before, now: state,
+                            previousProse: previous?.entries[comment.id]?.prose),
                         text: .init(ask: prose.isEmpty ? comment.body : prose, reply: nil),
                         roundID: nil, roundAt: comment.createdAt, author: comment.author,
                         previousState: before == state ? nil : before,
@@ -208,7 +210,7 @@ public struct InboundAudit: Sendable {
     /// the snapshot tracks and false of what a contributor tracks.
     private func changeDescription(
         for comment: RemoteComment, previous: Snapshot.Entry?,
-        was: ItemState?, now: ItemState
+        was: ItemState?, now: ItemState, previousProse: String?
     ) -> String? {
         guard let previous else { return "new since the last run" }
 
@@ -218,7 +220,17 @@ public struct InboundAudit: Sendable {
         }
         if previous.bodySha256 != comment.bodySHA256 {
             let when = comment.lastEditedAt.map { " (edited \(GitHubTime.string($0)))" } ?? ""
-            parts.append("body changed since the last run\(when)")
+            // Whether the *prose* moved is decidable, and worth saying: this reviewer
+            // appends its badge to a body when a later round supersedes it, so a whole
+            // round's threads can re-open at once for no semantic reason. Observed twice
+            // in one morning on one thread. The item is still re-opened and a stale
+            // check is still refused — today's behaviour is wrong in the cheap
+            // direction, and hashing stripped prose instead would be wrong in the
+            // expensive one — but the contributor is told which kind of edit it was.
+            let proseMoved = stripper.prose(of: comment.body) != previousProse
+            parts.append(
+                "body changed since the last run\(when)"
+                    + (proseMoved ? "" : " — markup only, prose unchanged"))
         } else if previous.acknowledged != nil,
             previous.acknowledged?.bodySha256AtAck != comment.bodySHA256
         {
@@ -242,6 +254,7 @@ public struct InboundAudit: Sendable {
         entry.updatedAt = comment.updatedAt
         entry.lastEditedAt = comment.lastEditedAt
         entry.bodySha256 = comment.bodySHA256
+        entry.prose = stripper.prose(of: comment.body)
         entry.myReplyID = myReply?.id ?? entry.myReplyID
         entry.myReplyAt = myReply?.createdAt ?? entry.myReplyAt
         entry.state = state

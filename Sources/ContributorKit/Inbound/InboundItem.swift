@@ -64,8 +64,14 @@ public struct InboundItem: Codable, Sendable {
     /// responsiveness check — unless something about it actually moved.
     public var isListedByDefault: Bool {
         guard isVisible else { return false }
-        if state.isOwed || changed != nil { return true }
-        return state.needsLook && !subjectClosed
+        if state.isOwed { return true }
+        if state.needsLook && !subjectClosed { return true }
+        // Real movement only. "New since the last run" is a baseline artifact, and
+        // treating it as movement made the first run on a PR print every badge-only body
+        // it had ever received — 49 of them on one real PR, none of them actionable.
+        // A state that is never owed becomes visible when it *changes*, not when it is
+        // first seen.
+        return changed != nil && !isNewToSnapshot
     }
 
     enum CodingKeys: String, CodingKey {
