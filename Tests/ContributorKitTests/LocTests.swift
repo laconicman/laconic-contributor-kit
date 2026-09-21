@@ -149,6 +149,60 @@ struct LocTests {
         }
     }
 
+    /// cloc prints the same `{}` when `--include-lang` excludes every path a range
+    /// touched. On 2026-09-21 a Rust branch measured with the C-family default read as
+    /// unparseable output. Still refused — but naming the filter, the range, and what the
+    /// range touched, which is what `--lang` has to cover.
+    @Test("an empty document under a language filter names the filter and what it excluded")
+    func emptyDocumentUnderFilterNamesTheFilter() async throws {
+        let runner = RecordedCommandRunner([
+            .init(match: ["cloc", "--include-lang="], stdout: Data("{}".utf8)),
+            .init(
+                match: ["git", "diff-tree", "master", "fix/residency-units"],
+                stdout: Data("README.md\0src/ioreport.rs\0".utf8)),
+        ])
+        let error = await #expect(throws: ClocError.self) {
+            _ = try await Fixtures.cloc(runner).diff(
+                refA: "master", refB: "fix/residency-units",
+                options: .init(languages: ["C", "C/C++ Header", "Objective-C"]),
+                cwd: URL(fileURLWithPath: "."))
+        }
+        #expect(runner.unusedRecordings.isEmpty, "git was asked what the range touched")
+        #expect(
+            error?.description
+                == "cloc matched no files: --include-lang=C,C/C++ Header,Objective-C excluded "
+                + "every path in master..fix/residency-units (touched: .md, .rs); pass --lang")
+    }
+
+    /// The diagnosis must not blame a filter that excluded nothing: with no filter there
+    /// is nothing to name, and a range that touched no path — one commit under two
+    /// names — reads `{}` under any filter.
+    @Test("an empty document stays the plain refusal when no filter is to blame")
+    func emptyDocumentKeepsThePlainRefusal() async throws {
+        let unfiltered = RecordedCommandRunner([
+            .init(match: ["cloc"], stdout: Data("{}".utf8))
+        ])
+        let plain = await #expect(throws: ClocError.self) {
+            _ = try await Fixtures.cloc(unfiltered).diff(
+                refA: "master", refB: "feature", options: .init(languages: []),
+                cwd: URL(fileURLWithPath: "."))
+        }
+        #expect(unfiltered.calls.map { $0[0] } == ["cloc"], "cloc ran; git was not asked")
+        #expect(plain?.description == ClocError.noDiffDocument.description)
+
+        let emptyRange = RecordedCommandRunner([
+            .init(match: ["cloc", "--include-lang="], stdout: Data("{}".utf8)),
+            .init(match: ["git", "diff-tree"], stdout: Data()),
+        ])
+        let filtered = await #expect(throws: ClocError.self) {
+            _ = try await Fixtures.cloc(emptyRange).diff(
+                refA: "master", refB: "HEAD", options: .init(languages: ["C"]),
+                cwd: URL(fileURLWithPath: "."))
+        }
+        #expect(emptyRange.calls.map { $0[0] } == ["cloc", "git"], "git listed nothing")
+        #expect(filtered?.description == ClocError.noDiffDocument.description)
+    }
+
     /// A three-dot comparison measures from the two refs' **merge base**. Treating it
     /// as two-dot reports everything the base branch gained since the divergence as
     /// branch churn, in reverse.
