@@ -147,6 +147,14 @@ block prints how many acknowledgements went in unverified.
    is concealed. The tradeoff to know: an edit does not notify, so anything the
    maintainer must *act* on still needs a new comment.
 
+8. **After a fork pre-review, send upstream the body you wrote.** Reviewer bots may edit
+   the PR they review: Devin appended its badge to the fork PR for `jarpex/siligpu#1`
+   five seconds after it opened. Open upstream with `--body-file`, then require a literal
+   `true` from `gh pr view N -R owner/repo --json body | jq --rawfile f body.md '.body == $f'`
+   — a failed fetch prints nothing and exits 0. Then **ask** in a question prompt, not in
+   prose: close the fork PR (every push would buy another paid review), or merge it (to
+   use the change before upstream lands it).
+
 ## LOC
 
 **LOC is a trend, never a quality score.** Tests legitimately add lines and comments are
