@@ -31,7 +31,9 @@ public struct ClocDocument: Sendable {
             // cloc exits 0 and emits nothing at all when a range touches no file it
             // recognises. An empty decode reporting zeroes is a check that passes
             // because it did not run — refuse it here instead.
-            throw ClocError.noDiffDocument
+            throw root.isEmpty
+                ? ClocError.noDiffDocument
+                : ClocError.malformedDocument("no `header` — cloc produced an unexpected document")
         }
 
         var sections: [String: [String: Counts]] = [:]
