@@ -68,6 +68,20 @@ public struct Cloc: Sendable {
     ) async throws -> ClocDocument {
         let out = try await runner.runExpectingOutput(
             argv(refA: refA, refB: refB, options: options), cwd: cwd)
-        return try ClocDocument(json: out.stdout, keySpace: options.byFile ? .path : .language)
+        do {
+            return try ClocDocument(json: out.stdout, keySpace: options.byFile ? .path : .language)
+        } catch ClocError.noDiffDocument where !options.languages.isEmpty {
+            // `{}` under `--include-lang` has two causes: the filter — a Rust branch
+            // measured with the C-family default — or a range holding nothing cloc counts
+            // at all. Isolate the variable: the same range, unfiltered. Empty again, and
+            // that run's own refusal propagates; otherwise the filter emptied the document,
+            // and the error names the languages it left out, which are what `--lang` takes.
+            let unfiltered = try await diff(
+                refA: refA, refB: refB,
+                options: Options(languages: [], forceLang: options.forceLang), cwd: cwd)
+            throw ClocError.filterExcludedEverything(
+                languages: options.languages, range: "\(refA)..\(refB)",
+                touched: unfiltered.byKey.keys.sorted())
+        }
     }
 }

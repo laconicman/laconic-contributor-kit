@@ -31,7 +31,9 @@ public struct ClocDocument: Sendable {
             // cloc exits 0 and emits nothing at all when a range touches no file it
             // recognises. An empty decode reporting zeroes is a check that passes
             // because it did not run — refuse it here instead.
-            throw ClocError.malformedDocument("no `header` — cloc produced no diff document")
+            throw root.isEmpty
+                ? ClocError.noDiffDocument
+                : ClocError.malformedDocument("no `header` — cloc produced an unexpected document")
         }
 
         var sections: [String: [String: Counts]] = [:]
@@ -87,12 +89,22 @@ public struct ClocDocument: Sendable {
 
 public enum ClocError: Error, CustomStringConvertible {
     case malformedDocument(String)
+    case noDiffDocument
+    /// `--include-lang` left nothing of what the range touched: `touched` is the
+    /// languages cloc counts there without the filter.
+    case filterExcludedEverything(languages: [String], range: String, touched: [String])
     case clocNotFound(String?)
 
     public var description: String {
         switch self {
         case .malformedDocument(let why):
             return "cloc output could not be read: \(why)"
+        case .noDiffDocument:
+            return "cloc output could not be read: no `header` — cloc produced no diff document"
+        case .filterExcludedEverything(let languages, let range, let touched):
+            return "cloc matched no files: --include-lang=\(languages.joined(separator: ",")) "
+                + "excluded every path in \(range) (touched: \(touched.joined(separator: ", "))); "
+                + "pass --lang"
         case .clocNotFound(let path):
             return path.map { "cloc not found at \($0)" }
                 ?? "cloc not found on PATH — pass --cloc <path>, or `brew install cloc`"

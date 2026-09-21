@@ -149,6 +149,85 @@ struct LocTests {
         }
     }
 
+    /// cloc prints the same `{}` when `--include-lang` excludes every path a range
+    /// touched. On 2026-09-21 a Rust branch measured with the C-family default read as
+    /// unparseable output. Still refused — but only once the same range, run without the
+    /// filter, proves the filter emptied it, and naming the languages it left out, which
+    /// are what `--lang` takes. The unfiltered answer is a captured C branch.
+    @Test("an empty document under a language filter names the filter and what it excluded")
+    func emptyDocumentUnderFilterNamesTheFilter() async throws {
+        let runner = RecordedCommandRunner([
+            .init(match: ["--include-lang="], stdout: Data("{}".utf8)),
+            try .file(
+                match: ["--diff"], Fixtures.root.appending(path: "cloc/tls-restart.branch.json")),
+        ])
+        let error = await #expect(throws: ClocError.self) {
+            _ = try await Fixtures.cloc(runner).diff(
+                refA: "2ba80f1ed", refB: "fix/tls-restart-no-listener-reports-success",
+                options: .init(languages: ["Objective-C"]), cwd: URL(fileURLWithPath: "."))
+        }
+        let calls = runner.calls
+        try #require(calls.count == 2, "the filtered run, then the same range without the filter")
+        #expect(calls[1] == calls[0].filter { !$0.hasPrefix("--include-lang=") })
+        #expect(
+            error?.description
+                == "cloc matched no files: --include-lang=Objective-C excluded every path in "
+                + "2ba80f1ed..fix/tls-restart-no-listener-reports-success (touched: C, "
+                + "C/C++ Header); pass --lang")
+    }
+
+    /// The diagnosis must not blame a filter that excluded nothing. With no filter there
+    /// is nothing to name; with one, a range holding nothing cloc counts — only binaries,
+    /// or no change at all — reads `{}` unfiltered too, and the plain refusal stands.
+    @Test("an empty document stays the plain refusal when no filter is to blame")
+    func emptyDocumentKeepsThePlainRefusal() async throws {
+        let unfiltered = RecordedCommandRunner([
+            .init(match: ["--diff"], stdout: Data("{}".utf8))
+        ])
+        let plain = await #expect(throws: ClocError.self) {
+            _ = try await Fixtures.cloc(unfiltered).diff(
+                refA: "main", refB: "feature", options: .init(languages: []),
+                cwd: URL(fileURLWithPath: "."))
+        }
+        #expect(unfiltered.calls.count == 1, "cloc ran once; nothing was re-run")
+        #expect(plain?.description == ClocError.noDiffDocument.description)
+
+        let uncounted = RecordedCommandRunner([
+            .init(match: ["--include-lang="], stdout: Data("{}".utf8)),
+            .init(match: ["--diff"], stdout: Data("{}".utf8)),
+        ])
+        let filtered = await #expect(throws: ClocError.self) {
+            _ = try await Fixtures.cloc(uncounted).diff(
+                refA: "main", refB: "feature", options: .init(languages: ["C"]),
+                cwd: URL(fileURLWithPath: "."))
+        }
+        let calls = uncounted.calls
+        try #require(calls.count == 2, "the filtered run, then the same range without the filter")
+        #expect(calls[1] == calls[0].filter { !$0.hasPrefix("--include-lang=") })
+        #expect(filtered?.description == ClocError.noDiffDocument.description)
+    }
+
+    /// cloc's no-match document is exactly `{}`. Any other object without a `header` is
+    /// output nobody expected, and stays malformed under a filter too — the diagnosis
+    /// must not turn it into advice about `--lang`.
+    @Test("a non-empty document without a header stays malformed, and is not diagnosed")
+    func headerlessDocumentStaysMalformed() async throws {
+        let runner = RecordedCommandRunner([
+            .init(
+                match: ["--include-lang="],
+                stdout: Data(#"{"error":"unsupported option"}"#.utf8))
+        ])
+        let error = await #expect(throws: ClocError.self) {
+            _ = try await Fixtures.cloc(runner).diff(
+                refA: "main", refB: "feature", options: .init(languages: ["C"]),
+                cwd: URL(fileURLWithPath: "."))
+        }
+        #expect(runner.calls.count == 1, "cloc ran once; nothing was re-run to diagnose it")
+        #expect(
+            error?.description == "cloc output could not be read: no `header` — "
+                + "cloc produced an unexpected document")
+    }
+
     /// A three-dot comparison measures from the two refs' **merge base**. Treating it
     /// as two-dot reports everything the base branch gained since the divergence as
     /// branch churn, in reverse.
