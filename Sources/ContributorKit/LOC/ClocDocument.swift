@@ -90,8 +90,8 @@ public struct ClocDocument: Sendable {
 public enum ClocError: Error, CustomStringConvertible {
     case malformedDocument(String)
     case noDiffDocument
-    /// `--include-lang` left nothing of what the range touched: extensions, or whole
-    /// names where a path has none.
+    /// `--include-lang` left nothing of what the range touched: `touched` is the
+    /// languages cloc counts there without the filter.
     case filterExcludedEverything(languages: [String], range: String, touched: [String])
     case clocNotFound(String?)
 

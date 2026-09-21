@@ -71,29 +71,17 @@ public struct Cloc: Sendable {
         do {
             return try ClocDocument(json: out.stdout, keySpace: options.byFile ? .path : .language)
         } catch ClocError.noDiffDocument where !options.languages.isEmpty {
-            // Under `--include-lang` the empty document is usually the filter, not the
-            // range: a Rust branch measured with the C-family default reads exactly this.
-            // Still a refusal — but one naming what the range touched, listed the way
-            // cloc's own `--git --diff` lists it. With no listing the plain refusal stands:
-            // `try?` covers git failing, and git printing nothing — which
-            // `runExpectingOutput` refuses — because the range touched nothing at all.
-            guard
-                let listing = try? await runner.runExpectingOutput(
-                    ["git", "diff-tree", "-r", "--name-only", "-z", refA, refB], cwd: cwd)
-            else { throw ClocError.noDiffDocument }
-            let touched = Set(listing.stdoutText.split(separator: "\0").map(Self.extensionOrName))
+            // `{}` under `--include-lang` has two causes: the filter — a Rust branch
+            // measured with the C-family default — or a range holding nothing cloc counts
+            // at all. Isolate the variable: the same range, unfiltered. Empty again, and
+            // that run's own refusal propagates; otherwise the filter emptied the document,
+            // and the error names the languages it left out, which are what `--lang` takes.
+            let unfiltered = try await diff(
+                refA: refA, refB: refB,
+                options: Options(languages: [], forceLang: options.forceLang), cwd: cwd)
             throw ClocError.filterExcludedEverything(
                 languages: options.languages, range: "\(refA)..\(refB)",
-                touched: touched.sorted())
+                touched: unfiltered.byKey.keys.sorted())
         }
-    }
-
-    /// `.rs` for `src/ioreport.rs`; the whole name where there is no extension.
-    private static func extensionOrName(_ path: Substring) -> String {
-        let name = path.split(separator: "/").last ?? path
-        guard let dot = name.lastIndex(of: "."), dot != name.startIndex else {
-            return String(name)
-        }
-        return String(name[dot...])
     }
 }
