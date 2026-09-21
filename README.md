@@ -1,6 +1,7 @@
 # ContributorKit
 
 [![CI](https://github.com/laconicman/laconic-contributor-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/laconicman/laconic-contributor-kit/actions/workflows/ci.yml)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/laconicman/laconic-contributor-kit)
 
 
 Two questions, for anyone contributing to somebody else's repository.
