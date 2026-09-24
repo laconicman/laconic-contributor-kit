@@ -4,14 +4,19 @@ import Foundation
 public struct AcknowledgementParser: Sendable {
     /// Ids present in the fetch this run, for the free existence check on `comment:`.
     public let knownCommentIDs: Set<String>
+    /// The `owner/repo` being audited — `authored` is repository-scoped, so a
+    /// subject URL only resolves to a body id when it names this repository.
+    public let repository: String?
     /// Resolves a git object, or `nil` when there is no repository to ask.
     public let resolveCommit: (@Sendable (String) async -> Bool)?
 
     public init(
         knownCommentIDs: Set<String>,
+        repository: String? = nil,
         resolveCommit: (@Sendable (String) async -> Bool)? = nil
     ) {
         self.knownCommentIDs = knownCommentIDs
+        self.repository = repository
         self.resolveCommit = resolveCommit
     }
 
@@ -35,12 +40,17 @@ public struct AcknowledgementParser: Sendable {
             var id = value.split(separator: "#").last.map(String.init) ?? value
             // A fragmentless URL to the subject itself — `…/issues/3`, `…/pull/7` —
             // names the body item, whose synthesized id is what `authored` holds when
-            // the subject is mine. Without this the pointer recorded unverified.
-            if !value.contains("#") {
-                let tail = value.split(separator: "/").suffix(2)
-                if tail.count == 2, let number = Int(tail.last ?? "") {
-                    if tail.first == "issues" { id = "issue-\(number)" }
-                    if tail.first == "pull" { id = "pullrequest-\(number)" }
+            // the subject is mine. The URL must name THIS repository: `authored` is
+            // repo-scoped, so a foreign `…/issues/3` resolving to `issue-3` would
+            // verify a pointer at a different repository entirely.
+            if !value.contains("#"), let repository {
+                let tail = Array(value.split(separator: "/").suffix(4))
+                if tail.count == 4,
+                    "\(tail[0])/\(tail[1])".caseInsensitiveCompare(repository) == .orderedSame,
+                    let number = Int(tail[3])
+                {
+                    if tail[2] == "issues" { id = "issue-\(number)" }
+                    if tail[2] == "pull" || tail[2] == "pulls" { id = "pullrequest-\(number)" }
                 }
             }
             let known = knownCommentIDs.contains(id)

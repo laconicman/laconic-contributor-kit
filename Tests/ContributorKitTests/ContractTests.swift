@@ -136,7 +136,8 @@ struct ContractTests {
     /// `issue-3` sitting in `authored` (review round on #5).
     @Test("a fragmentless subject URL resolves to the synthesized body id")
     func subjectURLResolvesToBodyID() async throws {
-        let parser = AcknowledgementParser(knownCommentIDs: ["issue-3", "pullrequest-7"])
+        let parser = AcknowledgementParser(
+            knownCommentIDs: ["issue-3", "pullrequest-7"], repository: "o/r")
 
         let issue = try await parser.parse(
             "comment:https://github.com/o/r/issues/3", bodySha256: "h")
@@ -154,6 +155,13 @@ struct ContractTests {
             "comment:https://github.com/o/r/issues/9", bodySha256: "h")
         #expect(notMine.pointer == "issue-9")
         #expect(!notMine.verified)
+
+        // `authored` is repository-scoped: a foreign subject URL with a matching
+        // number must NOT verify — the review round on 4eb3ec9 caught exactly this.
+        let foreign = try await parser.parse(
+            "comment:https://github.com/other-org/other-repo/issues/3", bodySha256: "h")
+        #expect(foreign.pointer == "https://github.com/other-org/other-repo/issues/3")
+        #expect(!foreign.verified)
     }
 
     /// A commit sha with no repository to resolve it against is recorded **unverified**
