@@ -1,6 +1,6 @@
 ---
 name: contributions
-description: Use when working as an outside contributor on someone else's repository — answering a review round, deciding whether a round is finished, recording what was promised upstream, or judging how large a patch really is. Triggers on "did I answer everything", "is this round done", "what do I still owe upstream", "how big is this change", review-round audits, and any use of the `contrib` CLI (`contrib in`, `contrib loc`, `contrib ack`).
+description: Use when working as an outside contributor on someone else's repository — answering a review round, deciding whether a round is finished, recording what was promised upstream, or judging how large a patch really is. Triggers on "did I answer everything", "is this round done", "what do I still owe upstream", "how big is this change", review-round audits, and any use of the `contrib` CLI (`contrib in`, `contrib loc`, `contrib ack`, `contrib show`).
 ---
 
 # Contributions
@@ -87,6 +87,16 @@ Recorded, **never inferred from proximity in time**. The record is keyed by comm
 *and* body hash, so if the reviewer edits the ask after you acknowledge it, it re-opens
 by itself. Shape is always checked; existence only where it is free, and the provenance
 block prints how many acknowledgements went in unverified.
+
+**Refresh before you acknowledge.** `ack` judges the snapshot, and a reply posted since
+the last `contrib in` leaves the item in its old state — the refusal names the remedy.
+`contrib ack <id> --with … --refresh` re-fetches the item's subject and updates the
+snapshot in the same step, collapsing reply → `in` → ack into reply → `ack --refresh`.
+
+**Re-read one item whole with `contrib show <id> <owner>/<repo>`** — the ask, your reply,
+the recorded acknowledgement, and a diff of what moved since. The table truncates and
+`--json` carries full bodies; `show` is the shaped version of that escape hatch for a
+single item.
 
 ## Rules, each one paid for
 

@@ -387,6 +387,19 @@ struct SnapshotCompatibilityTests {
         #expect(item.isNewToSnapshot == false)
         #expect(item.previousState == .answeredClaimed)
     }
+
+    /// Written before `proseAtAck` existed: the acknowledgement decodes with the
+    /// field absent — `nil`, meaning "the judged text was not recorded", not a
+    /// corrupt file.
+    @Test("a schema-1 snapshot from before proseAtAck decodes")
+    func beforeProseAtAck() throws {
+        let snapshot = try decode("schema1-before-prose-at-ack")
+        let ack = try #require(snapshot.entries["pullrequestreview-3"]?.acknowledged)
+        #expect(ack.proseAtAck == nil)
+        #expect(ack.pointer == "absorbed in round 3")
+        #expect(snapshot.entries["pullrequestreview-3"]?.prose
+            == "Please add a regression test.")
+    }
 }
 
 /// Round 2 of this repository's own review. Each test fails against the old behaviour.
@@ -647,5 +660,125 @@ struct SecondRoundTests {
         let second = try Fixtures.audit().run(two, against: first.updatedSnapshot)
         InboundReporting.record(second, two, previous: first.updatedSnapshot, into: &provenance)
         #expect(provenance.notes.contains { $0.contains("o/r#2") && $0.contains("baseline") })
+    }
+
+    // MARK: - Subjects, issue #3
+
+    /// The snapshot is per repository and a run is per subject, so `owner/repo#N` is
+    /// the only string that tells `contrib show` and `ack --refresh` what to re-fetch.
+    /// Parsing is strict: another repository's subject is not ours to fetch either.
+    @Test("subject strings format and parse only for their own repository")
+    func subjectStrings() {
+        #expect(Subject.format(repository: "o/r", number: 33) == "o/r#33")
+        #expect(Subject.number(in: "o/r#33", repository: "o/r") == 33)
+        #expect(Subject.number(in: "o/r#33", repository: "other/r") == nil)
+        #expect(Subject.number(in: "o/r", repository: "o/r") == nil)
+        #expect(Subject.number(in: "o/r#abc", repository: "o/r") == nil)
+        #expect(Subject.number(in: "o/r#33extra", repository: "o/r") == nil)
+    }
+
+    /// `ack` accepts `--pr` for symmetry with `in`, and a number that disagrees with
+    /// the recorded subject almost always means the id was typed for one pull request
+    /// and `--pr` for another. An absent subject or `--pr` cannot disagree.
+    @Test("--pr is validated against the recorded subject")
+    func prScopeValidation() {
+        func entry(_ subject: String?) -> Snapshot.Entry {
+            Snapshot.Entry(
+                kind: .inlineThread, url: "u", author: "reviewer", createdAt: Date(),
+                updatedAt: nil, lastEditedAt: nil, bodySha256: "h", subject: subject,
+                state: .answeredClaimed, firstSeen: Date(), myReplyID: "r2",
+                myReplyAt: Date(), acknowledged: nil)
+        }
+        #expect(entry("o/r#33").isFromSubject(repository: "o/r", pr: 33))
+        #expect(!entry("o/r#33").isFromSubject(repository: "o/r", pr: 34))
+        #expect(!entry("o/r#33").isFromSubject(repository: "other/r", pr: 33))
+        #expect(!entry(nil).isFromSubject(repository: "o/r", pr: 33))
+    }
+
+    // MARK: - The show diff, issue #3
+
+    /// `contrib show`'s diff trims the common prefix and suffix, then prints the
+    /// changed middle as `-`/`+`. Not a minimal diff — for an appended badge or a
+    /// wholesale rewrite the middle IS the change.
+    @Test("a line diff shows only the changed span")
+    func lineDiffShowsTheChangedSpan() {
+        #expect(LineDiff.lines(from: "a\nb", to: "a\nb\nc") == ["+ c"])
+        #expect(LineDiff.lines(from: "a\nb\nc", to: "a\nb") == ["- c"])
+        #expect(LineDiff.lines(from: "z\na\nb", to: "a\nb") == ["- z"])
+        #expect(LineDiff.lines(from: "a\nb\nc", to: "a\nx\nc") == ["- b", "+ x"])
+        #expect(
+            LineDiff.lines(from: "a\nb", to: "x\ny") == ["- a", "- b", "+ x", "+ y"])
+        #expect(LineDiff.lines(from: "a\nb", to: "a\nb").isEmpty)
+        #expect(LineDiff.lines(from: "", to: "").isEmpty)
+    }
+
+    /// The merge `contrib in` and `ack --refresh` share rewrites only the audited
+    /// subject's entries: a snapshot is per repository and holds every subject it has
+    /// ever seen, so an unscoped write would lose the other pull requests' state.
+    @Test("a subject-scoped merge rewrites only that subject's entries")
+    func subjectScopedMerge() throws {
+        let one = PullRequestThreads(
+            repository: "o/r", number: 1, title: "", url: "", state: "OPEN", isMerged: false,
+            threads: [RemoteThread(comments: [RemoteComment(
+                id: "discussion_r1", channel: .inlineThread, author: "reviewer",
+                viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+                body: "b", permalink: "u#discussion_r1")])],
+            reviewBodies: [], issueComments: [], pagesFetched: 1)
+        var two = one
+        two.number = 2
+        two.threads = [RemoteThread(comments: [RemoteComment(
+            id: "discussion_r9", channel: .inlineThread, author: "reviewer",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: "b", permalink: "u#discussion_r9")])]
+
+        var snapshot = try Fixtures.audit().run(one, against: nil).updatedSnapshot
+        let result = try Fixtures.audit().run(two, against: snapshot)
+        snapshot.merge(result, forSubject: "o/r#2")
+
+        #expect(snapshot.entries.keys.sorted() == ["discussion_r1", "discussion_r9"])
+        #expect(snapshot.entries["discussion_r1"]?.subject == "o/r#1")
+        #expect(snapshot.entries["discussion_r9"]?.subject == "o/r#2")
+    }
+
+    /// An acknowledgement now records the *prose* it judged, so `contrib show` can
+    /// diff the ask as absorbed against the ask as it stands. Optional — records
+    /// written before it existed decode as absent.
+    @Test("proseAtAck records the judged text and decodes absent")
+    func proseAtAck() throws {
+        var ack = Acknowledgement(
+            kind: .none, pointer: "absorbed", bodySha256AtAck: "h",
+            verified: true, verificationNote: "t")
+        #expect(ack.proseAtAck == nil)
+        ack.proseAtAck = "the ask, as absorbed"
+        let decoded = try JSONDecoder().decode(
+            Acknowledgement.self, from: try JSONEncoder().encode(ack))
+        #expect(decoded.proseAtAck == "the ask, as absorbed")
+
+        // Written before the field existed: absent, not a decode failure.
+        let legacy = """
+            {"kind":"none","pointer":"x","at":"2026-09-13T10:30:00Z",
+             "bodySha256AtAck":"h","verified":true,"verificationNote":"t"}
+            """
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        #expect(try decoder.decode(Acknowledgement.self, from: Data(legacy.utf8))
+            .proseAtAck == nil)
+    }
+
+    /// A refusal against a stale snapshot must name the remedy, not only the state —
+    /// the reply→`in`→ack triple cost eight refused acks in one round (TD-11).
+    @Test("a stale-state refusal names the refresh remedy")
+    func staleRefusalNamesTheRemedy() {
+        func entry(_ state: ItemState?) -> Snapshot.Entry {
+            Snapshot.Entry(
+                kind: .inlineThread, url: "u", author: "reviewer", createdAt: Date(),
+                updatedAt: nil, lastEditedAt: nil, bodySha256: "h", state: state,
+                firstSeen: Date(), myReplyID: "r2", myReplyAt: Date(), acknowledged: nil)
+        }
+        let openAsk = AcknowledgementEligibility.refusal(for: entry(.openAsk), id: "x")
+        let edited = AcknowledgementEligibility.refusal(
+            for: entry(.editedAfterMyAnswer), id: "x")
+        #expect(openAsk?.contains("--refresh") == true)
+        #expect(edited?.contains("--refresh") == true)
     }
 }

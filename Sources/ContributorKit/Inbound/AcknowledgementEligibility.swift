@@ -33,12 +33,16 @@ public enum AcknowledgementEligibility {
             return """
                 \(id) has no reply from you yet. An inline thread is answered by replying in \
                 it — the audit reads the reply. Reply first; then, if the asker does not \
-                confirm, record that you checked the reply answers the ask.
+                confirm, record that you checked the reply answers the ask. \
+                Already replied on GitHub? Refresh the snapshot first — `contrib in`, \
+                or `ack --refresh`.
                 """
         case .editedAfterMyAnswer:
             return """
                 \(id) was edited after your reply, so a check of that reply would be stale \
-                on arrival. Re-read the ask; reply again if it changed what is being asked.
+                on arrival. Re-read the ask; reply again if it changed what is being asked. \
+                Already replied again on GitHub? Refresh the snapshot first — `contrib in`, \
+                or `ack --refresh`.
                 """
         case .answeredConfirmed:
             return "\(id) is already confirmed by the asker. There is nothing to record."

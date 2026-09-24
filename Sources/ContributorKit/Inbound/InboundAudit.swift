@@ -83,7 +83,7 @@ public struct InboundAudit: Sendable {
 
     public func run(_ pr: PullRequestThreads, against previous: Snapshot?) -> Result {
         let closed = pr.isClosed
-        let subject = "\(pr.repository)#\(pr.number)"
+        let subject = Subject.format(repository: pr.repository, number: pr.number)
         var items: [InboundItem] = []
         var examined: [Channel: Int] = [:]
         var ownAuthored: [Channel: Int] = [:]
@@ -257,6 +257,12 @@ public struct InboundAudit: Sendable {
             parts.append(
                 "edited after it was acknowledged"
                     + (proseMoved ? "" : " — markup only, prose unchanged"))
+        } else if now == .editedAfterMyAnswer {
+            // `lastEditedAt` bumped and the body is byte-identical — the strongest
+            // form of the same signal: not even markup moved. Without this the line
+            // reads as a plain `→ edited-after-my-answer` transition, which is the
+            // urgent-looking version of a no-op.
+            parts.append("edited after your reply — body unchanged")
         }
         return parts.isEmpty ? nil : parts.joined(separator: "; ")
     }
@@ -284,4 +290,37 @@ public struct InboundAudit: Sendable {
         snapshot.entries[comment.id] = entry
     }
 
+}
+
+extension InboundAudit {
+    /// The audit every command builds the same way: this repository's inbound rules,
+    /// no more and no less. One construction site means `in`, `ack --refresh` and
+    /// `show` cannot quietly disagree on what an item means.
+    public init(configuration: Configuration, me: String?) throws {
+        self.init(
+            me: me,
+            stripper: try BoilerplateStripper(settings: configuration.inbound),
+            supersession: SupersessionDetector(
+                phrases: configuration.inbound.supersessionPhrases),
+            informational: try InformationalDetector(
+                patterns: configuration.inbound.informationalPatterns),
+            horizon: try configuration.inbound.horizonDate())
+    }
+}
+
+extension Snapshot {
+    /// Apply one audit's subject to this snapshot, leaving every other subject alone.
+    ///
+    /// The snapshot is per repository and the audit is per subject: `entries` in the
+    /// result covers the fetched subject plus a stale copy of everything else, so the
+    /// subject filter is the load-bearing line — an unscoped write would erase the
+    /// other pull requests' state. Shared by `contrib in` and `ack --refresh` so the
+    /// two cannot drift.
+    public mutating func merge(_ result: InboundAudit.Result, forSubject subject: String) {
+        for (id, entry) in result.updatedSnapshot.entries where entry.subject == subject {
+            entries[id] = entry
+        }
+        authored.formUnion(result.updatedSnapshot.authored)
+        updatedAt = Date()
+    }
 }
