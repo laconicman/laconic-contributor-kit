@@ -19,6 +19,7 @@ Priority-ordered. Rationale lives in <doc:Design>; costs and discharges in <doc:
 - **`contrib show`** — one item in full: the ask, your reply, the recorded
   acknowledgement, and a line diff against what the snapshot last saw. Writes only the
   shown entry, so the next `contrib in` no longer reports already-read changes as new.
+  `--full` prints the raw body — the retrieval path for `[collapsed: …]` markers.
 - **`contrib loc`** — `cloc` orchestration, file roles, per-commit walk, JSONL ledger.
   Offline, and usable on a repository with no GitHub remote at all.
 

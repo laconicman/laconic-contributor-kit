@@ -171,13 +171,51 @@ public struct InboundAudit: Sendable {
                     snapshot.authored.insert(comment.id)
                     continue
                 }
-                let prose = stripper.prose(of: comment.body)
+                let stripped = stripper.strip(comment.body)
+                let prose = stripped.prose
+                // Marker lines flag collapsed sections for retrieval — they are
+                // generated metadata, not the asker's words, and a marker's
+                // embedded title can neither carry an ask nor retract one, so
+                // the classifiers judge the substantive prose only. The marker
+                // set is *provenance*: lines the author wrote in marker shape
+                // stay prose, and markers a later boilerplate pass erased count
+                // for nothing. A body of only surviving emitted markers is not
+                // `no-prose` — that means *empty*; this is unexamined.
+                let substantive = stripper.substantiveProse(
+                    prose, markers: stripped.collapsedMarkers)
+                let suppressible = stripped.collapsedMarkers.isEmpty
+                // A line in marker SHAPE — literal ones survive
+                // `substantiveProse` — is quoting the format: its embedded
+                // title is never the reviewer's own opening statement, so it
+                // cannot supply a retraction. But it IS authored text, so it
+                // still counts for wholeness — dropping it must not leave a
+                // fragment that whole-matches an informational announcement.
+                // Hence: supersedes reads prose minus marker-shaped lines
+                // (`contains` on opening lines — removal can only remove a
+                // phrase), while informational reads `substantive` whole.
+                let classifierProse = substantive
+                    .components(separatedBy: .newlines)
+                    .filter {
+                        !BoilerplateStripper.isCollapsedMarker(
+                            $0.trimmingCharacters(in: .whitespaces))
+                    }
+                    .joined(separator: "\n")
                 let state: ItemState
-                if prose.isEmpty {
-                    state = .noProse
-                } else if supersession.supersedes(prose) != nil {
+                if substantive.isEmpty {
+                    if stripped.collapsedMarkers.isEmpty {
+                        state = .noProse
+                    } else if let ack = previous?.entries[comment.id]?.acknowledged,
+                        ack.bodySha256AtAck == comment.bodySHA256
+                    {
+                        state = .obligationAcknowledged
+                    } else {
+                        state = .collapsedUnexamined
+                    }
+                } else if suppressible, supersession.supersedes(classifierProse) != nil {
                     state = .superseded
-                } else if informational.isInformational(raw: comment.body, prose: prose) != nil {
+                } else if suppressible,
+                    informational.isInformational(raw: comment.body, prose: substantive) != nil
+                {
                     state = .informational
                 } else if let ack = previous?.entries[comment.id]?.acknowledged {
                     state =

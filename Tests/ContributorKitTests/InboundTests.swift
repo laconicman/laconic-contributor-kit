@@ -268,6 +268,471 @@ struct InboundTests {
         #expect(stripper.prose(of: body) == "**Devin Review** found 1 new potential issue.")
     }
 
+    // MARK: - Collapsed <details> sections
+
+    /// Devin Review puts its reasoning — call-site links, the example, the
+    /// recommended fix — under `<details><summary>Learn more</summary>`, and
+    /// stripping the block wholesale threw the fix away with the boilerplate
+    /// (measured on laconic-contributor-kit#5, 2026-09-24). Kept summaries
+    /// unwrap; anything else collapses to a marker so "there is more here"
+    /// survives without the content.
+    @Test("a kept summary unwraps; any other collapses to a flagged marker")
+    func keptSummaryUnwraps() throws {
+        let stripper = try BoilerplateStripper(
+            settings: try Configuration.builtInDefaults().inbound)
+        let body = """
+            🔴 **Empty body blocks future audit snapshots**
+
+            When an audited subject body becomes empty, `bodyComment()` drops it.
+
+            <details>
+            <summary>Learn more</summary>
+
+            The audit stores each observed item. **Recommended fix:** retain one.
+            </details>
+
+            <details>
+            <summary>Environment</summary>
+
+            macOS 14, swift 6.2
+            </details>
+            """
+        let prose = stripper.prose(of: body)
+        #expect(prose.contains("The audit stores each observed item"))
+        #expect(prose.contains("**Recommended fix:**"))
+        #expect(!prose.contains("macOS 14"), "the unmatched block's content is not prose")
+        #expect(prose.contains(#"[collapsed: "Environment""#), "the marker still names it")
+    }
+
+    /// The marker carries a short hash of the collapsed content, so an edit
+    /// INSIDE a collapsed section moves `prose` and reports as a real change —
+    /// not the mislabel "markup only, prose unchanged".
+    @Test("an edit inside a collapsed section is prose movement, not markup churn")
+    func collapsedEditMovesProse() throws {
+        let stripper = try BoilerplateStripper(
+            settings: try Configuration.builtInDefaults().inbound)
+        func body(_ detail: String) -> String {
+            """
+            Please look at this.
+
+            <details>
+            <summary>Diagnostics</summary>
+
+            \(detail)
+            </details>
+            """
+        }
+        let before = stripper.prose(of: body("first stack"))
+        let after = stripper.prose(of: body("second stack"))
+        #expect(before.contains("[collapsed:"))
+        #expect(before != after, "the marker's hash tracks the collapsed content")
+    }
+
+    /// A body that is ONLY a collapsed section carries no readable ask —
+    /// markers flag retrievable content but are not themselves prose. It is
+    /// `collapsed-unexamined`: listed so the flag reaches the worklist, never
+    /// owed.
+    @Test("a details-only body is flagged unexamined, not an obligation")
+    func detailsOnlyBodyIsNoProse() throws {
+        let comment = RemoteComment(
+            id: "issuecomment-1", channel: .issueComment, author: "bot",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: "<details>\n<summary>Diagnostics</summary>\n\nstack trace\n</details>",
+            permalink: "https://github.com/o/r/issues/1#issuecomment-1")
+        let result = try Fixtures.audit().run(
+            pullRequest(issueComments: [comment]), against: nil)
+        #expect(result.items.first?.state == .collapsedUnexamined)
+        #expect(result.owed.isEmpty)
+        #expect(result.items.first?.text.ask.contains("[collapsed:") == true,
+            "the flag survives — the raw body does not leak in its place")
+    }
+
+    /// Nesting is real in hand-edited bodies: a matching outer block keeps its
+    /// content, and a nested `<details>` inside it is classified on its own
+    /// summary — depth counting, not first-close matching.
+    @Test("a nested details block is classified inside an unwrapped parent")
+    func nestedDetailsClassifySeparately() throws {
+        let stripper = try BoilerplateStripper(
+            settings: try Configuration.builtInDefaults().inbound)
+        let body = """
+            The ask.
+
+            <details>
+            <summary>Learn more</summary>
+
+            Outer reasoning.
+            <details>
+            <summary>Logs</summary>
+
+            inner noise
+            </details>
+            Tail of the outer section.
+            </details>
+            """
+        let prose = stripper.prose(of: body)
+        #expect(prose.contains("Outer reasoning."))
+        #expect(prose.contains("Tail of the outer section."),
+            "the outer close is the DEPTH-zero close, not the inner one")
+        #expect(!prose.contains("inner noise"))
+        #expect(prose.contains(#"[collapsed: "Logs""#))
+    }
+
+    /// A `<summary>` titles only its own `<details>` — one inside a nested
+    /// block is that block's legend, so an outer block with no summary of its
+    /// own collapses untitled rather than borrowing the inner one's title and
+    /// unwrapping on a match that was never its own.
+    @Test("a nested block's summary does not title its parent")
+    func nestedSummaryIsNotTheParents() throws {
+        let stripper = try BoilerplateStripper(
+            settings: try Configuration.builtInDefaults().inbound)
+        let body = """
+            <details>
+            <details>
+            <summary>Learn more</summary>
+
+            inner reasoning
+            </details>
+            outer hidden
+            </details>
+            """
+        let prose = stripper.prose(of: body)
+        #expect(prose.contains(#"[collapsed: "untitled""#),
+            "the outer block has no summary of its own")
+        #expect(!prose.contains("inner reasoning"),
+            "nothing unwraps on a borrowed title")
+        #expect(!prose.contains("outer hidden"))
+    }
+
+    /// A marker line is generated metadata, not the asker's prose — a
+    /// collapsed section whose TITLE happens to read like a retraction must
+    /// not retract the body it rides with.
+    @Test("a collapsed section's title cannot supersede the body")
+    func markerTitleDoesNotSupersede() throws {
+        let comment = RemoteComment(
+            id: "issuecomment-1", channel: .issueComment, author: "reviewer",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: """
+                <details>
+                <summary>This report has been superseded</summary>
+
+                diagnostics
+                </details>
+
+                Please update the caller.
+                """,
+            permalink: "https://github.com/o/r/issues/1#issuecomment-1")
+        let result = try Fixtures.audit().run(
+            pullRequest(issueComments: [comment]), against: nil)
+        #expect(result.items.first?.state == .obligationOpen)
+    }
+
+    /// Kept sections recurse, and the recursion is capped: nested kept
+    /// summaries are constructible well inside GitHub's comment limit, and an
+    /// uncapped walk would exhaust the stack. Past the cap a matching section
+    /// collapses to a marker like any unmatched one.
+    @Test("deeply nested kept sections bottom out in a marker")
+    func nestedKeptSectionsAreCapped() throws {
+        let stripper = try BoilerplateStripper(
+            settings: try Configuration.builtInDefaults().inbound)
+        let depth = 40
+        let body =
+            (0..<depth).map { _ in "<details>\n<summary>Learn more</summary>\n" }
+            .joined() + "the core." + String(repeating: "\n</details>", count: depth)
+        let prose = stripper.prose(of: body)
+        #expect(prose.contains("[collapsed:"), "the cap emits a marker")
+        #expect(!prose.contains("the core."), "the capped section keeps its content")
+    }
+
+    /// A `<details>` tag inside an HTML comment is not markup — the renderer
+    /// never sees it, so the pairing walk must not either: an opener inside a
+    /// comment would otherwise swallow every line of real prose after it.
+    @Test("a details tag inside an HTML comment is not a live opener")
+    func commentedDetailsTagIsNotLive() throws {
+        let stripper = try BoilerplateStripper(
+            settings: try Configuration.builtInDefaults().inbound)
+        #expect(
+            stripper.prose(of: "<!-- example: <details> -->\nPlease update the API.")
+                == "Please update the API.")
+    }
+
+    /// The mirror case: a `</details>` inside a comment inside a real block
+    /// must not pair with the real opener and leak the comment tail into prose.
+    @Test("a commented close tag does not pair with a real opener")
+    func commentedCloseTagDoesNotPair() throws {
+        let stripper = try BoilerplateStripper(
+            settings: try Configuration.builtInDefaults().inbound)
+        let prose = stripper.prose(
+            of: "<details>\n<summary>Diagnostics</summary>\nkeep<!-- </details> -->more\n</details>")
+        #expect(!prose.contains("more"), "the whole block collapsed; no comment tail leaked")
+        #expect(prose.contains(#"[collapsed: "Diagnostics""#))
+    }
+
+    /// The marker check matches the emitted shape — `[collapsed: "T" ·8hex]` —
+    /// not the bare prefix: an author discussing collapsed UI keeps their line.
+    @Test("author text that opens with the marker prefix is still prose")
+    func markerPrefixInAuthorTextIsNotMetadata() throws {
+        let stripper = try BoilerplateStripper(
+            settings: try Configuration.builtInDefaults().inbound)
+        let body = "[collapsed: legacy UI] must display the full label."
+        let stripped = stripper.strip(body)
+        #expect(stripper.substantiveProse(stripped.prose, markers: stripped.collapsedMarkers)
+            == body)
+    }
+
+    /// A marker-only body is not `no-prose` — `no-prose` means *definitionally
+    /// empty*, and collapsed content is not empty, it is unexamined. It gets
+    /// its own state: listed by default so the flag reaches the worklist, but
+    /// never owed — the agent decides from the marker's title whether
+    /// `--full` is worth it, and acknowledges it otherwise.
+    @Test("a marker-only body is listed as collapsed-unexamined, not owed")
+    func markerOnlyBodyIsCollapsedUnexamined() throws {
+        let comment = RemoteComment(
+            id: "issuecomment-1", channel: .issueComment, author: "bot",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: "<details>\n<summary>Diagnostics</summary>\n\nstack trace\n</details>",
+            permalink: "https://github.com/o/r/issues/1#issuecomment-1")
+        let pr = pullRequest(issueComments: [comment])
+        let result = try Fixtures.audit().run(pr, against: nil)
+        let item = try #require(result.items.first)
+        #expect(item.state == .collapsedUnexamined)
+        #expect(!item.state.isOwed)
+        #expect(item.isListedByDefault,
+            "the flag must reach the worklist even on first sight — that is its point")
+    }
+
+    /// The flag must be dismissible, or it is undismissable noise: an
+    /// acknowledged marker-only body leaves the worklist, and a body edit
+    /// after the ack re-flags it.
+    @Test("an acknowledged collapsed body leaves the worklist until the body moves")
+    func acknowledgedCollapsedBodyDismisses() throws {
+        let body = "<details>\n<summary>Diagnostics</summary>\n\nstack trace\n</details>"
+        let comment = RemoteComment(
+            id: "issuecomment-1", channel: .issueComment, author: "bot",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: body,
+            permalink: "https://github.com/o/r/issues/1#issuecomment-1")
+        var snapshot = try Fixtures.audit().run(
+            pullRequest(issueComments: [comment]), against: nil
+        ).updatedSnapshot
+        snapshot.entries["issuecomment-1"]?.acknowledged = Acknowledgement(
+            kind: .none, pointer: "diagnostics", bodySha256AtAck: comment.bodySHA256,
+            verified: true, verificationNote: "test")
+
+        let after = try Fixtures.audit().run(
+            pullRequest(issueComments: [comment]), against: snapshot)
+        #expect(after.items.first?.state == .obligationAcknowledged,
+            "an acknowledged flag is quiet while the body is unmoved")
+
+        let edited = RemoteComment(
+            id: "issuecomment-1", channel: .issueComment, author: "bot",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: "<details>\n<summary>Diagnostics</summary>\n\nstack trace line 2\n</details>",
+            permalink: "https://github.com/o/r/issues/1#issuecomment-1")
+        let next = try Fixtures.audit().run(
+            pullRequest(issueComments: [edited]), against: snapshot)
+        #expect(next.items.first?.state == .collapsedUnexamined,
+            "a body change after acknowledgement re-flags it")
+    }
+
+    /// An announcement followed by a collapsed section is NOT informational:
+    /// stripping the marker leaves "Starting Devin Review." as a fragment that
+    /// whole-matches the fixed phrase — the same suppression the detector's
+    /// own comment warns about, recreated through the marker pass. Unexamined
+    /// content cannot be ruled a note.
+    @Test("an announcement before a collapsed section is not informational")
+    func announcementBeforeCollapsedSectionIsNotInformational() throws {
+        let comment = RemoteComment(
+            id: "issuecomment-1", channel: .issueComment, author: "bot",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: "Starting Devin Review.\n\n<details>\n<summary>Next steps</summary>\nPlease add a regression test.\n</details>",
+            permalink: "https://github.com/o/r/issues/1#issuecomment-1")
+        let result = try Fixtures.audit().run(
+            pullRequest(issueComments: [comment]), against: nil)
+        #expect(result.items.first?.state == .obligationOpen,
+            "the collapsed request is unexamined — the announcement cannot suppress it")
+    }
+
+    /// Same class through the other suppression state: a retraction in the
+    /// opening lines followed by a collapsed section cannot be verified to
+    /// cover the unread content.
+    @Test("a retraction before a collapsed section does not supersede the unread content")
+    func retractionBeforeCollapsedSectionDoesNotSupersede() throws {
+        let comment = RemoteComment(
+            id: "issuecomment-1", channel: .issueComment, author: "bot",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: "This report has been superseded\n\n<details>\n<summary>Findings</summary>\nPlease add a regression test.\n</details>",
+            permalink: "https://github.com/o/r/issues/1#issuecomment-1")
+        let result = try Fixtures.audit().run(
+            pullRequest(issueComments: [comment]), against: nil)
+        #expect(result.items.first?.state == .obligationOpen,
+            "a retraction cannot be verified against content nobody has read")
+    }
+
+    /// The worklist excerpt truncates at 150 characters; a marker inserted
+    /// past that cut leaves no visible flag at all. The terminal render must
+    /// name hidden collapsed sections explicitly.
+    @Test("a marker past the excerpt cut still prints a flag")
+    func markerBeyondExcerptCutPrintsFlag() throws {
+        let comment = RemoteComment(
+            id: "issuecomment-1", channel: .issueComment, author: "bot",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: String(repeating: "x", count: 170)
+                + "\n\n<details>\n<summary>Example</summary>\nAdditional request\n</details>",
+            permalink: "https://github.com/o/r/issues/1#issuecomment-1")
+        let pr = pullRequest(issueComments: [comment])
+        let result = try Fixtures.audit().run(pr, against: nil)
+        let output = InboundReporting.terminal(pr, result)
+        #expect(output.contains("+ [collapsed: \"Example\""),
+            "the worklist must name the hidden section, not just imply collapse somewhere")
+        #expect(output.contains("contrib show issuecomment-1 o/r --full"),
+            "the flag must carry a runnable retrieval command")
+    }
+
+    /// A marker-shaped line an author *wrote* — quoting the format, filing a
+    /// bug about it — is not a collapsed section. Only markers the details
+    /// pass actually emitted carry provenance: a literal example must not
+    /// block a retraction, and alone it is not `collapsed-unexamined`.
+    @Test("a quoted marker example is not collapsed content")
+    func quotedMarkerIsNotCollapsedContent() throws {
+        let comment = RemoteComment(
+            id: "issuecomment-1", channel: .issueComment, author: "reviewer",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: "This report has been superseded\n\n[collapsed: \"Diagnostics\" ·deadbeef]",
+            permalink: "https://github.com/o/r/issues/1#issuecomment-1")
+        let result = try Fixtures.audit().run(
+            pullRequest(issueComments: [comment]), against: nil)
+        #expect(result.items.first?.state == .superseded,
+            "nothing was collapsed — the retraction stands")
+
+        let literalOnly = RemoteComment(
+            id: "issuecomment-2", channel: .issueComment, author: "reviewer",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: "[collapsed: \"Please add a regression test\" ·deadbeef]",
+            permalink: "https://github.com/o/r/issues/1#issuecomment-2")
+        let next = try Fixtures.audit().run(
+            pullRequest(issueComments: [literalOnly]), against: nil)
+        #expect(next.items.first?.state == .obligationOpen,
+            "the author wrote that line — it is a request, listed, not a flag")
+
+        // The mirror case: a quoted marker LEADING an ask. The line is
+        // authored prose for emptiness, but a marker-shaped line is quoting
+        // the format — its embedded title is never the reviewer's own opening
+        // statement, so it cannot retract the request it rides with.
+        let quotedRetraction = RemoteComment(
+            id: "issuecomment-3", channel: .issueComment, author: "reviewer",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: "[collapsed: \"This report has been superseded\" ·deadbeef]\nPlease add a regression test.",
+            permalink: "https://github.com/o/r/issues/1#issuecomment-3")
+        let quoted = try Fixtures.audit().run(
+            pullRequest(issueComments: [quotedRetraction]), against: nil)
+        #expect(quoted.items.first?.state == .obligationOpen,
+            "the title inside a quoted marker is not the reviewer's retraction")
+
+        // And the announcement mirror: removing an authored marker line must
+        // not leave a fragment that whole-matches a bot announcement — the
+        // body is not purely the announcement while an authored line remains.
+        let announced = RemoteComment(
+            id: "issuecomment-4", channel: .issueComment, author: "reviewer",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: "Starting Devin Review.\n[collapsed: \"Please add a regression test\" ·deadbeef]",
+            permalink: "https://github.com/o/r/issues/1#issuecomment-4")
+        let announcedResult = try Fixtures.audit().run(
+            pullRequest(issueComments: [announced]), against: nil)
+        #expect(announcedResult.items.first?.state == .obligationOpen,
+            "an authored marker line means the body is more than the announcement")
+    }
+
+    /// A marker emitted inside a block a later pass strips (`<picture>` wraps
+    /// the `<details>`) leaves no flag in the prose — the content is not
+    /// retrievable, so it must not count as unexamined.
+    @Test("a marker stripped with its boilerplate block flags nothing")
+    func strippedMarkerFlagsNothing() throws {
+        let comment = RemoteComment(
+            id: "issuecomment-1", channel: .issueComment, author: "bot",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: "<picture><details>\n<summary>Logs</summary>\ntrace\n</details></picture>",
+            permalink: "https://github.com/o/r/issues/1#issuecomment-1")
+        let result = try Fixtures.audit().run(
+            pullRequest(issueComments: [comment]), against: nil)
+        #expect(result.items.first?.state == .noProse,
+            "the marker was stripped with its block — nothing survived to examine")
+    }
+
+    /// The raw-body fallback in `text.ask` must not leak into the marker-only
+    /// check: an HTML-only body whose comment happens to contain the literal
+    /// text `[collapsed:` has no collapsed section to retrieve.
+    @Test("an empty-prose body containing the marker text is not flagged")
+    func rawBodyFallbackDoesNotFlagCollapsed() throws {
+        let comment = RemoteComment(
+            id: "issuecomment-1", channel: .issueComment, author: "bot",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: "<!-- [collapsed: legacy UI] -->",
+            permalink: "https://github.com/o/r/issues/1#issuecomment-1")
+        let pr = pullRequest(issueComments: [comment])
+        let result = try Fixtures.audit().run(pr, against: nil)
+        #expect(result.items.first?.state == .noProse)
+        #expect(result.items.first?.isListedByDefault == false,
+            "no collapsed section was processed — nothing to flag")
+    }
+
+    /// Same rule as every unclosed boilerplate opener: the rest is boilerplate
+    /// from there on, not leaked.
+    @Test("an unclosed details opener swallows the rest rather than leaking it")
+    func unclosedDetailsBlock() throws {
+        let stripper = try BoilerplateStripper(
+            settings: try Configuration.builtInDefaults().inbound)
+        #expect(
+            stripper.prose(of: "Real prose.\n<details>\n<summary>x</summary>").trimmed
+                == "Real prose.")
+    }
+
+    /// Summary text arrives decorated — `**Learn more**`, emoji prefixes — so the
+    /// match is a case-insensitive substring, never exact equality.
+    @Test("decorated summary text still matches the keep list")
+    func decoratedSummaryMatches() throws {
+        let stripper = try BoilerplateStripper(
+            settings: try Configuration.builtInDefaults().inbound)
+        let body = """
+            <details>
+            <summary>🔍 **Learn more** about this finding</summary>
+
+            Kept content.
+            </details>
+            """
+        #expect(stripper.prose(of: body).contains("Kept content."))
+    }
+
+    /// The marker's hash is what keeps the annotation honest: an edit inside a
+    /// collapsed section changes the marker, `prose` moves, and the change is
+    /// not mislabeled "markup only".
+    @Test("a collapsed-section edit is not reported as markup-only")
+    func collapsedEditAnnotatesHonestly() throws {
+        func comment(_ detail: String) -> RemoteComment {
+            RemoteComment(
+                id: "issuecomment-1", channel: .issueComment, author: "reviewer",
+                viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+                body: """
+                    Please look at this.
+
+                    <details>
+                    <summary>Diagnostics</summary>
+
+                    \(detail)
+                    </details>
+                    """,
+                permalink: "https://github.com/o/r/issues/1#issuecomment-1")
+        }
+        let first = try Fixtures.audit().run(
+            pullRequest(issueComments: [comment("first stack")]), against: nil)
+        let second = try Fixtures.audit().run(
+            pullRequest(issueComments: [comment("second stack")]),
+            against: first.updatedSnapshot)
+        #expect(second.items.first?.changed?.contains("body changed") == true)
+        #expect(
+            second.items.first?.changed?.contains("prose unchanged") == false,
+            "the collapsed edit moved the marker hash — it is not markup churn")
+    }
+
     /// The finding title must lead the excerpt. An inline Devin body opens with its
     /// marker, so the raw slice showed an invisible HTML comment and pushed the title
     /// out of view.
