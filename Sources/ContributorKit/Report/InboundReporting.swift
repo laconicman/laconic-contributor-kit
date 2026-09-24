@@ -145,17 +145,20 @@ public enum InboundReporting {
         }
         // A marker-only body is flagged, not empty — name it or the
         // "collapsed content exists" promise never reaches default output.
-        // Within no-prose items a `[collapsed:` line is necessarily the
-        // generated marker: the same text from an author is substantive
-        // prose and the item would be owed, not counted here.
-        let collapsedOnly = result.items.filter {
-            $0.state == .noProse
-                && $0.text.ask.contains(BoilerplateStripper.collapsedMarkerPrefix)
+        // `text.ask` is prose-or-raw-body, so the test is shape, not prefix:
+        // every non-empty line is a generated marker. A raw body carrying the
+        // literal text `[collapsed:` inside a comment does not match.
+        let collapsedOnly = result.items.filter { item in
+            guard item.state == .noProse else { return false }
+            let lines = item.text.ask.components(separatedBy: .newlines)
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+            return !lines.isEmpty && lines.allSatisfy(BoilerplateStripper.isCollapsedMarker)
         }
         if !collapsedOnly.isEmpty {
             provenance.note(
                 "\(collapsedOnly.count) item(s) are collapsed sections only — "
-                    + "`contrib show <id> --full` retrieves them: "
+                    + "`contrib show <id> \(pr.repository) --full` retrieves them: "
                     + collapsedOnly.map(\.id).joined(separator: ", "))
         }
         // Scoped to what THIS run examined. Both of these counted over the whole

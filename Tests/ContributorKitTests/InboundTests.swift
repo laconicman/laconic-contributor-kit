@@ -477,7 +477,9 @@ struct InboundTests {
 
     /// A marker-only body is `no-prose` — not owed — but the flag must still
     /// reach the default output, or "collapsed content exists" is dead code
-    /// for the case it was built for. Provenance names the ids.
+    /// for the case it was built for. Provenance names the ids, and the
+    /// retrieval command it prints must run as written — `show` takes the
+    /// repository as a positional argument, so the note carries it.
     @Test("a marker-only body is named in provenance")
     func markerOnlyBodyIsNamedInProvenance() throws {
         let comment = RemoteComment(
@@ -493,8 +495,28 @@ struct InboundTests {
         #expect(
             provenance.notes.contains {
                 $0.contains("issuecomment-1") && $0.contains("collapsed")
+                    && $0.contains("o/r")
             },
-            "the marker's flag is named where every run prints it")
+            "the marker's flag is named where every run prints it, with a runnable command")
+    }
+
+    /// The raw-body fallback in `text.ask` must not leak into the marker-only
+    /// check: an HTML-only body whose comment happens to contain the literal
+    /// text `[collapsed:` has no collapsed section to retrieve.
+    @Test("an empty-prose body containing the marker text is not flagged")
+    func rawBodyFallbackDoesNotFlagCollapsed() throws {
+        let comment = RemoteComment(
+            id: "issuecomment-1", channel: .issueComment, author: "bot",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: "<!-- [collapsed: legacy UI] -->",
+            permalink: "https://github.com/o/r/issues/1#issuecomment-1")
+        let pr = pullRequest(issueComments: [comment])
+        let result = try Fixtures.audit().run(pr, against: nil)
+        var provenance = Provenance(command: "test")
+        InboundReporting.record(result, pr, previous: nil, into: &provenance)
+        #expect(result.items.first?.state == .noProse)
+        #expect(!provenance.notes.contains { $0.contains("collapsed sections only") },
+            "no collapsed section was processed — nothing to flag")
     }
 
     /// Same rule as every unclosed boilerplate opener: the rest is boilerplate

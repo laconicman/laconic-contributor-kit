@@ -51,7 +51,7 @@ public struct BoilerplateStripper: Sendable {
     /// prefix match would eat an author's own line that happens to open with
     /// `[collapsed:`; colliding with the generated form needs the quoted
     /// title, the separator, and the eight-char hash.
-    private static func isMarkerLine(_ line: String) -> Bool {
+    public static func isCollapsedMarker(_ line: String) -> Bool {
         guard line.hasPrefix("\(collapsedMarkerPrefix) \""),
             let separator = line.range(of: "\" ·", options: .backwards),
             line.hasSuffix("]")
@@ -67,7 +67,7 @@ public struct BoilerplateStripper: Sendable {
     public func substantiveProse(_ prose: String) -> String {
         prose.components(separatedBy: .newlines).filter { line in
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-            return !trimmed.isEmpty && !Self.isMarkerLine(trimmed)
+            return !trimmed.isEmpty && !Self.isCollapsedMarker(trimmed)
         }.joined(separator: "\n")
     }
 
