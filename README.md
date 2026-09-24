@@ -88,14 +88,16 @@ and not a judgement about your work — it is one deterministic question per ite
 
 > *Is there something here that nothing in the record answers?*
 
-Four states are owed, and five are not:
+Four states are owed, and eight are not:
 
 | Owed | Not owed |
 |---|---|
 | `open-ask` — a root ask from someone else, no reply from me | `answered-claimed` — I replied |
-| `obligation-open` — a review body or issue comment with nothing recorded | `answered-confirmed` — the asker replied after me |
-| `reopened-by-edit` — acknowledged, then the body changed | `obligation-acknowledged` — recorded, body unmoved |
-| `edited-after-my-answer` — the ask moved after I answered | `superseded` — the reviewer retracted it |
+| `obligation-open` — a review body or issue comment with nothing recorded | `answered-checked` — I recorded that my reply answers |
+| `reopened-by-edit` — acknowledged, then the body changed | `answered-confirmed` — the asker replied after me |
+| `edited-after-my-answer` — the ask moved after I answered | `obligation-acknowledged` — recorded, body unmoved |
+| | `superseded` — the reviewer retracted it |
+| | `informational` — the reviewer's own fixed announcement phrase |
 | | `no-prose` — badge markup, nothing else |
 | | `collapsed-unexamined` — only collapsed `<details>` sections; listed until acknowledged |
 

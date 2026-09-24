@@ -171,24 +171,26 @@ public struct InboundAudit: Sendable {
                     snapshot.authored.insert(comment.id)
                     continue
                 }
-                let prose = stripper.prose(of: comment.body)
+                let stripped = stripper.strip(comment.body)
+                let prose = stripped.prose
                 // Marker lines flag collapsed sections for retrieval — they are
                 // generated metadata, not the asker's words, and a marker's
                 // embedded title can neither carry an ask nor retract one, so
                 // the classifiers judge the substantive prose only. A body of
-                // only markers is not `no-prose` — that means *empty*, and this
-                // is unexamined: the flag lists until acknowledged.
+                // only emitted markers is not `no-prose` — that means *empty*,
+                // and this is unexamined: the flag lists until acknowledged.
                 let substantive = stripper.substantiveProse(prose)
                 // Suppression verdicts must not land while collapsed content is
                 // unread: `substantive` minus the markers is a fragment, and a
                 // fragment can whole-match a fixed phrase ("Starting Devin
                 // Review.") or open with a retraction while the hidden section
-                // carries the ask. Markers make the body ineligible for both
-                // suppression states.
-                let suppressible = !stripper.hasCollapsedMarkers(prose)
+                // carries the ask. The count is emission provenance — a
+                // marker-shaped line the author *wrote* collapsed nothing and
+                // must not block a retraction.
+                let suppressible = stripped.collapsedMarkers == 0
                 let state: ItemState
                 if substantive.isEmpty {
-                    if prose.isEmpty {
+                    if stripped.collapsedMarkers == 0 {
                         state = .noProse
                     } else if let ack = previous?.entries[comment.id]?.acknowledged,
                         ack.bodySha256AtAck == comment.bodySHA256

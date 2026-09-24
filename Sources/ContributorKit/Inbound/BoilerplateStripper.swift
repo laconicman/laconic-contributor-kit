@@ -32,11 +32,20 @@ public struct BoilerplateStripper: Sendable {
     }
 
     public func prose(of body: String) -> String {
+        strip(body).prose
+    }
+
+    /// Strip, and say how many collapsed-section markers the details pass
+    /// emitted. The count is provenance, not shape: a marker-shaped line the
+    /// *author* wrote — quoting the format, filing a bug about it — matches
+    /// `isCollapsedMarker` but collapsed nothing, and must not count as
+    /// unexamined content.
+    public func strip(_ body: String) -> (prose: String, collapsedMarkers: Int) {
         // The details pass runs FIRST: an earlier `<!--…-->` pass could sever a
         // summary from its content — the same pairing lesson `boilerplateBlocks`'s
         // order already encodes — and a kept section's inner comments still strip
         // normally in the generic passes that follow.
-        var text = collapseDetails(in: Substring(body))
+        var (text, markers) = collapseDetails(in: Substring(body))
         for block in blocks {
             text = Self.removeBlocks(from: text, open: block.open, close: block.close)
         }
@@ -44,17 +53,8 @@ public struct BoilerplateStripper: Sendable {
             let range = NSRange(line.startIndex..<line.endIndex, in: line)
             return !linePatterns.contains { $0.firstMatch(in: line, range: range) != nil }
         }
-        return kept.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    /// True when `prose` carries a generated marker — meaning collapsed content
-    /// exists that no classifier has read. A suppression verdict on such a body
-    /// is unverifiable: the classifiers see `substantiveProse`, and what remains
-    /// cannot rule the unread section in or out.
-    public func hasCollapsedMarkers(_ prose: String) -> Bool {
-        prose.components(separatedBy: .newlines).contains {
-            Self.isCollapsedMarker($0.trimmingCharacters(in: .whitespaces))
-        }
+        return (kept.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines),
+                markers)
     }
 
     /// The full emitted marker shape — `[collapsed: "Title" ·8hex]`. A bare
@@ -97,8 +97,9 @@ public struct BoilerplateStripper: Sendable {
     /// Unwraps `<details>` blocks whose summary matches the keep list, collapses
     /// the rest to a marker. Nested blocks inside a kept section are classified
     /// on their own summaries; inside a collapsed one they disappear with it.
-    private func collapseDetails(in text: Substring, level: Int = 0) -> String {
+    private func collapseDetails(in text: Substring, level: Int = 0) -> (String, Int) {
         var out = ""
+        var markers = 0
         var rest = text
         while let open = Self.tagOutsideComments("<details", in: rest, boundaryCheck: true) {
             guard let openTagEnd = rest[open.upperBound...].range(of: ">") else { break }
@@ -114,7 +115,7 @@ public struct BoilerplateStripper: Sendable {
                     "</details>", in: rest[cursor...], boundaryCheck: false)
                 else {
                     // Unclosed opener swallows the rest — same rule as removeBlocks.
-                    return out + rest[..<open.lowerBound]
+                    return (out + rest[..<open.lowerBound], markers)
                 }
                 if let nested = Self.tagOutsideComments(
                     "<details", in: rest[cursor..<close.lowerBound], boundaryCheck: true)
@@ -136,13 +137,16 @@ public struct BoilerplateStripper: Sendable {
             } ?? false
             out += rest[..<open.lowerBound]
             if kept, let title, level < Self.maxDetailsNesting {
-                out += title + "\n" + collapseDetails(in: content, level: level + 1)
+                let (inner, nested) = collapseDetails(in: content, level: level + 1)
+                out += title + "\n" + inner
+                markers += nested
             } else {
                 out += "\n" + Self.marker(title: title, content: inner) + "\n"
+                markers += 1
             }
             rest = rest[closeTag!.upperBound...]
         }
-        return out + rest
+        return (out + rest, markers)
     }
 
     /// Tag search that skips `<!-- … -->` spans: a tag inside a comment is not

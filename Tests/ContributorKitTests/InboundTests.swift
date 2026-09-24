@@ -580,8 +580,37 @@ struct InboundTests {
         let pr = pullRequest(issueComments: [comment])
         let result = try Fixtures.audit().run(pr, against: nil)
         let output = InboundReporting.terminal(pr, result)
-        #expect(output.contains("collapsed"),
-            "the worklist must say collapsed content exists even when the excerpt hides the marker")
+        #expect(output.contains("+ [collapsed: \"Example\""),
+            "the worklist must name the hidden section, not just imply collapse somewhere")
+        #expect(output.contains("contrib show issuecomment-1 o/r --full"),
+            "the flag must carry a runnable retrieval command")
+    }
+
+    /// A marker-shaped line an author *wrote* — quoting the format, filing a
+    /// bug about it — is not a collapsed section. Only markers the details
+    /// pass actually emitted carry provenance: a literal example must not
+    /// block a retraction, and alone it is not `collapsed-unexamined`.
+    @Test("a quoted marker example is not collapsed content")
+    func quotedMarkerIsNotCollapsedContent() throws {
+        let comment = RemoteComment(
+            id: "issuecomment-1", channel: .issueComment, author: "reviewer",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: "This report has been superseded\n\n[collapsed: \"Diagnostics\" ·deadbeef]",
+            permalink: "https://github.com/o/r/issues/1#issuecomment-1")
+        let result = try Fixtures.audit().run(
+            pullRequest(issueComments: [comment]), against: nil)
+        #expect(result.items.first?.state == .superseded,
+            "nothing was collapsed — the retraction stands")
+
+        let literalOnly = RemoteComment(
+            id: "issuecomment-2", channel: .issueComment, author: "reviewer",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: "[collapsed: \"Diagnostics\" ·deadbeef]",
+            permalink: "https://github.com/o/r/issues/1#issuecomment-2")
+        let next = try Fixtures.audit().run(
+            pullRequest(issueComments: [literalOnly]), against: nil)
+        #expect(next.items.first?.state == .noProse,
+            "a literal marker line collapses nothing — nothing is unexamined")
     }
 
     /// The raw-body fallback in `text.ask` must not leak into the marker-only
