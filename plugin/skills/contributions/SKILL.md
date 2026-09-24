@@ -31,7 +31,8 @@ table is the whole contract; there is no case where the right response is "ignor
 | `reopened-by-edit` | Acknowledged, then the body changed | Does the new text ask for something else? | Re-read and re-acknowledge, or answer. |
 | `superseded` | The reviewer retracted it | None | Confirm the replacement is in the list. |
 | `informational` | The reviewer's own fixed announcement phrase, on a channel with no reply relation | None | Nothing. Counted, not owed. |
-| `no-prose` | Badge markup, or only collapsed sections | None | Nothing. It is counted, not owed. A `[collapsed: …]` marker is the flag, not an ask. |
+| `no-prose` | Badge markup, nothing else | None | Nothing. It is counted, not owed. |
+| `collapsed-unexamined` | The body is only collapsed `<details>` sections — nobody has read them | Does the marker's title make `contrib show <id> <repo> --full` worth it, or is it diagnostics? | Look at the title. If it might carry an ask, retrieve with `--full` and answer what you find. If it is diagnostics, record that: `contrib ack <id> --with none:"<why>"`. Listed until one of those happens; never owed. |
 
 **Every state is in this table.** If `contrib` ever prints one that is not, treat it as a
 defect and check the item by hand — a state outside the table has no defined response, and
@@ -104,6 +105,8 @@ call-site links and the recommended fix live — are unwrapped already (the conf
 `keptDetailsSummaries` list). What stays collapsed is usually diagnostics; `contrib show
 <id> … --full` prints the raw body when a marker's title says otherwise, and the marker's
 hash means a collapsed-section edit reports as real prose movement, never "markup only".
+A body that is *only* markers lists as `collapsed-unexamined` — flagged, not owed — and
+stays listed until it is read or acknowledged.
 
 ## Rules, each one paid for
 

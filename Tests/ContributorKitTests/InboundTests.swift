@@ -328,9 +328,11 @@ struct InboundTests {
         #expect(before != after, "the marker's hash tracks the collapsed content")
     }
 
-    /// A body that is ONLY a collapsed section carries no ask — markers flag
-    /// retrievable content but are not themselves prose.
-    @Test("a details-only body is no-prose, not an obligation")
+    /// A body that is ONLY a collapsed section carries no readable ask —
+    /// markers flag retrievable content but are not themselves prose. It is
+    /// `collapsed-unexamined`: listed so the flag reaches the worklist, never
+    /// owed.
+    @Test("a details-only body is flagged unexamined, not an obligation")
     func detailsOnlyBodyIsNoProse() throws {
         let comment = RemoteComment(
             id: "issuecomment-1", channel: .issueComment, author: "bot",
@@ -339,7 +341,7 @@ struct InboundTests {
             permalink: "https://github.com/o/r/issues/1#issuecomment-1")
         let result = try Fixtures.audit().run(
             pullRequest(issueComments: [comment]), against: nil)
-        #expect(result.items.first?.state == .noProse)
+        #expect(result.items.first?.state == .collapsedUnexamined)
         #expect(result.owed.isEmpty)
         #expect(result.items.first?.text.ask.contains("[collapsed:") == true,
             "the flag survives — the raw body does not leak in its place")
@@ -475,13 +477,13 @@ struct InboundTests {
         #expect(stripper.substantiveProse(stripper.prose(of: body)) == body)
     }
 
-    /// A marker-only body is `no-prose` — not owed — but the flag must still
-    /// reach the default output, or "collapsed content exists" is dead code
-    /// for the case it was built for. Provenance names the ids, and the
-    /// retrieval command it prints must run as written — `show` takes the
-    /// repository as a positional argument, so the note carries it.
-    @Test("a marker-only body is named in provenance")
-    func markerOnlyBodyIsNamedInProvenance() throws {
+    /// A marker-only body is not `no-prose` — `no-prose` means *definitionally
+    /// empty*, and collapsed content is not empty, it is unexamined. It gets
+    /// its own state: listed by default so the flag reaches the worklist, but
+    /// never owed — the agent decides from the marker's title whether
+    /// `--full` is worth it, and acknowledges it otherwise.
+    @Test("a marker-only body is listed as collapsed-unexamined, not owed")
+    func markerOnlyBodyIsCollapsedUnexamined() throws {
         let comment = RemoteComment(
             id: "issuecomment-1", channel: .issueComment, author: "bot",
             viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
@@ -489,15 +491,45 @@ struct InboundTests {
             permalink: "https://github.com/o/r/issues/1#issuecomment-1")
         let pr = pullRequest(issueComments: [comment])
         let result = try Fixtures.audit().run(pr, against: nil)
-        var provenance = Provenance(command: "test")
-        InboundReporting.record(result, pr, previous: nil, into: &provenance)
-        #expect(result.items.first?.state == .noProse)
-        #expect(
-            provenance.notes.contains {
-                $0.contains("issuecomment-1") && $0.contains("collapsed")
-                    && $0.contains("o/r")
-            },
-            "the marker's flag is named where every run prints it, with a runnable command")
+        let item = try #require(result.items.first)
+        #expect(item.state == .collapsedUnexamined)
+        #expect(!item.state.isOwed)
+        #expect(item.isListedByDefault,
+            "the flag must reach the worklist even on first sight — that is its point")
+    }
+
+    /// The flag must be dismissible, or it is undismissable noise: an
+    /// acknowledged marker-only body leaves the worklist, and a body edit
+    /// after the ack re-flags it.
+    @Test("an acknowledged collapsed body leaves the worklist until the body moves")
+    func acknowledgedCollapsedBodyDismisses() throws {
+        let body = "<details>\n<summary>Diagnostics</summary>\n\nstack trace\n</details>"
+        let comment = RemoteComment(
+            id: "issuecomment-1", channel: .issueComment, author: "bot",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: body,
+            permalink: "https://github.com/o/r/issues/1#issuecomment-1")
+        var snapshot = try Fixtures.audit().run(
+            pullRequest(issueComments: [comment]), against: nil
+        ).updatedSnapshot
+        snapshot.entries["issuecomment-1"]?.acknowledged = Acknowledgement(
+            kind: .none, pointer: "diagnostics", bodySha256AtAck: comment.bodySHA256,
+            verified: true, verificationNote: "test")
+
+        let after = try Fixtures.audit().run(
+            pullRequest(issueComments: [comment]), against: snapshot)
+        #expect(after.items.first?.state == .obligationAcknowledged,
+            "an acknowledged flag is quiet while the body is unmoved")
+
+        let edited = RemoteComment(
+            id: "issuecomment-1", channel: .issueComment, author: "bot",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: "<details>\n<summary>Diagnostics</summary>\n\nstack trace line 2\n</details>",
+            permalink: "https://github.com/o/r/issues/1#issuecomment-1")
+        let next = try Fixtures.audit().run(
+            pullRequest(issueComments: [edited]), against: snapshot)
+        #expect(next.items.first?.state == .collapsedUnexamined,
+            "a body change after acknowledgement re-flags it")
     }
 
     /// The raw-body fallback in `text.ask` must not leak into the marker-only
@@ -512,10 +544,8 @@ struct InboundTests {
             permalink: "https://github.com/o/r/issues/1#issuecomment-1")
         let pr = pullRequest(issueComments: [comment])
         let result = try Fixtures.audit().run(pr, against: nil)
-        var provenance = Provenance(command: "test")
-        InboundReporting.record(result, pr, previous: nil, into: &provenance)
         #expect(result.items.first?.state == .noProse)
-        #expect(!provenance.notes.contains { $0.contains("collapsed sections only") },
+        #expect(result.items.first?.isListedByDefault == false,
             "no collapsed section was processed — nothing to flag")
     }
 

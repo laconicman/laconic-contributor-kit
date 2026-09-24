@@ -143,24 +143,7 @@ public enum InboundReporting {
                 provenance.note("\(count) item(s) \(state.rawValue) — counted, not owed")
             }
         }
-        // A marker-only body is flagged, not empty — name it or the
-        // "collapsed content exists" promise never reaches default output.
-        // `text.ask` is prose-or-raw-body, so the test is shape, not prefix:
-        // every non-empty line is a generated marker. A raw body carrying the
-        // literal text `[collapsed:` inside a comment does not match.
-        let collapsedOnly = result.items.filter { item in
-            guard item.state == .noProse else { return false }
-            let lines = item.text.ask.components(separatedBy: .newlines)
-                .map { $0.trimmingCharacters(in: .whitespaces) }
-                .filter { !$0.isEmpty }
-            return !lines.isEmpty && lines.allSatisfy(BoilerplateStripper.isCollapsedMarker)
-        }
-        if !collapsedOnly.isEmpty {
-            provenance.note(
-                "\(collapsedOnly.count) item(s) are collapsed sections only — "
-                    + "`contrib show <id> \(pr.repository) --full` retrieves them: "
-                    + collapsedOnly.map(\.id).joined(separator: ", "))
-        }
+
         // Scoped to what THIS run examined. Both of these counted over the whole
         // repository, which is a different question: sweeping five issues in one repo,
         // only the first announced a baseline while each of the others was also its own
@@ -233,7 +216,7 @@ public enum InboundReporting {
         if let reply = item.text.reply {
             lines.append("\(indent)  my reply: \(oneLine(reply))")
         }
-        if item.state.isOwed || item.state.needsLook {
+        if item.state.isOwed || item.state.needsLook || item.state == .collapsedUnexamined {
             lines.append("\(indent)  → \(item.question)")
             if item.kind != .inlineThread || item.state.needsLook {
                 lines.append("\(indent)    contrib ack \(item.id) --with none:\"…\"")

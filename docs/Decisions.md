@@ -53,11 +53,14 @@ stripping. Reported and counted; not owed.
 ### Empty review bodies
 
 Not an edge case — in one observed round, four of six review bodies were badge markup
-only. HTML comments, `<picture>` and `<details>` blocks, and lone image or badge lines
-are stripped first; a body with no prose left is `no-prose`.
+only. HTML comments, `<picture>` blocks, and lone image or badge lines are stripped
+first; a body with no prose left is `no-prose`.
 
 **Counted in the examined total, excluded from the worklist.** The argument for noise
-over silence does not extend to noise that is definitionally empty.
+over silence does not extend to noise that is definitionally empty — but a body that
+strips to only `[collapsed: …]` markers is not empty, it is *unexamined*: nobody can
+tell diagnostics from a hidden ask without reading the section. Those get their own
+state, `collapsed-unexamined` — listed until acknowledged, never owed.
 
 ### Authorship filtering
 

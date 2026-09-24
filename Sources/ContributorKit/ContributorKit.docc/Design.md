@@ -158,7 +158,9 @@ Two lessons the review rounds on #5 paid for, recorded here because they general
   a retraction cannot retract the body it rides with; a `<summary>` titles only its
   own `<details>`, so the title search stops at the first nested opener rather than
   borrowing a child's legend; and kept-section recursion is capped, because nested
-  kept summaries are constructible inside one comment body.
+  kept summaries are constructible inside one comment body. A body of *only* markers
+  is `collapsed-unexamined`, not `no-prose` — unexamined is not empty, so the flag
+  lists until acknowledged rather than vanishing into the examined count.
 
 And one clarification worth stating plainly: a reviewer's collapsible section —
 "Learn more", fix instructions, diagnostics — is part of the comment `body`, not a

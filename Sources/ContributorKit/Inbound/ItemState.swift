@@ -62,12 +62,19 @@ public enum ItemState: String, Codable, Sendable, CaseIterable {
     /// noise over silence does not extend to noise that is *definitionally* empty.
     case noProse = "no-prose"
 
+    /// Nothing but `[collapsed: "Title" ·hash]` markers once boilerplate is stripped:
+    /// the body is one or more `<details>` sections and nothing else. Not empty —
+    /// *unexamined*. Nobody can tell diagnostics from a hidden ask without reading the
+    /// section, and a state that cannot be told apart is not owed: it is flagged —
+    /// listed by default until acknowledged, never counted as an obligation.
+    case collapsedUnexamined = "collapsed-unexamined"
+
     /// Does this item belong on the worklist?
     public var isOwed: Bool {
         switch self {
         case .openAsk, .obligationOpen, .reopenedByEdit, .editedAfterMyAnswer: return true
         case .answeredClaimed, .answeredChecked, .answeredConfirmed, .obligationAcknowledged,
-            .superseded, .noProse, .informational:
+            .superseded, .noProse, .informational, .collapsedUnexamined:
             return false
         }
     }
@@ -106,6 +113,8 @@ public enum ItemState: String, Codable, Sendable, CaseIterable {
             return "None. The reviewer marked this one a note, not an ask."
         case .noProse:
             return "None. No prose after stripping boilerplate."
+        case .collapsedUnexamined:
+            return "Collapsed content nobody has read — does the marker's title make `contrib show <id> <repo> --full` worth it, or is it diagnostics to acknowledge?"
         }
     }
 }

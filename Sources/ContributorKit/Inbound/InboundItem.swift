@@ -66,6 +66,10 @@ public struct InboundItem: Codable, Sendable {
         guard isVisible else { return false }
         if state.isOwed { return true }
         if state.needsLook && !subjectClosed { return true }
+        // Unexamined is not empty: the flag lists until someone acknowledges it —
+        // the whole point is that a collapsed section cannot be told from a hidden
+        // ask without looking, so looking (or declining to) must be a recorded act.
+        if state == .collapsedUnexamined { return true }
         // Real movement only. "New since the last run" is a baseline artifact, and
         // treating it as movement made the first run on a PR print every badge-only body
         // it had ever received — 49 of them on one real PR, none of them actionable.
