@@ -162,6 +162,31 @@ struct ContractTests {
             "comment:https://github.com/other-org/other-repo/issues/3", bodySha256: "h")
         #expect(foreign.pointer == "https://github.com/other-org/other-repo/issues/3")
         #expect(!foreign.verified)
+
+        // The whole path must be the subject's, not merely end in it: a blob URL in
+        // another repository whose file path happens to be `o/r/issues/3` names a
+        // file, not issue 3 here (review round on 80f0113).
+        let blobElsewhere = try await parser.parse(
+            "comment:https://github.com/other/repo/blob/main/o/r/issues/3", bodySha256: "h")
+        #expect(blobElsewhere.pointer == "https://github.com/other/repo/blob/main/o/r/issues/3")
+        #expect(!blobElsewhere.verified)
+
+        // A non-subject page under the right repository is not the body either.
+        let files = try await parser.parse(
+            "comment:https://github.com/o/r/pull/7/files", bodySha256: "h")
+        #expect(files.pointer == "https://github.com/o/r/pull/7/files")
+        #expect(!files.verified)
+
+        // A bare path is not a URL; only an absolute one names a subject.
+        let bare = try await parser.parse("comment:o/r/issues/3", bodySha256: "h")
+        #expect(bare.pointer == "o/r/issues/3")
+        #expect(!bare.verified)
+
+        // Enterprise hosts and a trailing slash are still the same subject.
+        let enterprise = try await parser.parse(
+            "comment:https://git.example.com/O/R/issues/3/", bodySha256: "h")
+        #expect(enterprise.pointer == "issue-3")
+        #expect(enterprise.verified)
     }
 
     /// A commit sha with no repository to resolve it against is recorded **unverified**

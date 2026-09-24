@@ -43,15 +43,10 @@ public struct AcknowledgementParser: Sendable {
             // the subject is mine. The URL must name THIS repository: `authored` is
             // repo-scoped, so a foreign `…/issues/3` resolving to `issue-3` would
             // verify a pointer at a different repository entirely.
-            if !value.contains("#"), let repository {
-                let tail = Array(value.split(separator: "/").suffix(4))
-                if tail.count == 4,
-                    "\(tail[0])/\(tail[1])".caseInsensitiveCompare(repository) == .orderedSame,
-                    let number = Int(tail[3])
-                {
-                    if tail[2] == "issues" { id = "issue-\(number)" }
-                    if tail[2] == "pull" || tail[2] == "pulls" { id = "pullrequest-\(number)" }
-                }
+            if !value.contains("#"), let repository,
+                let subjectID = Self.subjectBodyID(of: value, in: repository)
+            {
+                id = subjectID
             }
             let known = knownCommentIDs.contains(id)
             return Acknowledgement(
@@ -79,6 +74,29 @@ public struct AcknowledgementParser: Sendable {
                 verificationNote: "explicit no-action, reason recorded")
         default:
             throw AcknowledgementError.unknownKind(scheme)
+        }
+    }
+
+    /// The synthesized body id a subject URL names, or `nil` when the value is not
+    /// exactly `<scheme>://<host>/<owner>/<repo>/(issues|pull|pulls)/<number>` for
+    /// `repository`. The whole path is matched, not a suffix of it: a longer path
+    /// that merely ends in `o/r/issues/3` — a `blob` URL elsewhere, say — names a
+    /// different resource. The host is not checked because `owner/repo` says
+    /// nothing about it (github.com or an enterprise host).
+    static func subjectBodyID(of value: String, in repository: String) -> String? {
+        guard let url = URL(string: value),
+            let scheme = url.scheme?.lowercased(), scheme == "https" || scheme == "http",
+            url.host != nil
+        else { return nil }
+        let segments = url.path.split(separator: "/", omittingEmptySubsequences: true)
+        guard segments.count == 4,
+            "\(segments[0])/\(segments[1])".caseInsensitiveCompare(repository) == .orderedSame,
+            segments[3].allSatisfy(\.isNumber), let number = Int(segments[3])
+        else { return nil }
+        switch segments[2] {
+        case "issues": return "issue-\(number)"
+        case "pull", "pulls": return "pullrequest-\(number)"
+        default: return nil
         }
     }
 }
