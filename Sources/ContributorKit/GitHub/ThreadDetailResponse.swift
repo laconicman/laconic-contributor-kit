@@ -32,9 +32,52 @@ struct ThreadDetailResponse: Decodable {
         var pullRequestState: String?
         var closed: Bool?
         var merged: Bool?
+        var body: String?
+        var author: Actor?
+        var viewerDidAuthor: Bool?
+        var createdAt: String?
+        var updatedAt: String?
+        var lastEditedAt: String?
         var comments: Connection<CommentNode>?
         var reviews: Connection<CommentNode>?
         var reviewThreads: Connection<ThreadNode>?
+
+        /// The subject's own body as a comment-shaped item on the issue-comments
+        /// channel.
+        ///
+        /// For an issue the body IS the ask, and a pull request's description can
+        /// carry one too — the fetch unions both through `issueOrPullRequest`, so they
+        /// cost the same field. Synthesized rather than modeled as a fourth channel:
+        /// GitHub's own timeline treats the body as the thread's first entry, and the
+        /// obligation machinery — strip, hash, acknowledge, reopen on edit — then
+        /// works unchanged.
+        ///
+        /// `nil` when there is nothing to audit: an empty body cannot be an ask and a
+        /// permanent `no-prose` row per subject is noise nobody reads, and an unknown
+        /// typename must not fabricate an item.
+        func bodyComment() -> RemoteComment? {
+            guard let body, !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                let number, let url,
+                let prefix =
+                    __typename == "Issue" ? "issue"
+                    : __typename == "PullRequest" ? "pullrequest" : nil
+            else { return nil }
+            return RemoteComment(
+                // Synthesized, not a permalink fragment — the only id in the kit that
+                // is not one. It cannot shadow a real one: GitHub's own fragments are
+                // `issuecomment-*`, `pullrequestreview-*` and `discussion_r*`, and
+                // `Snapshot.entries` is keyed per repository, where subject numbers
+                // are unique — the same string can never name two things.
+                id: "\(prefix)-\(number)", channel: .issueComment,
+                // Same deleted-account rule as `remoteComment`: `ghost` keeps the
+                // item in the list rather than dropping it.
+                author: author?.login ?? "ghost",
+                viewerDidAuthor: viewerDidAuthor ?? false,
+                createdAt: GitHubTime.parse(createdAt) ?? .distantPast,
+                updatedAt: GitHubTime.parse(updatedAt),
+                lastEditedAt: GitHubTime.parse(lastEditedAt),
+                body: body, bodyIsExcerpt: false, permalink: url)
+        }
     }
 
     struct Connection<Node: Decodable>: Decodable {

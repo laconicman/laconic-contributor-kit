@@ -211,6 +211,105 @@ struct ContractTests {
         #expect(comment.id == "discussion_r1")
     }
 
+    // MARK: - The subject body, issue #3 follow-up
+
+    /// For an issue the BODY is the ask, and the fetch unions issue and pull request
+    /// through `issueOrPullRequest` — so both carry it for one field each. Synthesized
+    /// as a comment-shaped item on the issue-comments channel: GitHub's own timeline
+    /// treats the body as the thread's first entry, and the obligation machinery —
+    /// strip, hash, acknowledge, reopen on edit — then works unchanged.
+    @Test("the subject body decodes into an issue-comments item")
+    func subjectBodyDecodes() throws {
+        let payload = """
+            {"data":{"repository":{"issueOrPullRequest":{
+              "__typename":"Issue","number":3,"title":"t",
+              "url":"https://github.com/o/r/issues/3","issueState":"OPEN",
+              "body":"Please add a regression test.",
+              "author":{"login":"maintainer"},"viewerDidAuthor":false,
+              "createdAt":"2026-09-20T08:00:00Z","updatedAt":"2026-09-21T09:00:00Z",
+              "lastEditedAt":"2026-09-21T09:00:00Z",
+              "comments":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}}
+            """
+        let subject = try #require(
+            JSONDecoder().decode(ThreadDetailResponse.self, from: Data(payload.utf8))
+                .data?.repository?.issueOrPullRequest)
+        let body = try #require(subject.bodyComment())
+        #expect(body.id == "issue-3")
+        #expect(body.channel == .issueComment)
+        #expect(body.permalink == "https://github.com/o/r/issues/3")
+        #expect(body.author == "maintainer")
+        #expect(body.body == "Please add a regression test.")
+        #expect(body.lastEditedAt != nil)
+        #expect(!body.viewerDidAuthor)
+    }
+
+    /// A pull request gets the same treatment for the same field — its description
+    /// can carry asks too, and on one's own PRs `viewerDidAuthor` filters it for free.
+    @Test("the pull request body decodes into an issue-comments item")
+    func pullRequestBodyDecodes() throws {
+        let payload = """
+            {"data":{"repository":{"issueOrPullRequest":{
+              "__typename":"PullRequest","number":7,"title":"t",
+              "url":"https://github.com/o/r/pull/7","pullRequestState":"OPEN",
+              "body":"## What\\n\\nThe description.",
+              "author":{"login":"laconicman"},"viewerDidAuthor":true,
+              "createdAt":"2026-09-20T08:00:00Z",
+              "comments":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}}
+            """
+        let subject = try #require(
+            JSONDecoder().decode(ThreadDetailResponse.self, from: Data(payload.utf8))
+                .data?.repository?.issueOrPullRequest)
+        let body = try #require(subject.bodyComment())
+        #expect(body.id == "pullrequest-7")
+        #expect(body.channel == .issueComment)
+        #expect(body.viewerDidAuthor)
+    }
+
+    /// An empty body cannot be an ask, and a permanent `no-prose` row per issue is
+    /// noise nobody reads — synthesis skips it. An unknown typename must not
+    /// fabricate an item either.
+    @Test("an empty or unknown subject body synthesizes nothing")
+    func emptySubjectBodyIsNotAnItem() throws {
+        for (typename, body) in [("Issue", "   "), ("PullRequest", ""), ("Discussion", "x")] {
+            let payload = """
+                {"data":{"repository":{"issueOrPullRequest":{
+                  "__typename":"\(typename)","number":1,"title":"t","url":"u",
+                  "issueState":"OPEN","body":"\(body)",
+                  "comments":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}}
+                """
+            let subject = try #require(
+                JSONDecoder().decode(ThreadDetailResponse.self, from: Data(payload.utf8))
+                    .data?.repository?.issueOrPullRequest)
+            #expect(subject.bodyComment() == nil, "\(typename) body \(body.debugDescription)")
+        }
+    }
+
+    /// The strongest seam test: a recorded `gh api graphql` response must surface the
+    /// body as the FIRST issue-comments item — the synthesis existing is not the same
+    /// as the client inserting it.
+    @Test("the client prepends the subject body to issue comments")
+    func clientInsertsTheSubjectBody() async throws {
+        let payload = """
+            {"data":{"repository":{"issueOrPullRequest":{
+              "__typename":"Issue","number":3,"title":"t",
+              "url":"https://github.com/o/r/issues/3","issueState":"OPEN",
+              "body":"The ask itself.",
+              "author":{"login":"maintainer"},"viewerDidAuthor":false,
+              "createdAt":"2026-09-20T08:00:00Z",
+              "comments":{"pageInfo":{"hasNextPage":false,"endCursor":"c1"},"nodes":[
+                {"body":"a comment","url":"https://github.com/o/r/issues/3#issuecomment-9",
+                 "createdAt":"2026-09-21T08:00:00Z","viewerDidAuthor":false,
+                 "author":{"login":"maintainer"}}]}}},
+             "rateLimit":{"cost":1,"remaining":4999,"resetAt":"x"}}}
+            """
+        let runner = RecordedCommandRunner([
+            .init(match: ["api", "graphql"], stdout: Data(payload.utf8))
+        ])
+        let client = GHCommandClient(runner: runner, queryPath: "unused")
+        let fetched = try await client.threads(repository: "o/r", number: 3)
+        #expect(fetched.issueComments.map(\.id) == ["issue-3", "issuecomment-9"])
+    }
+
     // MARK: - Snapshot
 
     @Test("a snapshot round-trips, and a future schema is refused rather than guessed at")

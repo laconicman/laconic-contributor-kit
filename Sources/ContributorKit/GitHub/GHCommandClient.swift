@@ -116,6 +116,14 @@ public struct GHCommandClient: GitHubClient {
             }
         }
 
+        // The subject's own body rides the issue-comments channel, first: for an
+        // issue it IS the ask, and a pull request's description can carry one.
+        // `viewerDidAuthor` filters the contributor's own for free — the synthesis
+        // returns nil for an empty body, which cannot be an ask.
+        if let body = meta?.bodyComment() {
+            issueComments.insert(body, at: 0)
+        }
+
         return PullRequestThreads(
             repository: repository, number: number,
             title: meta?.title ?? "", url: meta?.url ?? "",

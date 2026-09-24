@@ -9,7 +9,8 @@ Priority-ordered. Rationale lives in <doc:Design>; costs and discharges in <doc:
 ## Now — shipped and used in anger
 
 - **`contrib in`** — the three-channel audit, obligations, transitions, the re-read list,
-  and the review horizon. Run across three independent trials on `pjsip/pjproject`,
+  and the review horizon. The subject's own body rides the issue-comments channel — for
+  an issue it is the primary ask. Run across three independent trials on `pjsip/pjproject`,
   `laconicman/telegram-kb`, `laconicman/YDelivery`, `laconicman/YandexDeliveryExpress` and
   `anthropics/claude-code`, on both pull requests and issues.
 - **`contrib ack`** — recorded acknowledgement by comment, commit, PR body or an explicit

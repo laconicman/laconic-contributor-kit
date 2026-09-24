@@ -15,6 +15,11 @@
 # already says which are ours without a login round-trip. Capability A filters
 # client-side. One query now serves both directions.
 #
+# The subject's own `body` is fetched too: for an issue it IS the ask, and a pull
+# request's description can carry one. It rides the issue-comments channel as a
+# synthesized item — GitHub's own timeline treats the body as the thread's first
+# entry, and the obligation machinery then works on it unchanged.
+#
 # Validated 2026-09-05 against octokit/graphql-schema@main with graphql-js;
 # re-validated 2026-09-07 after the edit-tracking fields were added.
 # Note `issueState`/`pullRequestState`: Issue.state and PullRequest.state return
@@ -38,6 +43,7 @@ query ThreadDetail(
         issueState: state
         closed
         closedAt
+        body author { login } viewerDidAuthor createdAt updatedAt lastEditedAt
         comments(first: 100, after: $commentCursor) {
           pageInfo { hasNextPage endCursor }
           nodes { body url createdAt updatedAt lastEditedAt editor { login } viewerDidAuthor author { login } }
@@ -53,6 +59,7 @@ query ThreadDetail(
         merged
         mergedAt
         isDraft
+        body author { login } viewerDidAuthor createdAt updatedAt lastEditedAt
         comments(first: 100, after: $commentCursor) {
           pageInfo { hasNextPage endCursor }
           nodes { body url createdAt updatedAt lastEditedAt editor { login } viewerDidAuthor author { login } }
