@@ -474,7 +474,9 @@ struct InboundTests {
         let stripper = try BoilerplateStripper(
             settings: try Configuration.builtInDefaults().inbound)
         let body = "[collapsed: legacy UI] must display the full label."
-        #expect(stripper.substantiveProse(stripper.prose(of: body)) == body)
+        let stripped = stripper.strip(body)
+        #expect(stripper.substantiveProse(stripped.prose, markers: stripped.collapsedMarkers)
+            == body)
     }
 
     /// A marker-only body is not `no-prose` — `no-prose` means *definitionally
@@ -605,12 +607,28 @@ struct InboundTests {
         let literalOnly = RemoteComment(
             id: "issuecomment-2", channel: .issueComment, author: "reviewer",
             viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
-            body: "[collapsed: \"Diagnostics\" ·deadbeef]",
+            body: "[collapsed: \"Please add a regression test\" ·deadbeef]",
             permalink: "https://github.com/o/r/issues/1#issuecomment-2")
         let next = try Fixtures.audit().run(
             pullRequest(issueComments: [literalOnly]), against: nil)
-        #expect(next.items.first?.state == .noProse,
-            "a literal marker line collapses nothing — nothing is unexamined")
+        #expect(next.items.first?.state == .obligationOpen,
+            "the author wrote that line — it is a request, listed, not a flag")
+    }
+
+    /// A marker emitted inside a block a later pass strips (`<picture>` wraps
+    /// the `<details>`) leaves no flag in the prose — the content is not
+    /// retrievable, so it must not count as unexamined.
+    @Test("a marker stripped with its boilerplate block flags nothing")
+    func strippedMarkerFlagsNothing() throws {
+        let comment = RemoteComment(
+            id: "issuecomment-1", channel: .issueComment, author: "bot",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: "<picture><details>\n<summary>Logs</summary>\ntrace\n</details></picture>",
+            permalink: "https://github.com/o/r/issues/1#issuecomment-1")
+        let result = try Fixtures.audit().run(
+            pullRequest(issueComments: [comment]), against: nil)
+        #expect(result.items.first?.state == .noProse,
+            "the marker was stripped with its block — nothing survived to examine")
     }
 
     /// The raw-body fallback in `text.ask` must not leak into the marker-only

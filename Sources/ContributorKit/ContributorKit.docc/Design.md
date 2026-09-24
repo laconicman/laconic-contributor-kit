@@ -161,9 +161,11 @@ Two lessons the review rounds on #5 paid for, recorded here because they general
   kept summaries are constructible inside one comment body. A body of *only* markers
   is `collapsed-unexamined`, not `no-prose` — unexamined is not empty, so the flag
   lists until acknowledged rather than vanishing into the examined count. And marker
-  presence is *provenance, not shape*: `strip(_:)` counts what the details pass
-  emitted, because a marker-shaped line an author wrote — quoting the format — must
-  neither flag unexamined content nor block a suppression verdict.
+  presence is *provenance, not shape*: `strip(_:)` returns the markers the details
+  pass emitted that survived the later boilerplate passes, so a marker-shaped line an
+  author wrote — quoting the format — stays prose, a marker erased with its block
+  flags nothing, and only real emissions flag unexamined content or block a
+  suppression verdict.
 
 And one clarification worth stating plainly: a reviewer's collapsible section —
 "Learn more", fix instructions, diagnostics — is part of the comment `body`, not a

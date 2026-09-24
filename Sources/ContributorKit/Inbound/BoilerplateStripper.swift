@@ -35,17 +35,18 @@ public struct BoilerplateStripper: Sendable {
         strip(body).prose
     }
 
-    /// Strip, and say how many collapsed-section markers the details pass
-    /// emitted. The count is provenance, not shape: a marker-shaped line the
-    /// *author* wrote — quoting the format, filing a bug about it — matches
-    /// `isCollapsedMarker` but collapsed nothing, and must not count as
-    /// unexamined content.
-    public func strip(_ body: String) -> (prose: String, collapsedMarkers: Int) {
+    /// Strip, and return the marker lines the details pass emitted AND that
+    /// survive into the output. The set is provenance, not shape: a
+    /// marker-shaped line the *author* wrote — quoting the format, filing a
+    /// bug about it — matches `isCollapsedMarker` but collapsed nothing, and a
+    /// marker a later boilerplate pass erased flags content nobody can
+    /// retrieve anyway. Neither counts as unexamined.
+    public func strip(_ body: String) -> (prose: String, collapsedMarkers: Set<String>) {
         // The details pass runs FIRST: an earlier `<!--…-->` pass could sever a
         // summary from its content — the same pairing lesson `boilerplateBlocks`'s
         // order already encodes — and a kept section's inner comments still strip
         // normally in the generic passes that follow.
-        var (text, markers) = collapseDetails(in: Substring(body))
+        var (text, emitted) = collapseDetails(in: Substring(body))
         for block in blocks {
             text = Self.removeBlocks(from: text, open: block.open, close: block.close)
         }
@@ -53,8 +54,10 @@ public struct BoilerplateStripper: Sendable {
             let range = NSRange(line.startIndex..<line.endIndex, in: line)
             return !linePatterns.contains { $0.firstMatch(in: line, range: range) != nil }
         }
+        let surviving = emitted.intersection(
+            Set(kept.map { $0.trimmingCharacters(in: .whitespaces) }))
         return (kept.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines),
-                markers)
+                surviving)
     }
 
     /// The full emitted marker shape — `[collapsed: "Title" ·8hex]`. A bare
@@ -70,22 +73,18 @@ public struct BoilerplateStripper: Sendable {
         return hash.count == 8 && hash.allSatisfy(\.isHexDigit)
     }
 
-    /// `prose` minus the generated marker lines — the asker's own text, which
-    /// is what supersession and informational phrases are meant to match. A
-    /// marker's embedded title is not the asker's words: a collapsed section
-    /// titled like a retraction must not retract the body it rides with.
-    public func substantiveProse(_ prose: String) -> String {
+    /// `prose` minus the lines the details pass emitted — the asker's own
+    /// text, which is what supersession and informational phrases are meant to
+    /// match. Provenance, not shape: a marker's embedded title is not the
+    /// asker's words, so a collapsed section titled like a retraction must not
+    /// retract the body it rides with; and a marker-shaped line the author
+    /// *wrote* is not in `markers`, so a request written in marker form stays
+    /// prose.
+    public func substantiveProse(_ prose: String, markers: Set<String>) -> String {
         prose.components(separatedBy: .newlines).filter { line in
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-            return !trimmed.isEmpty && !Self.isCollapsedMarker(trimmed)
+            return !trimmed.isEmpty && !markers.contains(trimmed)
         }.joined(separator: "\n")
-    }
-
-    /// Whether `prose` output carries anything but marker lines. A marker says
-    /// "collapsed content exists" — it flags a section for `show --full`, it is
-    /// not an ask, and a body of only markers is `no-prose` like any empty one.
-    public func hasSubstantiveProse(_ prose: String) -> Bool {
-        !substantiveProse(prose).isEmpty
     }
 
     /// Kept sections recurse; the cap keeps a deliberately deep body — nested
@@ -97,9 +96,11 @@ public struct BoilerplateStripper: Sendable {
     /// Unwraps `<details>` blocks whose summary matches the keep list, collapses
     /// the rest to a marker. Nested blocks inside a kept section are classified
     /// on their own summaries; inside a collapsed one they disappear with it.
-    private func collapseDetails(in text: Substring, level: Int = 0) -> (String, Int) {
+    private func collapseDetails(in text: Substring, level: Int = 0)
+        -> (String, Set<String>)
+    {
         var out = ""
-        var markers = 0
+        var markers = Set<String>()
         var rest = text
         while let open = Self.tagOutsideComments("<details", in: rest, boundaryCheck: true) {
             guard let openTagEnd = rest[open.upperBound...].range(of: ">") else { break }
@@ -139,10 +140,11 @@ public struct BoilerplateStripper: Sendable {
             if kept, let title, level < Self.maxDetailsNesting {
                 let (inner, nested) = collapseDetails(in: content, level: level + 1)
                 out += title + "\n" + inner
-                markers += nested
+                markers.formUnion(nested)
             } else {
-                out += "\n" + Self.marker(title: title, content: inner) + "\n"
-                markers += 1
+                let marker = Self.marker(title: title, content: inner)
+                out += "\n" + marker + "\n"
+                markers.insert(marker)
             }
             rest = rest[closeTag!.upperBound...]
         }
