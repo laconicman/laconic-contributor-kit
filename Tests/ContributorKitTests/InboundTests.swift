@@ -635,6 +635,52 @@ struct InboundTests {
         #expect(reopened.items.first?.changed?.contains("markup only") == true)
     }
 
+    /// The "prose changed vs markup only" distinction reaches inline threads too — an
+    /// `edited-after-my-answer` whose whole prose moved and one whose markup moved are
+    /// different urgencies, and the issue-3 report asked for the note review bodies
+    /// already carried. The item still re-opens (TD-4's cheap direction); the
+    /// contributor is told which kind of edit it was.
+    @Test("a markup-only edit on an inline thread says so, and still re-opens it")
+    func markupOnlyInlineEditIsNamed() throws {
+        var root = comment("discussion_r1", "reviewer", at: 0)
+        let reply = comment("discussion_r2", "laconicman", at: 10)
+        let first = try Fixtures.audit().run(
+            pullRequest(threads: [RemoteThread(comments: [root, reply])]), against: nil)
+
+        root.body += "\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://x\"></a>\n"
+            + "<!-- devin-review-badge-end -->"
+        root.lastEditedAt = Date(timeIntervalSince1970: 20)
+        let second = try Fixtures.audit().run(
+            pullRequest(threads: [RemoteThread(comments: [root, reply])]),
+            against: first.updatedSnapshot)
+
+        let item = try #require(second.items.first)
+        #expect(item.state == .editedAfterMyAnswer)
+        #expect(item.state.isOwed)
+        #expect(item.changed?.contains("markup only, prose unchanged") == true)
+    }
+
+    /// A `lastEditedAt` bump with a byte-identical body is the strongest form of the
+    /// same signal: nothing moved at all. It carried no annotation — the `changed`
+    /// line read as a plain `answered-claimed → edited-after-my-answer` transition,
+    /// which is the urgent-looking version of a no-op.
+    @Test("an edit that moved only the timestamp says the body is unchanged")
+    func timestampOnlyEditIsNamed() throws {
+        var root = comment("discussion_r1", "reviewer", at: 0)
+        let reply = comment("discussion_r2", "laconicman", at: 10)
+        let first = try Fixtures.audit().run(
+            pullRequest(threads: [RemoteThread(comments: [root, reply])]), against: nil)
+
+        root.lastEditedAt = Date(timeIntervalSince1970: 20) // body identical
+        let second = try Fixtures.audit().run(
+            pullRequest(threads: [RemoteThread(comments: [root, reply])]),
+            against: first.updatedSnapshot)
+
+        let item = try #require(second.items.first)
+        #expect(item.state == .editedAfterMyAnswer)
+        #expect(item.changed?.contains("body unchanged") == true)
+    }
+
     /// **The baseline run lists what is actionable, not everything it has ever seen.**
     /// Treating "new since the last run" as movement made the first run on a real PR print
     /// 49 badge-only review bodies, none of them actionable. They stay counted.

@@ -13,7 +13,11 @@ Priority-ordered. Rationale lives in <doc:Design>; costs and discharges in <doc:
   `laconicman/telegram-kb`, `laconicman/YDelivery`, `laconicman/YandexDeliveryExpress` and
   `anthropics/claude-code`, on both pull requests and issues.
 - **`contrib ack`** — recorded acknowledgement by comment, commit, PR body or an explicit
-  no-action with a reason.
+  no-action with a reason. `--refresh` re-fetches the item's subject and rewrites the
+  snapshot first, for the reply-then-acknowledge flow.
+- **`contrib show`** — one item in full: the ask, your reply, the recorded
+  acknowledgement, and a line diff against what the snapshot last saw. Writes only the
+  shown entry, so the next `contrib in` no longer reports already-read changes as new.
 - **`contrib loc`** — `cloc` orchestration, file roles, per-commit walk, JSONL ledger.
   Offline, and usable on a repository with no GitHub remote at all.
 

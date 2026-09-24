@@ -35,6 +35,15 @@ struct AckCommand: AsyncParsableCommand {
     @Argument(help: "<owner>/<repo>")
     var repository: String
 
+    @Option(name: .long, help: "Pull request or issue number — checked against the item's recorded subject, and required by --refresh when it has none.")
+    var pr: Int?
+
+    @Flag(name: .long, help: "Re-fetch the item's subject and update the snapshot before writing — reply → `in` → ack in one step.")
+    var refresh = false
+
+    @Option(name: .long, help: "My login. Only needed when the API does not report authorship.")
+    var me: String?
+
     @Option(name: .long, help: "Repository path for resolving a commit sha.")
     var repo: String = "."
 
@@ -57,15 +66,75 @@ struct AckCommand: AsyncParsableCommand {
         guard var snapshot = try store.load(repository: repository) else {
             throw SnapshotError.unknownItem(id)
         }
-        guard let entry = snapshot.entries[id] else {
+        guard var entry = snapshot.entries[id] else {
             throw SnapshotError.unknownItem(id)
         }
-        if let refusal = AcknowledgementEligibility.refusal(for: entry, id: id) {
-            throw AckError.refused(refusal)
+        // Accepted for symmetry with `contrib in`, and validated rather than ignored:
+        // a number that disagrees with the recorded subject almost always means the id
+        // was typed for one pull request and --pr for another.
+        if let pr, let subject = entry.subject,
+            !entry.isFromSubject(repository: repository, pr: pr)
+        {
+            throw AckError.refused("\(id) belongs to \(subject), not \(repository)#\(pr)")
         }
 
         let workingCopy = URL(fileURLWithPath: repo).standardizedFileURL
         let runner = CountingCommandRunner(SystemCommandRunner())
+        // The target repository's rules, not the one this shell happens to sit in.
+        let configuration = try Configuration.load(directory: workingCopy)
+
+        if refresh {
+            let subject =
+                entry.subject ?? pr.map { Subject.format(repository: repository, number: $0) }
+            guard let subject,
+                let number = Subject.number(in: subject, repository: repository)
+            else {
+                throw AckError.refused(
+                    "\(id) has no recorded pull request — pass --pr N, or run `contrib in` first")
+            }
+            let client = GHCommandClient(
+                runner: runner, queryPath: try GHCommandClient.bundledQueryPath())
+            let fetched = try await client.threads(repository: repository, number: number)
+            // Same rule as `contrib in`: a truncated fetch must not become the next
+            // run's baseline — and here it would also legitimise a stale eligibility check.
+            guard fetched.truncatedConnections.isEmpty else {
+                throw AckError.refused(
+                    "the refresh fetch was truncated (\(fetched.truncatedConnections.joined(separator: ", "))) "
+                        + "— refusing to acknowledge against a partial read")
+            }
+            let audit = try InboundAudit(configuration: configuration, me: me)
+            // The same read-modify-write discipline as `contrib in`: the audit is
+            // re-run under the lock against the state actually on disk, and merged
+            // subject-scoped so a concurrent audit of another PR is not overwritten.
+            try store.withLock(repository: repository) {
+                var current = try store.load(repository: repository) ?? snapshot
+                let result = audit.run(fetched, against: current)
+                // Same rule as `contrib in`: an anomalous fetch must not become the next
+                // run's baseline — and here it would also legitimise a stale eligibility
+                // check. Throwing skips the save entirely.
+                guard result.vanished.isEmpty else {
+                    throw AckError.refused(
+                        "the refresh fetch dropped \(result.vanished.count) item(s) \(subject) "
+                            + "carried last run — refusing to acknowledge against a partial read: "
+                            + result.vanished.prefix(5).joined(separator: ", "))
+                }
+                current.merge(result, forSubject: subject)
+                try store.save(current)
+                snapshot = current
+            }
+            guard let fresh = snapshot.entries[id] else {
+                throw AckError.refused(
+                    "\(id) was not in the refresh fetch — it may have been deleted upstream")
+            }
+            entry = fresh
+            provenance.examined("refresh items", fetched.allComments.count)
+            provenance.note("snapshot refreshed from \(subject)")
+        }
+
+        if let refusal = AcknowledgementEligibility.refusal(for: entry, id: id) {
+            throw AckError.refused(refusal)
+        }
+
         // **Only what I wrote.** `snapshot.entries` holds the reviewers' comments — the
         // asks themselves — so including them let an ask verify its own
         // acknowledgement. Authored ids are the replies a `comment:` pointer means.
@@ -78,8 +147,6 @@ struct AckCommand: AsyncParsableCommand {
             })
 
         var acknowledgement = try await parser.parse(with, bodySha256: entry.bodySha256)
-        // The target repository's rules, not the one this shell happens to sit in.
-        let configuration = try Configuration.load(directory: workingCopy)
         if let refusal = AcknowledgementEligibility.refusal(
             forKind: acknowledgement.kind,
             allowed: configuration.inbound.acknowledgementKinds, id: id)
@@ -115,6 +182,10 @@ struct AckCommand: AsyncParsableCommand {
             }
             acknowledgement.bodySha256AtAck = fresh.bodySha256
             if fresh.kind == .inlineThread { acknowledgement.replyIDAtAck = fresh.myReplyID }
+            // The prose the record judged, kept so `contrib show` can diff the ask as
+            // absorbed against the ask as it stands — the hash says *that* it moved,
+            // not *what* moved.
+            acknowledgement.proseAtAck = fresh.prose
             current.entries[id]?.acknowledged = acknowledgement
             current.updatedAt = Date()
             try store.save(current)

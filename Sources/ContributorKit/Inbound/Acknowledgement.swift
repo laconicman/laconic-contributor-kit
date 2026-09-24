@@ -33,13 +33,19 @@ public struct Acknowledgement: Codable, Sendable {
     /// For an inline thread: the reply of mine the check judged. A later reply makes the
     /// check stale. Optional, so snapshots written before it existed still decode.
     public var replyIDAtAck: String?
+    /// The stripped prose at the moment of acknowledgement — the text this record
+    /// judged. `bodySha256AtAck` says *whether* it moved; this says *what* moved, which
+    /// is what `contrib show` diffs against. Optional, so snapshots written before it
+    /// existed still decode.
+    public var proseAtAck: String?
 
     public init(
         kind: Kind, pointer: String, at: Date = Date(),
         bodySha256AtAck: String, verified: Bool, verificationNote: String,
-        replyIDAtAck: String? = nil
+        replyIDAtAck: String? = nil, proseAtAck: String? = nil
     ) {
         self.replyIDAtAck = replyIDAtAck
+        self.proseAtAck = proseAtAck
         self.kind = kind
         self.pointer = pointer
         self.at = at

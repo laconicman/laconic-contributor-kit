@@ -1,0 +1,29 @@
+{
+  "authored": ["issuecomment-7"],
+  "entries": {
+    "pullrequestreview-3": {
+      "acknowledged": {
+        "at": "2026-09-13T10:30:00Z",
+        "bodySha256AtAck": "0000000000000000000000000000000000000000000000000000000000000003",
+        "kind": "none",
+        "pointer": "absorbed in round 3",
+        "replyIDAtAck": null,
+        "verificationNote": "explicit no-action, reason recorded",
+        "verified": true
+      },
+      "author": "devin-ai-integration",
+      "bodySha256": "0000000000000000000000000000000000000000000000000000000000000003",
+      "createdAt": "2026-09-12T08:00:00Z",
+      "firstSeen": "2026-09-13T10:00:00Z",
+      "kind": "review-body",
+      "prose": "Please add a regression test.",
+      "state": "obligation-acknowledged",
+      "subject": "o/r#1",
+      "updatedAt": "2026-09-12T08:00:00Z",
+      "url": "https://github.com/o/r/pull/1#pullrequestreview-3"
+    }
+  },
+  "repository": "o/r",
+  "schemaVersion": 1,
+  "updatedAt": "2026-09-13T10:30:00Z"
+}

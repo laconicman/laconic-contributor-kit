@@ -5,7 +5,8 @@ Numbered register. Each item carries what it costs and the change that retires i
 ## Overview
 
 Status legend: **open** (accepted, unscheduled) · **deferred** (a decision was taken not to
-fix it yet, with the reason) · **watch** (observed once, cause not established).
+fix it yet, with the reason) · **watch** (observed once, cause not established) ·
+**discharged** (the named change landed; kept for the history it explains).
 
 Reference an item from code as `// TODO(TD-3): …`.
 
@@ -119,7 +120,7 @@ directory's location exists to make impossible.
 **Discharge.** Refuse to write a snapshot inside a git work tree unless the path was named
 explicitly.
 
-### TD-11 — `ack` refuses against stale state with an unhelpful error · open
+### TD-11 — `ack` refuses against stale state with an unhelpful error · discharged
 
 `contrib ack` reads the snapshot, so a reply posted on GitHub since the last `contrib in`
 leaves the item in its old state and the acknowledgement is refused.
@@ -128,8 +129,10 @@ leaves the item in its old state and the acknowledgement is refused.
 about the state being written — but the message explains the state rather than the
 staleness, so the fix ("`contrib in` first") has to be inferred.
 
-**Discharge.** Name the remedy in the refusal when the entry's state would permit the
-acknowledgement after a refresh.
+**Discharged.** Both halves landed: the stale-state refusals name the remedy
+("`contrib in`, or `ack --refresh`"), and `ack --refresh` re-fetches the item's recorded
+subject and rewrites the snapshot under the lock before judging, collapsing
+reply → `in` → ack into reply → `ack --refresh`.
 
 ### TD-12 — no reply shape in the skill · open
 

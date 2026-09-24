@@ -40,7 +40,7 @@ struct InCommand: AsyncParsableCommand {
     @Flag(name: .long, help: "List everything examined, not only what is owed or has moved.")
     var all = false
 
-    @Flag(name: .long, help: "Emit the machine contract instead of the table.")
+    @Flag(name: .long, help: "Emit the machine contract — every item's full ask and reply text — instead of the table.")
     var json = false
 
     @Option(name: .long, help: "Where the snapshot lives (default: XDG state dir).")
@@ -63,13 +63,7 @@ struct InCommand: AsyncParsableCommand {
             runner: runner, queryPath: try GHCommandClient.bundledQueryPath())
         let threads = try await client.threads(repository: repository, number: pr)
 
-        let audit = InboundAudit(
-            me: me,
-            stripper: try BoilerplateStripper(settings: configuration.inbound),
-            supersession: SupersessionDetector(phrases: configuration.inbound.supersessionPhrases),
-            informational: try InformationalDetector(
-                patterns: configuration.inbound.informationalPatterns),
-            horizon: try configuration.inbound.horizonDate())
+        let audit = try InboundAudit(configuration: configuration, me: me)
 
         // Load, audit and save all happen under the repository lock, and the audit is
         // RE-RUN against the snapshot loaded inside it.
@@ -80,7 +74,7 @@ struct InCommand: AsyncParsableCommand {
         // pure given (threads, previous), so re-running it costs microseconds and makes
         // what is saved a function of the state actually on disk. The network fetch
         // stays outside the lock.
-        let subject = "\(repository)#\(pr)"
+        let subject = Subject.format(repository: repository, number: pr)
         var locked = provenance
         let result = try store.withLock(repository: repository) { () -> InboundAudit.Result in
             let previous = try store.load(repository: repository)
@@ -99,11 +93,7 @@ struct InCommand: AsyncParsableCommand {
                 locked.note("snapshot NOT written — this run is anomalous; fix and re-run")
             } else {
                 var merged = previous ?? Snapshot(repository: repository)
-                for (id, entry) in result.updatedSnapshot.entries where entry.subject == subject {
-                    merged.entries[id] = entry
-                }
-                merged.authored.formUnion(result.updatedSnapshot.authored)
-                merged.updatedAt = Date()
+                merged.merge(result, forSubject: subject)
                 try store.save(merged)
                 locked.note("snapshot written to \(store.url(for: repository).path)")
             }

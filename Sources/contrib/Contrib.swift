@@ -13,12 +13,13 @@ struct Contrib: AsyncParsableCommand {
               contrib in    What was asked of me that I have not demonstrably absorbed?
               contrib loc   Is what I ship getting more laconic?
               contrib ack   Record where an obligation was absorbed.
+              contrib show  Re-read one item in full — body, your reply, and what moved.
 
             Nothing leaves the workspace without an explicit flag — including LOC
             figures. Default is read, compare, report locally.
             """,
         version: "0.1.0",
-        subcommands: [InCommand.self, LocCommand.self, AckCommand.self]
+        subcommands: [InCommand.self, LocCommand.self, AckCommand.self, ShowCommand.self]
     )
 }
 
