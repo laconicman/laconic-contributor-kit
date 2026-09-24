@@ -129,6 +129,16 @@ field.
   is the rejected direction twice over.
 - **`authorAssociation`.** Could let an issue author's follow-up weigh like an
   asker-confirmation — but weakening the conservative model is the cost, not the win.
+- **A real HTML parser for the stripper.** `BoilerplateStripper` hand-rolls tag
+  scanning — boundary checks, depth counting, comment-aware skipping, a recursion
+  cap — and each review round has found another shape the hand-rolled version
+  missed (commented tags, borrowed summaries). A structured parser would retire
+  that class. Questionable, parked: the corpus is comment *fragments*, not
+  documents — a parser must still answer "is this line prose or boilerplate",
+  which is a policy question markup structure alone does not settle; and a
+  dependency for ~150 lines of scan is a trade that wants evidence the missed
+  shapes keep coming, not a principle. If the next round finds yet another legal
+  form, that is the evidence.
 
 Two lessons the review rounds on #5 paid for, recorded here because they generalise:
 
