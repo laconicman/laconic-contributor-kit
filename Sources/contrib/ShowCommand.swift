@@ -18,6 +18,10 @@ struct ShowCommand: AsyncParsableCommand {
             this item's already-read changes as new. Only the shown entry is
             written — items nobody was shown keep their `changed` signal — and an
             anomalous fetch writes nothing.
+
+            A `[collapsed: "Title" ·hash]` line in the ask flags a `<details>`
+            section whose summary kept it out of prose. `--full` prints the raw
+            body instead — the retrieval path the marker promises.
             """
     )
 
@@ -38,6 +42,9 @@ struct ShowCommand: AsyncParsableCommand {
 
     @Option(name: .long, help: "Where the snapshot lives (default: XDG state dir).")
     var stateDir: String?
+
+    @Flag(name: .long, help: "Print the raw body — unstripped, including collapsed <details> sections.")
+    var full = false
 
     enum ShowError: Error, CustomStringConvertible {
         case refused(String)
@@ -131,8 +138,8 @@ struct ShowCommand: AsyncParsableCommand {
 
         print(render(item, pr: fetched))
         print("")
-        print("── ask " + String(repeating: "─", count: 60))
-        print(item.text.ask)
+        print("── ask " + (full ? "(raw body) " : "") + String(repeating: "─", count: full ? 48 : 60))
+        print(full ? (comment?.body ?? item.text.ask) : item.text.ask)
         if item.kind == .inlineThread {
             print("")
             print("── my reply " + String(repeating: "─", count: 54))

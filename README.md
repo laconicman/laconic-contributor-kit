@@ -96,7 +96,7 @@ Four states are owed, and five are not:
 | `obligation-open` — a review body or issue comment with nothing recorded | `answered-confirmed` — the asker replied after me |
 | `reopened-by-edit` — acknowledged, then the body changed | `obligation-acknowledged` — recorded, body unmoved |
 | `edited-after-my-answer` — the ask moved after I answered | `superseded` — the reviewer retracted it |
-| | `no-prose` — badge markup only |
+| | `no-prose` — badge markup or collapsed sections only |
 
 **The two halves have opposite defaults, and that is the whole design.** On an inline
 thread "answered" is decidable — did I post a reply in this thread? — so the default

@@ -31,7 +31,7 @@ table is the whole contract; there is no case where the right response is "ignor
 | `reopened-by-edit` | Acknowledged, then the body changed | Does the new text ask for something else? | Re-read and re-acknowledge, or answer. |
 | `superseded` | The reviewer retracted it | None | Confirm the replacement is in the list. |
 | `informational` | The reviewer's own fixed announcement phrase, on a channel with no reply relation | None | Nothing. Counted, not owed. |
-| `no-prose` | Badge markup only | None | Nothing. It is counted, not owed. |
+| `no-prose` | Badge markup, or only collapsed sections | None | Nothing. It is counted, not owed. A `[collapsed: …]` marker is the flag, not an ask. |
 
 **Every state is in this table.** If `contrib` ever prints one that is not, treat it as a
 defect and check the item by hand — a state outside the table has no defined response, and
@@ -97,6 +97,13 @@ snapshot in the same step, collapsing reply → `in` → ack into reply → `ack
 the recorded acknowledgement, and a diff of what moved since. The table truncates and
 `--json` carries full bodies; `show` is the shaped version of that escape hatch for a
 single item.
+
+**A `[collapsed: "Title" ·hash]` line in an ask flags a `<details>` section left out of
+prose.** Summaries that carry the point — Devin Review's `Learn more`, where the
+call-site links and the recommended fix live — are unwrapped already (the configured
+`keptDetailsSummaries` list). What stays collapsed is usually diagnostics; `contrib show
+<id> … --full` prints the raw body when a marker's title says otherwise, and the marker's
+hash means a collapsed-section edit reports as real prose movement, never "markup only".
 
 ## Rules, each one paid for
 
@@ -164,6 +171,18 @@ single item.
    — a failed fetch prints nothing and exits 0. Then **ask** in a question prompt, not in
    prose: close the fork PR (every push would buy another paid review), or merge it (to
    use the change before upstream lands it).
+
+9. **A finding you keep missing belongs to the reviewer.** Two fix rounds on
+   `laconic-contributor-kit#5` each caught the reported case and kept the family — a
+   pointer normalization fixed fragmentless URLs, then still suffix-matched a `blob`
+   path in a foreign repository. When the third guess would be another guess, hand the
+   finding back: `/devin fix <the finding>` as a PR comment starts a Devin session on
+   the PR (write access and a linked GitHub account, open PRs only), or the operator
+   relays it in Devin Review's chat, which can push commits to the branch itself. Then
+   **swap roles — you review their diff** the way they review yours: does it kill the
+   class or just the instance? Do its tests name the hole it fell through, not only the
+   finding's title? The ledger tracks the swap by itself — their commit lands as the
+   next wave to read; `ack` only after your review passes.
 
 ## LOC
 

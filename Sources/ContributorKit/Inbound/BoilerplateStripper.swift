@@ -10,6 +10,14 @@ import Foundation
 public struct BoilerplateStripper: Sendable {
     private let blocks: [(open: String, close: String)]
     private let linePatterns: [NSRegularExpression]
+    /// Case-insensitive substrings of a `<summary>`'s text whose `<details>`
+    /// block unwraps into prose rather than collapsing to a marker.
+    private let keptDetailsSummaries: [String]
+
+    /// The line prefix a collapsed `<details>` block leaves in `prose`. A marker
+    /// flags retrievable content without being an ask itself — the emptiness
+    /// check in `InboundAudit` filters lines starting with this.
+    public static let collapsedMarkerPrefix = "[collapsed:"
 
     public init(settings: Configuration.InboundSettings) throws {
         self.blocks = settings.boilerplateBlocks.compactMap { spec in
@@ -20,10 +28,15 @@ public struct BoilerplateStripper: Sendable {
         self.linePatterns = try settings.boilerplatePatterns.map {
             try NSRegularExpression(pattern: $0)
         }
+        self.keptDetailsSummaries = settings.keptDetailsSummaries
     }
 
     public func prose(of body: String) -> String {
-        var text = body
+        // The details pass runs FIRST: an earlier `<!--…-->` pass could sever a
+        // summary from its content — the same pairing lesson `boilerplateBlocks`'s
+        // order already encodes — and a kept section's inner comments still strip
+        // normally in the generic passes that follow.
+        var text = collapseDetails(in: Substring(body))
         for block in blocks {
             text = Self.removeBlocks(from: text, open: block.open, close: block.close)
         }
@@ -32,6 +45,99 @@ public struct BoilerplateStripper: Sendable {
             return !linePatterns.contains { $0.firstMatch(in: line, range: range) != nil }
         }
         return kept.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Whether `prose` output carries anything but marker lines. A marker says
+    /// "collapsed content exists" — it flags a section for `show --full`, it is
+    /// not an ask, and a body of only markers is `no-prose` like any empty one.
+    public func hasSubstantiveProse(_ prose: String) -> Bool {
+        prose.components(separatedBy: .newlines).contains { line in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            return !trimmed.isEmpty && !trimmed.hasPrefix(Self.collapsedMarkerPrefix)
+        }
+    }
+
+    /// Unwraps `<details>` blocks whose summary matches the keep list, collapses
+    /// the rest to a marker. Nested blocks inside a kept section are classified
+    /// on their own summaries; inside a collapsed one they disappear with it.
+    private func collapseDetails(in text: Substring) -> String {
+        var out = ""
+        var rest = text
+        while let open = Self.tag("<details", in: rest) {
+            guard let openTagEnd = rest[open.upperBound...].range(of: ">") else { break }
+            let innerStart = openTagEnd.upperBound
+
+            // The close is the DEPTH-zero `</details>`: a nested block must not
+            // end its parent early, so opens and closes are paired by counting.
+            var depth = 1
+            var cursor = innerStart
+            var closeTag: Range<String.Index>?
+            while closeTag == nil {
+                guard let close = rest[cursor...].range(of: "</details>") else {
+                    // Unclosed opener swallows the rest — same rule as removeBlocks.
+                    return out + rest[..<open.lowerBound]
+                }
+                if let nested = Self.tag("<details", in: rest[cursor..<close.lowerBound]) {
+                    depth += 1
+                    cursor = nested.upperBound
+                } else {
+                    depth -= 1
+                    if depth == 0 { closeTag = close }
+                    cursor = close.upperBound
+                }
+            }
+            let inner = rest[innerStart..<closeTag!.lowerBound]
+            let (title, content) = Self.summary(in: inner)
+            let kept = title.map { t in
+                keptDetailsSummaries.contains {
+                    t.range(of: $0, options: .caseInsensitive) != nil
+                }
+            } ?? false
+            out += rest[..<open.lowerBound]
+            if kept, let title {
+                out += title + "\n" + collapseDetails(in: content)
+            } else {
+                out += "\n" + Self.marker(title: title, content: inner) + "\n"
+            }
+            rest = rest[closeTag!.upperBound...]
+        }
+        return out + rest
+    }
+
+    /// `<name` followed by `>` or whitespace — `<detailsfoo` is not a tag.
+    private static func tag(_ name: String, in text: Substring) -> Range<String.Index>? {
+        var cursor = text.startIndex
+        while let found = text[cursor...].range(of: name) {
+            if found.upperBound == text.endIndex || text[found.upperBound] == ">"
+                || text[found.upperBound].isWhitespace
+            {
+                return found
+            }
+            cursor = found.upperBound
+        }
+        return nil
+    }
+
+    /// The first `<summary>…</summary>`'s text is the title; any later `<summary>`
+    /// in the block is content (a pasted example, say), not another title.
+    private static func summary(in inner: Substring) -> (title: String?, content: Substring) {
+        guard let open = tag("<summary", in: inner),
+            let openEnd = inner[open.upperBound...].range(of: ">"),
+            let close = inner[openEnd.upperBound...].range(of: "</summary>")
+        else { return (nil, inner) }
+        let title = inner[openEnd.upperBound..<close.lowerBound]
+            .replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+            .components(separatedBy: .whitespacesAndNewlines).joined(separator: " ")
+            .trimmingCharacters(in: .whitespaces)
+        let content = inner[..<open.lowerBound] + inner[close.upperBound...]
+        return (title.isEmpty ? nil : title, content)
+    }
+
+    /// `[collapsed: "Title" ·hash]` — the hash covers the collapsed content, so an
+    /// edit inside the section moves `prose` and can never pass for markup churn.
+    private static func marker(title: String?, content: Substring) -> String {
+        let hash = SHA256.hex(of: String(content)).prefix(8)
+        return "\(collapsedMarkerPrefix) \"\(title ?? "untitled")\" ·\(hash)]"
     }
 
     /// Non-greedy, repeated, and tolerant of an unclosed opener: a body that opens

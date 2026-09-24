@@ -173,7 +173,10 @@ public struct InboundAudit: Sendable {
                 }
                 let prose = stripper.prose(of: comment.body)
                 let state: ItemState
-                if prose.isEmpty {
+                // Marker lines flag collapsed sections for retrieval — they are
+                // not themselves an ask, so a body of only markers is no-prose
+                // like any empty one.
+                if !stripper.hasSubstantiveProse(prose) {
                     state = .noProse
                 } else if supersession.supersedes(prose) != nil {
                     state = .superseded

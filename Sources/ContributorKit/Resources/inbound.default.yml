@@ -19,13 +19,28 @@ inbound:
     - "<!-- devin-review-badge-begin -->...<!-- devin-review-badge-end -->"
     - "<!--...-->"        # HTML comments
     - "<picture>...</picture>"
-    - "<details>...</details>"
   boilerplatePatterns:    # whole lines matching these are dropped
     - "^\\s*!\\[[^]]*\\]\\([^)]*\\)\\s*$"           # a lone markdown image
     - "^\\s*\\[!\\[[^]]*\\]\\([^)]*\\)\\]\\([^)]*\\)\\s*$"  # a lone linked badge
     - "^\\s*<img[^>]*>\\s*$"
     - "^\\s*<a[^>]*>\\s*</a>\\s*$"
     - "^\\s*-{3,}\\s*$"
+
+  # A <details> block is never stripped silently. One whose <summary> matches a
+  # phrase below is UNWRAPPED — the section's content is the point, not
+  # decoration. Anything else collapses to a one-line marker —
+  # `[collapsed: "Title" ·hash]` — so "the information exists" survives without
+  # the stack trace or env dump, and `contrib show --full` retrieves it. The
+  # hash covers the collapsed content, so an edit inside the section moves
+  # `prose` and reports as a real change rather than "markup only".
+  #
+  # FIXED, CASE-INSENSITIVE SUBSTRINGS of the summary text, grown by measurement
+  # like the lists below — never a guess. "Learn more" earned its place:
+  # Devin Review puts the call-site links, the example, and the recommended fix
+  # under it, so stripping it threw the fix away with the boilerplate.
+  # Measured on laconicman/laconic-contributor-kit#5, 2026-09-24.
+  keptDetailsSummaries:
+    - "learn more"
 
   # A reviewer can RETRACT an obligation. Matched case-insensitively against the
   # stripped prose; a match marks the item superseded, which is reported and counted

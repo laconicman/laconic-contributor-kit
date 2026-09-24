@@ -268,6 +268,171 @@ struct InboundTests {
         #expect(stripper.prose(of: body) == "**Devin Review** found 1 new potential issue.")
     }
 
+    // MARK: - Collapsed <details> sections
+
+    /// Devin Review puts its reasoning — call-site links, the example, the
+    /// recommended fix — under `<details><summary>Learn more</summary>`, and
+    /// stripping the block wholesale threw the fix away with the boilerplate
+    /// (measured on laconic-contributor-kit#5, 2026-09-24). Kept summaries
+    /// unwrap; anything else collapses to a marker so "there is more here"
+    /// survives without the content.
+    @Test("a kept summary unwraps; any other collapses to a flagged marker")
+    func keptSummaryUnwraps() throws {
+        let stripper = try BoilerplateStripper(
+            settings: try Configuration.builtInDefaults().inbound)
+        let body = """
+            🔴 **Empty body blocks future audit snapshots**
+
+            When an audited subject body becomes empty, `bodyComment()` drops it.
+
+            <details>
+            <summary>Learn more</summary>
+
+            The audit stores each observed item. **Recommended fix:** retain one.
+            </details>
+
+            <details>
+            <summary>Environment</summary>
+
+            macOS 14, swift 6.2
+            </details>
+            """
+        let prose = stripper.prose(of: body)
+        #expect(prose.contains("The audit stores each observed item"))
+        #expect(prose.contains("**Recommended fix:**"))
+        #expect(!prose.contains("macOS 14"), "the unmatched block's content is not prose")
+        #expect(prose.contains(#"[collapsed: "Environment""#), "the marker still names it")
+    }
+
+    /// The marker carries a short hash of the collapsed content, so an edit
+    /// INSIDE a collapsed section moves `prose` and reports as a real change —
+    /// not the mislabel "markup only, prose unchanged".
+    @Test("an edit inside a collapsed section is prose movement, not markup churn")
+    func collapsedEditMovesProse() throws {
+        let stripper = try BoilerplateStripper(
+            settings: try Configuration.builtInDefaults().inbound)
+        func body(_ detail: String) -> String {
+            """
+            Please look at this.
+
+            <details>
+            <summary>Diagnostics</summary>
+
+            \(detail)
+            </details>
+            """
+        }
+        let before = stripper.prose(of: body("first stack"))
+        let after = stripper.prose(of: body("second stack"))
+        #expect(before.contains("[collapsed:"))
+        #expect(before != after, "the marker's hash tracks the collapsed content")
+    }
+
+    /// A body that is ONLY a collapsed section carries no ask — markers flag
+    /// retrievable content but are not themselves prose.
+    @Test("a details-only body is no-prose, not an obligation")
+    func detailsOnlyBodyIsNoProse() throws {
+        let comment = RemoteComment(
+            id: "issuecomment-1", channel: .issueComment, author: "bot",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: "<details>\n<summary>Diagnostics</summary>\n\nstack trace\n</details>",
+            permalink: "https://github.com/o/r/issues/1#issuecomment-1")
+        let result = try Fixtures.audit().run(
+            pullRequest(issueComments: [comment]), against: nil)
+        #expect(result.items.first?.state == .noProse)
+        #expect(result.owed.isEmpty)
+        #expect(result.items.first?.text.ask.contains("[collapsed:") == true,
+            "the flag survives — the raw body does not leak in its place")
+    }
+
+    /// Nesting is real in hand-edited bodies: a matching outer block keeps its
+    /// content, and a nested `<details>` inside it is classified on its own
+    /// summary — depth counting, not first-close matching.
+    @Test("a nested details block is classified inside an unwrapped parent")
+    func nestedDetailsClassifySeparately() throws {
+        let stripper = try BoilerplateStripper(
+            settings: try Configuration.builtInDefaults().inbound)
+        let body = """
+            The ask.
+
+            <details>
+            <summary>Learn more</summary>
+
+            Outer reasoning.
+            <details>
+            <summary>Logs</summary>
+
+            inner noise
+            </details>
+            Tail of the outer section.
+            </details>
+            """
+        let prose = stripper.prose(of: body)
+        #expect(prose.contains("Outer reasoning."))
+        #expect(prose.contains("Tail of the outer section."),
+            "the outer close is the DEPTH-zero close, not the inner one")
+        #expect(!prose.contains("inner noise"))
+        #expect(prose.contains(#"[collapsed: "Logs""#))
+    }
+
+    /// Same rule as every unclosed boilerplate opener: the rest is boilerplate
+    /// from there on, not leaked.
+    @Test("an unclosed details opener swallows the rest rather than leaking it")
+    func unclosedDetailsBlock() throws {
+        let stripper = try BoilerplateStripper(
+            settings: try Configuration.builtInDefaults().inbound)
+        #expect(
+            stripper.prose(of: "Real prose.\n<details>\n<summary>x</summary>").trimmed
+                == "Real prose.")
+    }
+
+    /// Summary text arrives decorated — `**Learn more**`, emoji prefixes — so the
+    /// match is a case-insensitive substring, never exact equality.
+    @Test("decorated summary text still matches the keep list")
+    func decoratedSummaryMatches() throws {
+        let stripper = try BoilerplateStripper(
+            settings: try Configuration.builtInDefaults().inbound)
+        let body = """
+            <details>
+            <summary>🔍 **Learn more** about this finding</summary>
+
+            Kept content.
+            </details>
+            """
+        #expect(stripper.prose(of: body).contains("Kept content."))
+    }
+
+    /// The marker's hash is what keeps the annotation honest: an edit inside a
+    /// collapsed section changes the marker, `prose` moves, and the change is
+    /// not mislabeled "markup only".
+    @Test("a collapsed-section edit is not reported as markup-only")
+    func collapsedEditAnnotatesHonestly() throws {
+        func comment(_ detail: String) -> RemoteComment {
+            RemoteComment(
+                id: "issuecomment-1", channel: .issueComment, author: "reviewer",
+                viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+                body: """
+                    Please look at this.
+
+                    <details>
+                    <summary>Diagnostics</summary>
+
+                    \(detail)
+                    </details>
+                    """,
+                permalink: "https://github.com/o/r/issues/1#issuecomment-1")
+        }
+        let first = try Fixtures.audit().run(
+            pullRequest(issueComments: [comment("first stack")]), against: nil)
+        let second = try Fixtures.audit().run(
+            pullRequest(issueComments: [comment("second stack")]),
+            against: first.updatedSnapshot)
+        #expect(second.items.first?.changed?.contains("body changed") == true)
+        #expect(
+            second.items.first?.changed?.contains("prose unchanged") == false,
+            "the collapsed edit moved the marker hash — it is not markup churn")
+    }
+
     /// The finding title must lead the excerpt. An inline Devin body opens with its
     /// marker, so the raw slice showed an invisible HTML comment and pushed the title
     /// out of view.
