@@ -143,6 +143,21 @@ public enum InboundReporting {
                 provenance.note("\(count) item(s) \(state.rawValue) — counted, not owed")
             }
         }
+        // A marker-only body is flagged, not empty — name it or the
+        // "collapsed content exists" promise never reaches default output.
+        // Within no-prose items a `[collapsed:` line is necessarily the
+        // generated marker: the same text from an author is substantive
+        // prose and the item would be owed, not counted here.
+        let collapsedOnly = result.items.filter {
+            $0.state == .noProse
+                && $0.text.ask.contains(BoilerplateStripper.collapsedMarkerPrefix)
+        }
+        if !collapsedOnly.isEmpty {
+            provenance.note(
+                "\(collapsedOnly.count) item(s) are collapsed sections only — "
+                    + "`contrib show <id> --full` retrieves them: "
+                    + collapsedOnly.map(\.id).joined(separator: ", "))
+        }
         // Scoped to what THIS run examined. Both of these counted over the whole
         // repository, which is a different question: sweeping five issues in one repo,
         // only the first announced a baseline while each of the others was also its own

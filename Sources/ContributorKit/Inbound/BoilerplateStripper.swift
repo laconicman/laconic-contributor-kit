@@ -47,6 +47,19 @@ public struct BoilerplateStripper: Sendable {
         return kept.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// The full emitted marker shape — `[collapsed: "Title" ·8hex]`. A bare
+    /// prefix match would eat an author's own line that happens to open with
+    /// `[collapsed:`; colliding with the generated form needs the quoted
+    /// title, the separator, and the eight-char hash.
+    private static func isMarkerLine(_ line: String) -> Bool {
+        guard line.hasPrefix("\(collapsedMarkerPrefix) \""),
+            let separator = line.range(of: "\" ·", options: .backwards),
+            line.hasSuffix("]")
+        else { return false }
+        let hash = line[separator.upperBound...].dropLast()
+        return hash.count == 8 && hash.allSatisfy(\.isHexDigit)
+    }
+
     /// `prose` minus the generated marker lines — the asker's own text, which
     /// is what supersession and informational phrases are meant to match. A
     /// marker's embedded title is not the asker's words: a collapsed section
@@ -54,7 +67,7 @@ public struct BoilerplateStripper: Sendable {
     public func substantiveProse(_ prose: String) -> String {
         prose.components(separatedBy: .newlines).filter { line in
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-            return !trimmed.isEmpty && !trimmed.hasPrefix(Self.collapsedMarkerPrefix)
+            return !trimmed.isEmpty && !Self.isMarkerLine(trimmed)
         }.joined(separator: "\n")
     }
 
@@ -77,7 +90,7 @@ public struct BoilerplateStripper: Sendable {
     private func collapseDetails(in text: Substring, level: Int = 0) -> String {
         var out = ""
         var rest = text
-        while let open = Self.tag("<details", in: rest) {
+        while let open = Self.tagOutsideComments("<details", in: rest, boundaryCheck: true) {
             guard let openTagEnd = rest[open.upperBound...].range(of: ">") else { break }
             let innerStart = openTagEnd.upperBound
 
@@ -87,11 +100,15 @@ public struct BoilerplateStripper: Sendable {
             var cursor = innerStart
             var closeTag: Range<String.Index>?
             while closeTag == nil {
-                guard let close = rest[cursor...].range(of: "</details>") else {
+                guard let close = Self.tagOutsideComments(
+                    "</details>", in: rest[cursor...], boundaryCheck: false)
+                else {
                     // Unclosed opener swallows the rest — same rule as removeBlocks.
                     return out + rest[..<open.lowerBound]
                 }
-                if let nested = Self.tag("<details", in: rest[cursor..<close.lowerBound]) {
+                if let nested = Self.tagOutsideComments(
+                    "<details", in: rest[cursor..<close.lowerBound], boundaryCheck: true)
+                {
                     depth += 1
                     cursor = nested.upperBound
                 } else {
@@ -118,6 +135,33 @@ public struct BoilerplateStripper: Sendable {
         return out + rest
     }
 
+    /// Tag search that skips `<!-- … -->` spans: a tag inside a comment is not
+    /// markup the renderer sees, so the pairing walk must not see it either.
+    /// An unclosed comment ends the search — the rest is commentary, the same
+    /// rule `removeBlocks` already encodes. Ranges are into `text` itself —
+    /// nothing is copied, so every slice downstream still indexes correctly.
+    private static func tagOutsideComments(
+        _ name: String, in text: Substring, boundaryCheck: Bool
+    ) -> Range<String.Index>? {
+        var cursor = text.startIndex
+        while true {
+            let slice = text[cursor...]
+            let comment = slice.range(of: "<!--")
+            let found = boundaryCheck ? tag(name, in: slice) : slice.range(of: name)
+            guard let found else { return nil }
+            if let comment, comment.lowerBound < found.lowerBound {
+                // A comment opens before the tag — the tag is inside it. Skip the
+                // comment body and rescan what follows.
+                guard let end = text[comment.upperBound...].range(of: "-->") else {
+                    return nil
+                }
+                cursor = end.upperBound
+                continue
+            }
+            return found
+        }
+    }
+
     /// `<name` followed by `>` or whitespace — `<detailsfoo` is not a tag.
     private static func tag(_ name: String, in text: Substring) -> Range<String.Index>? {
         var cursor = text.startIndex
@@ -141,10 +185,13 @@ public struct BoilerplateStripper: Sendable {
     /// depth-zero summary AFTER a nested block is legal HTML but unseen in the
     /// field; it is missed, and the block collapses — flagged, not leaked.)
     private static func summary(in inner: Substring) -> (title: String?, content: Substring) {
-        let scope = tag("<details", in: inner).map { inner[..<$0.lowerBound] } ?? inner
-        guard let open = tag("<summary", in: scope),
+        let scope =
+            tagOutsideComments("<details", in: inner, boundaryCheck: true)
+            .map { inner[..<$0.lowerBound] } ?? inner
+        guard let open = tagOutsideComments("<summary", in: scope, boundaryCheck: true),
             let openEnd = scope[open.upperBound...].range(of: ">"),
-            let close = scope[openEnd.upperBound...].range(of: "</summary>")
+            let close = tagOutsideComments(
+                "</summary>", in: scope[openEnd.upperBound...], boundaryCheck: false)
         else { return (nil, inner) }
         let title = inner[openEnd.upperBound..<close.lowerBound]
             .replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)

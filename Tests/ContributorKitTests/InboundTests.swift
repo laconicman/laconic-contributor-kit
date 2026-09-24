@@ -441,6 +441,62 @@ struct InboundTests {
         #expect(!prose.contains("the core."), "the capped section keeps its content")
     }
 
+    /// A `<details>` tag inside an HTML comment is not markup — the renderer
+    /// never sees it, so the pairing walk must not either: an opener inside a
+    /// comment would otherwise swallow every line of real prose after it.
+    @Test("a details tag inside an HTML comment is not a live opener")
+    func commentedDetailsTagIsNotLive() throws {
+        let stripper = try BoilerplateStripper(
+            settings: try Configuration.builtInDefaults().inbound)
+        #expect(
+            stripper.prose(of: "<!-- example: <details> -->\nPlease update the API.")
+                == "Please update the API.")
+    }
+
+    /// The mirror case: a `</details>` inside a comment inside a real block
+    /// must not pair with the real opener and leak the comment tail into prose.
+    @Test("a commented close tag does not pair with a real opener")
+    func commentedCloseTagDoesNotPair() throws {
+        let stripper = try BoilerplateStripper(
+            settings: try Configuration.builtInDefaults().inbound)
+        let prose = stripper.prose(
+            of: "<details>\n<summary>Diagnostics</summary>\nkeep<!-- </details> -->more\n</details>")
+        #expect(!prose.contains("more"), "the whole block collapsed; no comment tail leaked")
+        #expect(prose.contains(#"[collapsed: "Diagnostics""#))
+    }
+
+    /// The marker check matches the emitted shape — `[collapsed: "T" ·8hex]` —
+    /// not the bare prefix: an author discussing collapsed UI keeps their line.
+    @Test("author text that opens with the marker prefix is still prose")
+    func markerPrefixInAuthorTextIsNotMetadata() throws {
+        let stripper = try BoilerplateStripper(
+            settings: try Configuration.builtInDefaults().inbound)
+        let body = "[collapsed: legacy UI] must display the full label."
+        #expect(stripper.substantiveProse(stripper.prose(of: body)) == body)
+    }
+
+    /// A marker-only body is `no-prose` — not owed — but the flag must still
+    /// reach the default output, or "collapsed content exists" is dead code
+    /// for the case it was built for. Provenance names the ids.
+    @Test("a marker-only body is named in provenance")
+    func markerOnlyBodyIsNamedInProvenance() throws {
+        let comment = RemoteComment(
+            id: "issuecomment-1", channel: .issueComment, author: "bot",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: "<details>\n<summary>Diagnostics</summary>\n\nstack trace\n</details>",
+            permalink: "https://github.com/o/r/issues/1#issuecomment-1")
+        let pr = pullRequest(issueComments: [comment])
+        let result = try Fixtures.audit().run(pr, against: nil)
+        var provenance = Provenance(command: "test")
+        InboundReporting.record(result, pr, previous: nil, into: &provenance)
+        #expect(result.items.first?.state == .noProse)
+        #expect(
+            provenance.notes.contains {
+                $0.contains("issuecomment-1") && $0.contains("collapsed")
+            },
+            "the marker's flag is named where every run prints it")
+    }
+
     /// Same rule as every unclosed boilerplate opener: the rest is boilerplate
     /// from there on, not leaked.
     @Test("an unclosed details opener swallows the rest rather than leaking it")
