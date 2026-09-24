@@ -142,7 +142,13 @@ Two lessons the review rounds on #5 paid for, recorded here because they general
   to the emptiness check — `hasSubstantiveProse` exists because conflating the two is
   exactly how badge-only bodies once became obligations. The marker's hash covers the
   collapsed content, so an edit inside a `<details>` section moves `prose` and can
-  never be mislabeled "markup only".
+  never be mislabeled "markup only". Three corollaries the as-built review paid for:
+  markers are generated metadata, not the asker's words, so supersession and
+  informational matching read `substantiveProse` — a collapsed section *titled* like
+  a retraction cannot retract the body it rides with; a `<summary>` titles only its
+  own `<details>`, so the title search stops at the first nested opener rather than
+  borrowing a child's legend; and kept-section recursion is capped, because nested
+  kept summaries are constructible inside one comment body.
 
 And one clarification worth stating plainly: a reviewer's collapsible section —
 "Learn more", fix instructions, diagnostics — is part of the comment `body`, not a

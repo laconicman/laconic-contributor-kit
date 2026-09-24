@@ -172,15 +172,18 @@ public struct InboundAudit: Sendable {
                     continue
                 }
                 let prose = stripper.prose(of: comment.body)
-                let state: ItemState
                 // Marker lines flag collapsed sections for retrieval — they are
-                // not themselves an ask, so a body of only markers is no-prose
-                // like any empty one.
-                if !stripper.hasSubstantiveProse(prose) {
+                // generated metadata, not the asker's words: a body of only
+                // markers is no-prose like any empty one, and a marker's
+                // embedded title can neither carry an ask nor retract one, so
+                // the classifiers judge the substantive prose only.
+                let substantive = stripper.substantiveProse(prose)
+                let state: ItemState
+                if substantive.isEmpty {
                     state = .noProse
-                } else if supersession.supersedes(prose) != nil {
+                } else if supersession.supersedes(substantive) != nil {
                     state = .superseded
-                } else if informational.isInformational(raw: comment.body, prose: prose) != nil {
+                } else if informational.isInformational(raw: comment.body, prose: substantive) != nil {
                     state = .informational
                 } else if let ack = previous?.entries[comment.id]?.acknowledged {
                     state =

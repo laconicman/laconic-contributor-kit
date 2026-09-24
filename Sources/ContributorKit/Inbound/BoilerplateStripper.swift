@@ -47,20 +47,34 @@ public struct BoilerplateStripper: Sendable {
         return kept.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// `prose` minus the generated marker lines — the asker's own text, which
+    /// is what supersession and informational phrases are meant to match. A
+    /// marker's embedded title is not the asker's words: a collapsed section
+    /// titled like a retraction must not retract the body it rides with.
+    public func substantiveProse(_ prose: String) -> String {
+        prose.components(separatedBy: .newlines).filter { line in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            return !trimmed.isEmpty && !trimmed.hasPrefix(Self.collapsedMarkerPrefix)
+        }.joined(separator: "\n")
+    }
+
     /// Whether `prose` output carries anything but marker lines. A marker says
     /// "collapsed content exists" — it flags a section for `show --full`, it is
     /// not an ask, and a body of only markers is `no-prose` like any empty one.
     public func hasSubstantiveProse(_ prose: String) -> Bool {
-        prose.components(separatedBy: .newlines).contains { line in
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            return !trimmed.isEmpty && !trimmed.hasPrefix(Self.collapsedMarkerPrefix)
-        }
+        !substantiveProse(prose).isEmpty
     }
+
+    /// Kept sections recurse; the cap keeps a deliberately deep body — nested
+    /// kept summaries are constructible well inside GitHub's comment limit —
+    /// from exhausting the stack. Past it a matching section collapses to a
+    /// marker like any unmatched one.
+    private static let maxDetailsNesting = 32
 
     /// Unwraps `<details>` blocks whose summary matches the keep list, collapses
     /// the rest to a marker. Nested blocks inside a kept section are classified
     /// on their own summaries; inside a collapsed one they disappear with it.
-    private func collapseDetails(in text: Substring) -> String {
+    private func collapseDetails(in text: Substring, level: Int = 0) -> String {
         var out = ""
         var rest = text
         while let open = Self.tag("<details", in: rest) {
@@ -94,8 +108,8 @@ public struct BoilerplateStripper: Sendable {
                 }
             } ?? false
             out += rest[..<open.lowerBound]
-            if kept, let title {
-                out += title + "\n" + collapseDetails(in: content)
+            if kept, let title, level < Self.maxDetailsNesting {
+                out += title + "\n" + collapseDetails(in: content, level: level + 1)
             } else {
                 out += "\n" + Self.marker(title: title, content: inner) + "\n"
             }
@@ -120,10 +134,17 @@ public struct BoilerplateStripper: Sendable {
 
     /// The first `<summary>…</summary>`'s text is the title; any later `<summary>`
     /// in the block is content (a pasted example, say), not another title.
+    ///
+    /// The search stops at the first nested `<details>`: a `<summary>` inside one
+    /// is that block's legend, not this one's — an outer block with no summary of
+    /// its own collapses untitled rather than unwrapping on a borrowed title. (A
+    /// depth-zero summary AFTER a nested block is legal HTML but unseen in the
+    /// field; it is missed, and the block collapses — flagged, not leaked.)
     private static func summary(in inner: Substring) -> (title: String?, content: Substring) {
-        guard let open = tag("<summary", in: inner),
-            let openEnd = inner[open.upperBound...].range(of: ">"),
-            let close = inner[openEnd.upperBound...].range(of: "</summary>")
+        let scope = tag("<details", in: inner).map { inner[..<$0.lowerBound] } ?? inner
+        guard let open = tag("<summary", in: scope),
+            let openEnd = scope[open.upperBound...].range(of: ">"),
+            let close = scope[openEnd.upperBound...].range(of: "</summary>")
         else { return (nil, inner) }
         let title = inner[openEnd.upperBound..<close.lowerBound]
             .replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)

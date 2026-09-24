@@ -375,6 +375,72 @@ struct InboundTests {
         #expect(prose.contains(#"[collapsed: "Logs""#))
     }
 
+    /// A `<summary>` titles only its own `<details>` — one inside a nested
+    /// block is that block's legend, so an outer block with no summary of its
+    /// own collapses untitled rather than borrowing the inner one's title and
+    /// unwrapping on a match that was never its own.
+    @Test("a nested block's summary does not title its parent")
+    func nestedSummaryIsNotTheParents() throws {
+        let stripper = try BoilerplateStripper(
+            settings: try Configuration.builtInDefaults().inbound)
+        let body = """
+            <details>
+            <details>
+            <summary>Learn more</summary>
+
+            inner reasoning
+            </details>
+            outer hidden
+            </details>
+            """
+        let prose = stripper.prose(of: body)
+        #expect(prose.contains(#"[collapsed: "untitled""#),
+            "the outer block has no summary of its own")
+        #expect(!prose.contains("inner reasoning"),
+            "nothing unwraps on a borrowed title")
+        #expect(!prose.contains("outer hidden"))
+    }
+
+    /// A marker line is generated metadata, not the asker's prose — a
+    /// collapsed section whose TITLE happens to read like a retraction must
+    /// not retract the body it rides with.
+    @Test("a collapsed section's title cannot supersede the body")
+    func markerTitleDoesNotSupersede() throws {
+        let comment = RemoteComment(
+            id: "issuecomment-1", channel: .issueComment, author: "reviewer",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: """
+                <details>
+                <summary>This report has been superseded</summary>
+
+                diagnostics
+                </details>
+
+                Please update the caller.
+                """,
+            permalink: "https://github.com/o/r/issues/1#issuecomment-1")
+        let result = try Fixtures.audit().run(
+            pullRequest(issueComments: [comment]), against: nil)
+        #expect(result.items.first?.state == .obligationOpen)
+    }
+
+    /// Kept sections recurse, and the recursion is capped: nested kept
+    /// summaries are constructible well inside GitHub's comment limit, and an
+    /// uncapped walk would exhaust the stack. Past the cap a matching section
+    /// collapses to a marker like any unmatched one.
+    @Test("deeply nested kept sections bottom out in a marker")
+    func nestedKeptSectionsAreCapped() throws {
+        let stripper = try BoilerplateStripper(
+            settings: try Configuration.builtInDefaults().inbound)
+        let depth = 40
+        let body =
+            (0..<depth).map { _ in "<details>\n<summary>Learn more</summary>\n" }
+            .joined() + "the core." + String(repeating: "\n</details>", count: depth)
+        let prose = stripper.prose(of: body)
+        #expect(prose.contains("[collapsed:"), "the cap emits a marker")
+        #expect(!prose.contains("the core."), "the capped section keeps its content")
+    }
+
     /// Same rule as every unclosed boilerplate opener: the rest is boilerplate
     /// from there on, not leaked.
     @Test("an unclosed details opener swallows the rest rather than leaking it")
