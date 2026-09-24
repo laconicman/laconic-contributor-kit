@@ -184,6 +184,17 @@ public struct InboundAudit: Sendable {
                 let substantive = stripper.substantiveProse(
                     prose, markers: stripped.collapsedMarkers)
                 let suppressible = stripped.collapsedMarkers.isEmpty
+                // Suppression reads plain prose only. A line in marker SHAPE —
+                // literal ones survive `substantiveProse` — is quoting the
+                // format, and its embedded title is never the reviewer's own
+                // opening statement, so it can neither retract nor announce.
+                let classifierProse = substantive
+                    .components(separatedBy: .newlines)
+                    .filter {
+                        !BoilerplateStripper.isCollapsedMarker(
+                            $0.trimmingCharacters(in: .whitespaces))
+                    }
+                    .joined(separator: "\n")
                 let state: ItemState
                 if substantive.isEmpty {
                     if stripped.collapsedMarkers.isEmpty {
@@ -195,10 +206,10 @@ public struct InboundAudit: Sendable {
                     } else {
                         state = .collapsedUnexamined
                     }
-                } else if suppressible, supersession.supersedes(substantive) != nil {
+                } else if suppressible, supersession.supersedes(classifierProse) != nil {
                     state = .superseded
                 } else if suppressible,
-                    informational.isInformational(raw: comment.body, prose: substantive) != nil
+                    informational.isInformational(raw: comment.body, prose: classifierProse) != nil
                 {
                     state = .informational
                 } else if let ack = previous?.entries[comment.id]?.acknowledged {

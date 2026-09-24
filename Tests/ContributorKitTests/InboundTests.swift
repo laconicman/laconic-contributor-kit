@@ -613,6 +613,20 @@ struct InboundTests {
             pullRequest(issueComments: [literalOnly]), against: nil)
         #expect(next.items.first?.state == .obligationOpen,
             "the author wrote that line — it is a request, listed, not a flag")
+
+        // The mirror case: a quoted marker LEADING an ask. The line is
+        // authored prose for emptiness, but a marker-shaped line is quoting
+        // the format — its embedded title is never the reviewer's own opening
+        // statement, so it cannot retract the request it rides with.
+        let quotedRetraction = RemoteComment(
+            id: "issuecomment-3", channel: .issueComment, author: "reviewer",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: "[collapsed: \"This report has been superseded\" ·deadbeef]\nPlease add a regression test.",
+            permalink: "https://github.com/o/r/issues/1#issuecomment-3")
+        let quoted = try Fixtures.audit().run(
+            pullRequest(issueComments: [quotedRetraction]), against: nil)
+        #expect(quoted.items.first?.state == .obligationOpen,
+            "the title inside a quoted marker is not the reviewer's retraction")
     }
 
     /// A marker emitted inside a block a later pass strips (`<picture>` wraps
