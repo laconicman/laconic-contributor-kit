@@ -130,6 +130,65 @@ struct ContractTests {
         }
     }
 
+    /// The subject body is an authored item when the subject is mine — so a `comment:`
+    /// pointer at the subject's own URL must resolve to its synthesized id. The URL
+    /// carries no `#fragment`, which used to make the pointer unverifiable despite
+    /// `issue-3` sitting in `authored` (review round on #5).
+    @Test("a fragmentless subject URL resolves to the synthesized body id")
+    func subjectURLResolvesToBodyID() async throws {
+        let parser = AcknowledgementParser(
+            knownCommentIDs: ["issue-3", "pullrequest-7"], repository: "o/r")
+
+        let issue = try await parser.parse(
+            "comment:https://github.com/o/r/issues/3", bodySha256: "h")
+        #expect(issue.pointer == "issue-3")
+        #expect(issue.verified)
+
+        let pr = try await parser.parse(
+            "comment:https://github.com/o/r/pull/7", bodySha256: "h")
+        #expect(pr.pointer == "pullrequest-7")
+        #expect(pr.verified)
+
+        // A subject I did not author stays unverified — normalization must not widen
+        // what verifies, only fix which string is looked up.
+        let notMine = try await parser.parse(
+            "comment:https://github.com/o/r/issues/9", bodySha256: "h")
+        #expect(notMine.pointer == "issue-9")
+        #expect(!notMine.verified)
+
+        // `authored` is repository-scoped: a foreign subject URL with a matching
+        // number must NOT verify — the review round on 4eb3ec9 caught exactly this.
+        let foreign = try await parser.parse(
+            "comment:https://github.com/other-org/other-repo/issues/3", bodySha256: "h")
+        #expect(foreign.pointer == "https://github.com/other-org/other-repo/issues/3")
+        #expect(!foreign.verified)
+
+        // The whole path must be the subject's, not merely end in it: a blob URL in
+        // another repository whose file path happens to be `o/r/issues/3` names a
+        // file, not issue 3 here (review round on 80f0113).
+        let blobElsewhere = try await parser.parse(
+            "comment:https://github.com/other/repo/blob/main/o/r/issues/3", bodySha256: "h")
+        #expect(blobElsewhere.pointer == "https://github.com/other/repo/blob/main/o/r/issues/3")
+        #expect(!blobElsewhere.verified)
+
+        // A non-subject page under the right repository is not the body either.
+        let files = try await parser.parse(
+            "comment:https://github.com/o/r/pull/7/files", bodySha256: "h")
+        #expect(files.pointer == "https://github.com/o/r/pull/7/files")
+        #expect(!files.verified)
+
+        // A bare path is not a URL; only an absolute one names a subject.
+        let bare = try await parser.parse("comment:o/r/issues/3", bodySha256: "h")
+        #expect(bare.pointer == "o/r/issues/3")
+        #expect(!bare.verified)
+
+        // Enterprise hosts and a trailing slash are still the same subject.
+        let enterprise = try await parser.parse(
+            "comment:https://git.example.com/O/R/issues/3/", bodySha256: "h")
+        #expect(enterprise.pointer == "issue-3")
+        #expect(enterprise.verified)
+    }
+
     /// A commit sha with no repository to resolve it against is recorded **unverified**
     /// rather than assumed good. `verified` must never mean "we did not look".
     @Test("a sha with nothing to resolve it is unverified, not assumed")
@@ -209,6 +268,111 @@ struct ContractTests {
         let comment = try #require(node.remoteComment(channel: .inlineThread))
         #expect(comment.reviewID == "5260120440")
         #expect(comment.id == "discussion_r1")
+    }
+
+    // MARK: - The subject body, issue #3 follow-up
+
+    /// For an issue the BODY is the ask, and the fetch unions issue and pull request
+    /// through `issueOrPullRequest` — so both carry it for one field each. Synthesized
+    /// as a comment-shaped item on the issue-comments channel: GitHub's own timeline
+    /// treats the body as the thread's first entry, and the obligation machinery —
+    /// strip, hash, acknowledge, reopen on edit — then works unchanged.
+    @Test("the subject body decodes into an issue-comments item")
+    func subjectBodyDecodes() throws {
+        let payload = """
+            {"data":{"repository":{"issueOrPullRequest":{
+              "__typename":"Issue","number":3,"title":"t",
+              "url":"https://github.com/o/r/issues/3","issueState":"OPEN",
+              "body":"Please add a regression test.",
+              "author":{"login":"maintainer"},"viewerDidAuthor":false,
+              "createdAt":"2026-09-20T08:00:00Z","updatedAt":"2026-09-21T09:00:00Z",
+              "lastEditedAt":"2026-09-21T09:00:00Z",
+              "comments":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}}
+            """
+        let subject = try #require(
+            JSONDecoder().decode(ThreadDetailResponse.self, from: Data(payload.utf8))
+                .data?.repository?.issueOrPullRequest)
+        let body = try #require(subject.bodyComment())
+        #expect(body.id == "issue-3")
+        #expect(body.channel == .issueComment)
+        #expect(body.permalink == "https://github.com/o/r/issues/3")
+        #expect(body.author == "maintainer")
+        #expect(body.body == "Please add a regression test.")
+        #expect(body.lastEditedAt != nil)
+        #expect(!body.viewerDidAuthor)
+    }
+
+    /// A pull request gets the same treatment for the same field — its description
+    /// can carry asks too, and on one's own PRs `viewerDidAuthor` filters it for free.
+    @Test("the pull request body decodes into an issue-comments item")
+    func pullRequestBodyDecodes() throws {
+        let payload = """
+            {"data":{"repository":{"issueOrPullRequest":{
+              "__typename":"PullRequest","number":7,"title":"t",
+              "url":"https://github.com/o/r/pull/7","pullRequestState":"OPEN",
+              "body":"## What\\n\\nThe description.",
+              "author":{"login":"laconicman"},"viewerDidAuthor":true,
+              "createdAt":"2026-09-20T08:00:00Z",
+              "comments":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}}
+            """
+        let subject = try #require(
+            JSONDecoder().decode(ThreadDetailResponse.self, from: Data(payload.utf8))
+                .data?.repository?.issueOrPullRequest)
+        let body = try #require(subject.bodyComment())
+        #expect(body.id == "pullrequest-7")
+        #expect(body.channel == .issueComment)
+        #expect(body.viewerDidAuthor)
+    }
+
+    /// An empty body still synthesizes — as a `no-prose` item, counted and not owed.
+    /// Skipping it looked like noise reduction until a body that empties *after*
+    /// being recorded made the item vanish, and the vanished-item anomaly blocked
+    /// snapshot writes on every run after (the review round on #5). An unknown
+    /// typename still fabricates nothing.
+    @Test("an empty subject body synthesizes a no-prose item; an unknown type does not")
+    func emptySubjectBodyIsNoProse() throws {
+        for (typename, expectNil) in [("Issue", false), ("PullRequest", false), ("Discussion", true)] {
+            let payload = """
+                {"data":{"repository":{"issueOrPullRequest":{
+                  "__typename":"\(typename)","number":1,"title":"t","url":"u",
+                  "issueState":"OPEN","body":"",
+                  "comments":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}}
+                """
+            let subject = try #require(
+                JSONDecoder().decode(ThreadDetailResponse.self, from: Data(payload.utf8))
+                    .data?.repository?.issueOrPullRequest)
+            if expectNil {
+                #expect(subject.bodyComment() == nil, "\(typename) must synthesize nothing")
+            } else {
+                #expect(subject.bodyComment()?.body == "", "\(typename) keeps the empty body")
+            }
+        }
+    }
+
+    /// The strongest seam test: a recorded `gh api graphql` response must surface the
+    /// body as the FIRST issue-comments item — the synthesis existing is not the same
+    /// as the client inserting it.
+    @Test("the client prepends the subject body to issue comments")
+    func clientInsertsTheSubjectBody() async throws {
+        let payload = """
+            {"data":{"repository":{"issueOrPullRequest":{
+              "__typename":"Issue","number":3,"title":"t",
+              "url":"https://github.com/o/r/issues/3","issueState":"OPEN",
+              "body":"The ask itself.",
+              "author":{"login":"maintainer"},"viewerDidAuthor":false,
+              "createdAt":"2026-09-20T08:00:00Z",
+              "comments":{"pageInfo":{"hasNextPage":false,"endCursor":"c1"},"nodes":[
+                {"body":"a comment","url":"https://github.com/o/r/issues/3#issuecomment-9",
+                 "createdAt":"2026-09-21T08:00:00Z","viewerDidAuthor":false,
+                 "author":{"login":"maintainer"}}]}}},
+             "rateLimit":{"cost":1,"remaining":4999,"resetAt":"x"}}}
+            """
+        let runner = RecordedCommandRunner([
+            .init(match: ["api", "graphql"], stdout: Data(payload.utf8))
+        ])
+        let client = GHCommandClient(runner: runner, queryPath: "unused")
+        let fetched = try await client.threads(repository: "o/r", number: 3)
+        #expect(fetched.issueComments.map(\.id) == ["issue-3", "issuecomment-9"])
     }
 
     // MARK: - Snapshot

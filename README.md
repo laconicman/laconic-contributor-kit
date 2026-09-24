@@ -63,7 +63,7 @@ It reads **three channels**, not one:
 |---|---|---|
 | Inline review comments | Yes | A reply from you in the thread |
 | **Review bodies** | **No** | A *recorded* acknowledgement |
-| Issue comments | No | A *recorded* acknowledgement |
+| Issue comments — **including the subject's own body** | No | A *recorded* acknowledgement |
 
 There is no repo-wide endpoint for review bodies — they are reachable only per pull
 request, which is exactly why they go missing.

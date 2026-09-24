@@ -140,6 +140,7 @@ struct AckCommand: AsyncParsableCommand {
         // acknowledgement. Authored ids are the replies a `comment:` pointer means.
         let parser = AcknowledgementParser(
             knownCommentIDs: snapshot.authored,
+            repository: repository,
             resolveCommit: { sha in
                 let out = try? await runner.run(
                     ["git", "cat-file", "-e", "\(sha)^{commit}"], cwd: workingCopy)

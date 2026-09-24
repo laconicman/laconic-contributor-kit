@@ -36,6 +36,11 @@ Neither can be replied to. That moves the burden onto the contributor; it does n
 discharge it. So they are listed first, never auto-cleared, and leave the list only when
 an acknowledgement is **recorded** — a pointer to where the content was absorbed.
 
+The subject's own body rides the issue-comments channel as a synthesized item — for an
+issue it is the primary ask, and a pull request's description can carry one. GitHub's
+own timeline treats the body as the thread's first entry; `viewerDidAuthor` filters the
+contributor's own, so on self-authored subjects it is never listed.
+
 The record is keyed by comment id **and** body hash, so an edit after acknowledgement
 re-opens the item by itself. For review bodies the hash is not an optimisation: REST's
 review schema carries `submitted_at` and nothing else, so the channel with no reply

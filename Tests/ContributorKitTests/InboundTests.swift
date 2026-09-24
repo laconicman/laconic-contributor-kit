@@ -481,6 +481,90 @@ struct InboundTests {
         #expect(reopened.owed.count == 1)
     }
 
+    // MARK: - The subject body, issue #3 follow-up
+
+    /// For an issue the body IS the ask — and `contrib in` never fetched it, so an
+    /// issue carrying four asks reported "nothing owed". Synthesized as an
+    /// issue-comments item, it flows through the obligation machinery unchanged.
+    @Test("a subject body from someone else is an obligation like any other")
+    func subjectBodyIsAnObligation() throws {
+        let body = RemoteComment(
+            id: "issue-3", channel: .issueComment, author: "maintainer",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: "Please add a regression test.",
+            permalink: "https://github.com/o/r/issues/3")
+        let result = try Fixtures.audit().run(
+            pullRequest(issueComments: [body]), against: nil)
+        let item = try #require(result.items.first)
+        #expect(item.id == "issue-3")
+        #expect(item.state == .obligationOpen)
+        #expect(item.state.isOwed)
+    }
+
+    /// On my own issue or pull request the body is mine — `viewerDidAuthor` filters
+    /// it exactly like my own comments, so the dogfooding mainline stays silent.
+    @Test("my own subject body is authored, never an obligation")
+    func mySubjectBodyIsAuthored() throws {
+        let body = RemoteComment(
+            id: "issue-3", channel: .issueComment, author: "laconicman",
+            viewerDidAuthor: true, createdAt: Date(timeIntervalSince1970: 0),
+            body: "Tracking the work.", permalink: "https://github.com/o/r/issues/3")
+        let result = try Fixtures.audit().run(
+            pullRequest(issueComments: [body]), against: nil)
+        #expect(result.items.isEmpty)
+        #expect(result.ownAuthored[.issueComment] == 1)
+        #expect(result.updatedSnapshot.authored.contains("issue-3"))
+    }
+
+    /// The record is keyed by body hash — an edited issue body re-opens the
+    /// acknowledgement by itself, which is precisely why the body had to be an item.
+    @Test("an acknowledged subject body re-opens when it is edited")
+    func subjectBodyReopensOnEdit() throws {
+        let original = RemoteComment(
+            id: "issue-3", channel: .issueComment, author: "maintainer",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: "Please add a regression test.",
+            permalink: "https://github.com/o/r/issues/3")
+
+        var snapshot = try Fixtures.audit().run(
+            pullRequest(issueComments: [original]), against: nil
+        ).updatedSnapshot
+        snapshot.entries["issue-3"]?.acknowledged = Acknowledgement(
+            kind: .commit, pointer: "e02b93e1", bodySha256AtAck: original.bodySHA256,
+            verified: true, verificationNote: "test")
+
+        var edited = original
+        edited.body = "Please add a regression test — for the TCP path too."
+        let reopened = try Fixtures.audit().run(
+            pullRequest(issueComments: [edited]), against: snapshot)
+        #expect(reopened.items.first?.state == .reopenedByEdit)
+    }
+
+    /// The wedge the review round on #5 caught: a body that empties after being
+    /// recorded used to make the item VANISH, and the vanished-item anomaly blocked
+    /// every later snapshot write — the guard that protects the baseline bricked it
+    /// permanently, because an emptied body stays empty. Now it transitions to
+    /// `no-prose` instead: a recorded change, not a disappearance.
+    @Test("a subject body that empties transitions to no-prose, never vanishes")
+    func emptiedSubjectBodyIsNoProseNotVanished() throws {
+        let original = RemoteComment(
+            id: "issue-3", channel: .issueComment, author: "maintainer",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: "Please add a regression test.",
+            permalink: "https://github.com/o/r/issues/3")
+        let first = try Fixtures.audit().run(
+            pullRequest(issueComments: [original]), against: nil)
+
+        var emptied = original
+        emptied.body = ""
+        let second = try Fixtures.audit().run(
+            pullRequest(issueComments: [emptied]), against: first.updatedSnapshot)
+
+        #expect(second.items.first?.state == .noProse)
+        #expect(second.vanished.isEmpty, "an emptied body is a transition, not a disappearance")
+        #expect(second.items.first?.changed?.contains("no-prose") == true)
+    }
+
     /// Root comments only — a reply inside a thread is not a new ask (<doc:Design>).
     @Test("replies inside a thread are never counted as roots")
     func repliesAreNotRoots() throws {
