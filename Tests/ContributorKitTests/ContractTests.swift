@@ -130,6 +130,32 @@ struct ContractTests {
         }
     }
 
+    /// The subject body is an authored item when the subject is mine — so a `comment:`
+    /// pointer at the subject's own URL must resolve to its synthesized id. The URL
+    /// carries no `#fragment`, which used to make the pointer unverifiable despite
+    /// `issue-3` sitting in `authored` (review round on #5).
+    @Test("a fragmentless subject URL resolves to the synthesized body id")
+    func subjectURLResolvesToBodyID() async throws {
+        let parser = AcknowledgementParser(knownCommentIDs: ["issue-3", "pullrequest-7"])
+
+        let issue = try await parser.parse(
+            "comment:https://github.com/o/r/issues/3", bodySha256: "h")
+        #expect(issue.pointer == "issue-3")
+        #expect(issue.verified)
+
+        let pr = try await parser.parse(
+            "comment:https://github.com/o/r/pull/7", bodySha256: "h")
+        #expect(pr.pointer == "pullrequest-7")
+        #expect(pr.verified)
+
+        // A subject I did not author stays unverified — normalization must not widen
+        // what verifies, only fix which string is looked up.
+        let notMine = try await parser.parse(
+            "comment:https://github.com/o/r/issues/9", bodySha256: "h")
+        #expect(notMine.pointer == "issue-9")
+        #expect(!notMine.verified)
+    }
+
     /// A commit sha with no repository to resolve it against is recorded **unverified**
     /// rather than assumed good. `verified` must never mean "we did not look".
     @Test("a sha with nothing to resolve it is unverified, not assumed")
@@ -265,22 +291,28 @@ struct ContractTests {
         #expect(body.viewerDidAuthor)
     }
 
-    /// An empty body cannot be an ask, and a permanent `no-prose` row per issue is
-    /// noise nobody reads — synthesis skips it. An unknown typename must not
-    /// fabricate an item either.
-    @Test("an empty or unknown subject body synthesizes nothing")
-    func emptySubjectBodyIsNotAnItem() throws {
-        for (typename, body) in [("Issue", "   "), ("PullRequest", ""), ("Discussion", "x")] {
+    /// An empty body still synthesizes — as a `no-prose` item, counted and not owed.
+    /// Skipping it looked like noise reduction until a body that empties *after*
+    /// being recorded made the item vanish, and the vanished-item anomaly blocked
+    /// snapshot writes on every run after (the review round on #5). An unknown
+    /// typename still fabricates nothing.
+    @Test("an empty subject body synthesizes a no-prose item; an unknown type does not")
+    func emptySubjectBodyIsNoProse() throws {
+        for (typename, expectNil) in [("Issue", false), ("PullRequest", false), ("Discussion", true)] {
             let payload = """
                 {"data":{"repository":{"issueOrPullRequest":{
                   "__typename":"\(typename)","number":1,"title":"t","url":"u",
-                  "issueState":"OPEN","body":"\(body)",
+                  "issueState":"OPEN","body":"",
                   "comments":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}}
                 """
             let subject = try #require(
                 JSONDecoder().decode(ThreadDetailResponse.self, from: Data(payload.utf8))
                     .data?.repository?.issueOrPullRequest)
-            #expect(subject.bodyComment() == nil, "\(typename) body \(body.debugDescription)")
+            if expectNil {
+                #expect(subject.bodyComment() == nil, "\(typename) must synthesize nothing")
+            } else {
+                #expect(subject.bodyComment()?.body == "", "\(typename) keeps the empty body")
+            }
         }
     }
 

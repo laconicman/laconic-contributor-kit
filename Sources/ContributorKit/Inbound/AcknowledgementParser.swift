@@ -32,7 +32,17 @@ public struct AcknowledgementParser: Sendable {
         switch scheme {
         case "comment":
             // Accept a bare fragment or a full permalink; the id is the fragment.
-            let id = value.split(separator: "#").last.map(String.init) ?? value
+            var id = value.split(separator: "#").last.map(String.init) ?? value
+            // A fragmentless URL to the subject itself — `…/issues/3`, `…/pull/7` —
+            // names the body item, whose synthesized id is what `authored` holds when
+            // the subject is mine. Without this the pointer recorded unverified.
+            if !value.contains("#") {
+                let tail = value.split(separator: "/").suffix(2)
+                if tail.count == 2, let number = Int(tail.last ?? "") {
+                    if tail.first == "issues" { id = "issue-\(number)" }
+                    if tail.first == "pull" { id = "pullrequest-\(number)" }
+                }
+            }
             let known = knownCommentIDs.contains(id)
             return Acknowledgement(
                 kind: .comment, pointer: id, bodySha256AtAck: bodySha256,

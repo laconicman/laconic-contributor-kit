@@ -52,11 +52,14 @@ struct ThreadDetailResponse: Decodable {
         /// obligation machinery — strip, hash, acknowledge, reopen on edit — then
         /// works unchanged.
         ///
-        /// `nil` when there is nothing to audit: an empty body cannot be an ask and a
-        /// permanent `no-prose` row per subject is noise nobody reads, and an unknown
-        /// typename must not fabricate an item.
+        /// `nil` only when the response carries no body field or the typename is
+        /// unknown — an unknown shape must not fabricate an item. An EMPTY body
+        /// synthesizes too: skipping it let a body emptied after recording make the
+        /// item vanish, and the vanished-item anomaly then blocked every later
+        /// snapshot write — the guard that protects the baseline bricked it
+        /// permanently. Empty is `no-prose`: counted, not owed, invisible by default.
         func bodyComment() -> RemoteComment? {
-            guard let body, !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            guard let body,
                 let number, let url,
                 let prefix =
                     __typename == "Issue" ? "issue"

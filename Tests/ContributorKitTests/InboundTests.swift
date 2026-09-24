@@ -540,6 +540,31 @@ struct InboundTests {
         #expect(reopened.items.first?.state == .reopenedByEdit)
     }
 
+    /// The wedge the review round on #5 caught: a body that empties after being
+    /// recorded used to make the item VANISH, and the vanished-item anomaly blocked
+    /// every later snapshot write — the guard that protects the baseline bricked it
+    /// permanently, because an emptied body stays empty. Now it transitions to
+    /// `no-prose` instead: a recorded change, not a disappearance.
+    @Test("a subject body that empties transitions to no-prose, never vanishes")
+    func emptiedSubjectBodyIsNoProseNotVanished() throws {
+        let original = RemoteComment(
+            id: "issue-3", channel: .issueComment, author: "maintainer",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: "Please add a regression test.",
+            permalink: "https://github.com/o/r/issues/3")
+        let first = try Fixtures.audit().run(
+            pullRequest(issueComments: [original]), against: nil)
+
+        var emptied = original
+        emptied.body = ""
+        let second = try Fixtures.audit().run(
+            pullRequest(issueComments: [emptied]), against: first.updatedSnapshot)
+
+        #expect(second.items.first?.state == .noProse)
+        #expect(second.vanished.isEmpty, "an emptied body is a transition, not a disappearance")
+        #expect(second.items.first?.changed?.contains("no-prose") == true)
+    }
+
     /// Root comments only — a reply inside a thread is not a new ask (<doc:Design>).
     @Test("replies inside a thread are never counted as roots")
     func repliesAreNotRoots() throws {
