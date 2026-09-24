@@ -532,6 +532,58 @@ struct InboundTests {
             "a body change after acknowledgement re-flags it")
     }
 
+    /// An announcement followed by a collapsed section is NOT informational:
+    /// stripping the marker leaves "Starting Devin Review." as a fragment that
+    /// whole-matches the fixed phrase — the same suppression the detector's
+    /// own comment warns about, recreated through the marker pass. Unexamined
+    /// content cannot be ruled a note.
+    @Test("an announcement before a collapsed section is not informational")
+    func announcementBeforeCollapsedSectionIsNotInformational() throws {
+        let comment = RemoteComment(
+            id: "issuecomment-1", channel: .issueComment, author: "bot",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: "Starting Devin Review.\n\n<details>\n<summary>Next steps</summary>\nPlease add a regression test.\n</details>",
+            permalink: "https://github.com/o/r/issues/1#issuecomment-1")
+        let result = try Fixtures.audit().run(
+            pullRequest(issueComments: [comment]), against: nil)
+        #expect(result.items.first?.state == .obligationOpen,
+            "the collapsed request is unexamined — the announcement cannot suppress it")
+    }
+
+    /// Same class through the other suppression state: a retraction in the
+    /// opening lines followed by a collapsed section cannot be verified to
+    /// cover the unread content.
+    @Test("a retraction before a collapsed section does not supersede the unread content")
+    func retractionBeforeCollapsedSectionDoesNotSupersede() throws {
+        let comment = RemoteComment(
+            id: "issuecomment-1", channel: .issueComment, author: "bot",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: "This report has been superseded\n\n<details>\n<summary>Findings</summary>\nPlease add a regression test.\n</details>",
+            permalink: "https://github.com/o/r/issues/1#issuecomment-1")
+        let result = try Fixtures.audit().run(
+            pullRequest(issueComments: [comment]), against: nil)
+        #expect(result.items.first?.state == .obligationOpen,
+            "a retraction cannot be verified against content nobody has read")
+    }
+
+    /// The worklist excerpt truncates at 150 characters; a marker inserted
+    /// past that cut leaves no visible flag at all. The terminal render must
+    /// name hidden collapsed sections explicitly.
+    @Test("a marker past the excerpt cut still prints a flag")
+    func markerBeyondExcerptCutPrintsFlag() throws {
+        let comment = RemoteComment(
+            id: "issuecomment-1", channel: .issueComment, author: "bot",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: String(repeating: "x", count: 170)
+                + "\n\n<details>\n<summary>Example</summary>\nAdditional request\n</details>",
+            permalink: "https://github.com/o/r/issues/1#issuecomment-1")
+        let pr = pullRequest(issueComments: [comment])
+        let result = try Fixtures.audit().run(pr, against: nil)
+        let output = InboundReporting.terminal(pr, result)
+        #expect(output.contains("collapsed"),
+            "the worklist must say collapsed content exists even when the excerpt hides the marker")
+    }
+
     /// The raw-body fallback in `text.ask` must not leak into the marker-only
     /// check: an HTML-only body whose comment happens to contain the literal
     /// text `[collapsed:` has no collapsed section to retrieve.

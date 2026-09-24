@@ -55,10 +55,16 @@ public enum InboundReporting {
                     let group = rounds[round]!
                     let when = group.compactMap(\.roundAt).min().map(dayString) ?? "?"
                     lines.append("  round \(round), \(when) — \(group.count) thread(s)")
-                    lines.append(contentsOf: group.flatMap { render($0, indent: "    ") })
+                    lines.append(
+                        contentsOf: group.flatMap {
+                            render($0, indent: "    ", repository: pr.repository)
+                        })
                 }
             } else {
-                lines.append(contentsOf: items.flatMap { render($0, indent: "  ") })
+                lines.append(
+                    contentsOf: items.flatMap {
+                        render($0, indent: "  ", repository: pr.repository)
+                    })
             }
         }
         return lines.joined(separator: "\n")
@@ -204,7 +210,9 @@ public enum InboundReporting {
         }
     }
 
-    private static func render(_ item: InboundItem, indent: String) -> [String] {
+    private static func render(_ item: InboundItem, indent: String, repository: String)
+        -> [String]
+    {
         var lines: [String] = []
         let marker = item.state.isOwed ? "●" : "·"
         let author = item.author.map { " \($0)" } ?? ""
@@ -212,7 +220,17 @@ public enum InboundReporting {
         if let changed = item.changed {
             lines.append("\(indent)  changed: \(changed)")
         }
-        lines.append("\(indent)  \(oneLine(item.text.ask))")
+        let excerpt = oneLine(item.text.ask)
+        lines.append("\(indent)  \(excerpt)")
+        // A marker past the excerpt's cut would leave no flag at all — name the
+        // sections the excerpt could not show.
+        let hidden = item.text.ask.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { BoilerplateStripper.isCollapsedMarker($0) && !excerpt.contains($0) }
+        for markerLine in hidden {
+            lines.append(
+                "\(indent)  + \(markerLine) — `contrib show \(item.id) \(repository) --full`")
+        }
         if let reply = item.text.reply {
             lines.append("\(indent)  my reply: \(oneLine(reply))")
         }

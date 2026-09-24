@@ -179,6 +179,13 @@ public struct InboundAudit: Sendable {
                 // only markers is not `no-prose` — that means *empty*, and this
                 // is unexamined: the flag lists until acknowledged.
                 let substantive = stripper.substantiveProse(prose)
+                // Suppression verdicts must not land while collapsed content is
+                // unread: `substantive` minus the markers is a fragment, and a
+                // fragment can whole-match a fixed phrase ("Starting Devin
+                // Review.") or open with a retraction while the hidden section
+                // carries the ask. Markers make the body ineligible for both
+                // suppression states.
+                let suppressible = !stripper.hasCollapsedMarkers(prose)
                 let state: ItemState
                 if substantive.isEmpty {
                     if prose.isEmpty {
@@ -190,9 +197,11 @@ public struct InboundAudit: Sendable {
                     } else {
                         state = .collapsedUnexamined
                     }
-                } else if supersession.supersedes(substantive) != nil {
+                } else if suppressible, supersession.supersedes(substantive) != nil {
                     state = .superseded
-                } else if informational.isInformational(raw: comment.body, prose: substantive) != nil {
+                } else if suppressible,
+                    informational.isInformational(raw: comment.body, prose: substantive) != nil
+                {
                     state = .informational
                 } else if let ack = previous?.entries[comment.id]?.acknowledged {
                     state =

@@ -47,6 +47,16 @@ public struct BoilerplateStripper: Sendable {
         return kept.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// True when `prose` carries a generated marker — meaning collapsed content
+    /// exists that no classifier has read. A suppression verdict on such a body
+    /// is unverifiable: the classifiers see `substantiveProse`, and what remains
+    /// cannot rule the unread section in or out.
+    public func hasCollapsedMarkers(_ prose: String) -> Bool {
+        prose.components(separatedBy: .newlines).contains {
+            Self.isCollapsedMarker($0.trimmingCharacters(in: .whitespaces))
+        }
+    }
+
     /// The full emitted marker shape — `[collapsed: "Title" ·8hex]`. A bare
     /// prefix match would eat an author's own line that happens to open with
     /// `[collapsed:`; colliding with the generated form needs the quoted
