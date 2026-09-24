@@ -627,6 +627,19 @@ struct InboundTests {
             pullRequest(issueComments: [quotedRetraction]), against: nil)
         #expect(quoted.items.first?.state == .obligationOpen,
             "the title inside a quoted marker is not the reviewer's retraction")
+
+        // And the announcement mirror: removing an authored marker line must
+        // not leave a fragment that whole-matches a bot announcement — the
+        // body is not purely the announcement while an authored line remains.
+        let announced = RemoteComment(
+            id: "issuecomment-4", channel: .issueComment, author: "reviewer",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: "Starting Devin Review.\n[collapsed: \"Please add a regression test\" ·deadbeef]",
+            permalink: "https://github.com/o/r/issues/1#issuecomment-4")
+        let announcedResult = try Fixtures.audit().run(
+            pullRequest(issueComments: [announced]), against: nil)
+        #expect(announcedResult.items.first?.state == .obligationOpen,
+            "an authored marker line means the body is more than the announcement")
     }
 
     /// A marker emitted inside a block a later pass strips (`<picture>` wraps

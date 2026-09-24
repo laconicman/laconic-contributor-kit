@@ -184,10 +184,15 @@ public struct InboundAudit: Sendable {
                 let substantive = stripper.substantiveProse(
                     prose, markers: stripped.collapsedMarkers)
                 let suppressible = stripped.collapsedMarkers.isEmpty
-                // Suppression reads plain prose only. A line in marker SHAPE —
-                // literal ones survive `substantiveProse` — is quoting the
-                // format, and its embedded title is never the reviewer's own
-                // opening statement, so it can neither retract nor announce.
+                // A line in marker SHAPE — literal ones survive
+                // `substantiveProse` — is quoting the format: its embedded
+                // title is never the reviewer's own opening statement, so it
+                // cannot supply a retraction. But it IS authored text, so it
+                // still counts for wholeness — dropping it must not leave a
+                // fragment that whole-matches an informational announcement.
+                // Hence: supersedes reads prose minus marker-shaped lines
+                // (`contains` on opening lines — removal can only remove a
+                // phrase), while informational reads `substantive` whole.
                 let classifierProse = substantive
                     .components(separatedBy: .newlines)
                     .filter {
@@ -209,7 +214,7 @@ public struct InboundAudit: Sendable {
                 } else if suppressible, supersession.supersedes(classifierProse) != nil {
                     state = .superseded
                 } else if suppressible,
-                    informational.isInformational(raw: comment.body, prose: classifierProse) != nil
+                    informational.isInformational(raw: comment.body, prose: substantive) != nil
                 {
                     state = .informational
                 } else if let ack = previous?.entries[comment.id]?.acknowledged {

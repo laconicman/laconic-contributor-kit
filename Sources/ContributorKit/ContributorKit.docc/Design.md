@@ -165,10 +165,11 @@ Two lessons the review rounds on #5 paid for, recorded here because they general
   pass emitted that survived the later boilerplate passes, so a marker-shaped line an
   author wrote — quoting the format — stays prose, a marker erased with its block
   flags nothing, and only real emissions flag unexamined content or block a
-  suppression verdict. Shape has one remaining job: suppression classifiers read
-  prose minus marker-shaped lines regardless of provenance, because a line quoting
-  the format is never the reviewer's own opening statement — a retraction embedded
-  in a quoted marker title cannot withdraw the ask it rides with.
+  suppression verdict. Shape has one remaining job: a line quoting the format is
+  never the reviewer's own opening statement, so it cannot supply a retraction —
+  `supersedes` reads prose minus marker-shaped lines. It is still authored text,
+  though, so it counts for wholeness: `isInformational` reads them in, because
+  dropping one must not leave a fragment that whole-matches a bot announcement.
 
 And one clarification worth stating plainly: a reviewer's collapsible section —
 "Learn more", fix instructions, diagnostics — is part of the comment `body`, not a
