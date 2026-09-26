@@ -18,13 +18,16 @@ public struct InboundAudit: Sendable {
     public let informational: InformationalDetector
     /// The asker's own "this is fixed" phrase (`inbound.verdictPhrases`).
     public let verdicts: VerdictDetector
+    /// Askers whose reply after mine confirms only when it is a verdict
+    /// (`inbound.botAskers`) — a reviewer bot whose login also carries its fix sessions.
+    public let botAskers: [String]
     /// Items raised before this are counted and not listed (`inbound.horizon`).
     public let horizon: Date?
 
     public init(
         me: String?, stripper: BoilerplateStripper, supersession: SupersessionDetector,
         informational: InformationalDetector, verdicts: VerdictDetector,
-        horizon: Date? = nil
+        botAskers: [String], horizon: Date? = nil
     ) {
         self.horizon = horizon
         self.me = me
@@ -32,6 +35,7 @@ public struct InboundAudit: Sendable {
         self.supersession = supersession
         self.informational = informational
         self.verdicts = verdicts
+        self.botAskers = botAskers
     }
 
     public struct Result: Sendable {
@@ -83,6 +87,10 @@ public struct InboundAudit: Sendable {
         if comment.viewerDidAuthor { return true }
         if let me { return comment.author.caseInsensitiveCompare(me) == .orderedSame }
         return false
+    }
+
+    private func isBot(_ login: String) -> Bool {
+        botAskers.contains { Login.same($0, login) }
     }
 
     /// One reply from the asker's own login in an inline thread.
@@ -148,11 +156,17 @@ public struct InboundAudit: Sendable {
             // suppressing one on a marker can only ever hide a real ask, and did.
             let state: ItemState
             if let lastMine = mine.last {
-                // The asker's verdict confirms whenever it was posted: a reviewer that
-                // re-reviews on push can confirm the fix before I get to reply, and
-                // requiring it to come after mine counted that for nothing. It needs a
-                // reply of mine to confirm, though — a verdict never manufactures one.
-                if askerReplies.contains(where: { $0.isAfterMyLastReply || $0.isVerdict }) {
+                // The asker's latest reply after mine decides. From a person any reply
+                // confirms, as it always has; from a bot asker only its verdict does,
+                // because the same login carries the bot's fix sessions, whose replies
+                // are news about my fix and not a confirmation of it. With nothing from
+                // the asker after mine, a verdict posted earlier still confirms: a
+                // reviewer that re-reviews on push can confirm a fix before I reply. A
+                // verdict never manufactures a reply of mine, though.
+                if let latest = askerReplies.last(where: \.isAfterMyLastReply) {
+                    state =
+                        latest.isVerdict || !isBot(root.author) ? .answeredConfirmed : .askerReplied
+                } else if askerReplies.contains(where: \.isVerdict) {
                     state = .answeredConfirmed
                 } else if let edited = root.lastEditedAt, edited > lastMine.createdAt {
                     state = .editedAfterMyAnswer
@@ -380,6 +394,7 @@ extension InboundAudit {
             informational: try InformationalDetector(
                 patterns: configuration.inbound.informationalPatterns),
             verdicts: VerdictDetector(phrases: configuration.inbound.verdictPhrases),
+            botAskers: configuration.inbound.botAskers,
             horizon: try configuration.inbound.horizonDate())
     }
 }

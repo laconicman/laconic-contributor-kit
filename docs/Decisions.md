@@ -59,6 +59,30 @@ with Devin's `✅ **Resolved**:`) now confirms my reply, before or after it.
 Matching a fixed phrase where the asker puts it is declared structure, not meaning — the
 same move supersession makes. The boundary sentence in `ItemState.swift` now says so.
 
+**Amended again, same day: from a bot asker, only the verdict confirms.** A reviewer
+bot's login also carries its fix sessions. On `telegram-kb#3` I replied "Fixed", and the
+reviewer's login then replied *"Closed the remaining half of this in f7c1a98"*. My fix
+had missed a path. Any asker-login reply after mine counted as confirmation, so the one
+reply I most needed to read was cleared. The same thing happened on `#6`.
+
+- **Gated to configured bots** (`inbound.botAskers`, seeded with `devin-ai-integration`,
+  matched with a GitHub App's `[bot]` suffix ignored). A person's "LGTM, thanks" after my
+  reply confirms, as it always has.
+- **The asker's latest reply after mine decides.** A verdict confirms. From a bot, anything
+  else is the new state `asker-replied`: *confirmation, or correction?* It is listed and
+  never owed. A verdict that follows a correction is the reviewer re-checking once the
+  rest was closed, so it confirms. A correction that follows a verdict is news the verdict
+  predates, so it lists.
+- **Cleared by replying, not by `ack`.** A check would judge my reply while the asker's
+  later one went unread, and the audit decides `asker-replied` before it reads any check.
+  So `ack` refuses and names the remedy: read the reply with `contrib show`, then answer it
+  in the thread. That reply makes the thread `answered-claimed` again. The cost is a
+  public one-liner even when the bot's reply was harmless; judged worth it over a new
+  snapshot field.
+- **`contrib show` prints the asker's replies**, each labelled by time, verdict, and
+  whether it came after mine. A state whose question is *confirmation or correction?* has
+  to arrive with the reply it asks about. That is what made this state legal.
+
 ### Resolution is reported, never decided on
 
 Decided 2026-09-26, from issue #7. Every inline item carries GitHub's `isResolved`, the

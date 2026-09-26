@@ -113,9 +113,9 @@ public enum InboundReporting {
             }.count
             if quiet > 0 {
                 provenance.note(
-                    "\(pr.state.lowercased()) — \(quiet) answered-claimed item(s) on resolved "
-                        + "threads not listed; owed items and unresolved threads are listed "
-                        + "regardless")
+                    "\(pr.state.lowercased()) — \(quiet) answered-claimed or asker-replied "
+                        + "item(s) on resolved threads not listed; owed items and unresolved "
+                        + "threads are listed regardless")
             }
         }
         provenance.examined("pages fetched", pr.pagesFetched)
@@ -238,7 +238,9 @@ public enum InboundReporting {
         }
         if item.state.isOwed || item.state.needsLook || item.state == .collapsedUnexamined {
             lines.append("\(indent)  → \(item.question)")
-            if item.kind != .inlineThread || item.state.needsLook {
+            if item.state == .askerReplied {
+                lines.append("\(indent)    contrib show \(item.id) \(repository)")
+            } else if item.kind != .inlineThread || item.state == .answeredClaimed {
                 lines.append("\(indent)    contrib ack \(item.id) --with none:\"…\"")
             }
         }

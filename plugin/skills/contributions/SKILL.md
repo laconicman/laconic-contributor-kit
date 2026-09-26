@@ -24,7 +24,8 @@ table is the whole contract; there is no case where the right response is "ignor
 | `open-ask` | A root ask from someone else, no reply from me | — | **Answer it, or say why it should be left out.** "Separate PR" is a fine answer. Silence is not. |
 | `answered-claimed` | I replied; the asker has not confirmed | Is my reply actually *responsive* to the ask, or only adjacent to it? | Re-read both. If the reply dodged, reply again. If it answers, **record that**: `contrib ack <id> --with none:"<why it answers>"`. Listed until one of those happens. |
 | `answered-checked` | I recorded that my reply answers the ask; ask and reply unchanged since | None | Nothing. A new reply or an edited ask lists it again. |
-| `answered-confirmed` | I replied, and the asker replied after me — or posted its verdict phrase (`✅ **Resolved**:` for Devin Review) at any point | None | Nothing. The asker confirmed it themselves. |
+| `answered-confirmed` | I replied, and the asker replied after me — or posted its verdict phrase (`✅ **Resolved**:` for Devin Review) at any point. A bot asker's reply after mine confirms only when its latest one is the verdict | None | Nothing. The asker confirmed it themselves. |
+| `asker-replied` | A bot asker (`inbound.botAskers`) replied after me, and its latest reply is not its verdict — often its own fix session reporting on my fix | Confirmation, or correction? | `contrib show <id> <repo>` prints the reply. **Answer it in the thread** — say what you checked, or fix what it found. Your reply makes it `answered-claimed`. `ack` is refused here. Listed, never owed. |
 | `edited-after-my-answer` | `lastEditedAt` > my reply | Does the edit change what is being asked? | If it does, answer the new ask. If not, say so once. |
 | `obligation-open` | A review body or issue comment from someone else, nothing recorded | Does this need a response, or is it already absorbed? | Either way, **record which**: `contrib ack <id> --with …`. |
 | `obligation-acknowledged` | Recorded, body unmoved | None | Nothing. |
@@ -48,9 +49,9 @@ findings. A category label cannot carry that decision.
 everything goes on after you absorb it in some way; going on as if nothing was posted
 is the contributor's mistake. So review bodies are listed first and never auto-cleared.
 
-**Closure quiets `answered-claimed` and nothing else — and only on a resolved thread.** On a
-closed or merged PR nobody is waiting on the responsiveness check, so those drop out of the
-default view — still counted, and listed again if anything about them moves. A thread still
+**Closure quiets `answered-claimed` and `asker-replied` and nothing else — and only on a
+resolved thread.** On a closed or merged PR nobody is waiting on those questions, so they
+drop out of the default view — still counted, and listed again if anything about them moves. A thread still
 **unresolved** stays listed: that is the asker's side disagreeing with the closure, as when a
 reply deferred the finding and the reviewer never resolved it. Owed items are listed
 regardless: reviewers post rounds after a merge, and a close can carry a condition addressed

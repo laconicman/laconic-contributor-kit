@@ -134,6 +134,7 @@ extension Fixtures {
             informational: try InformationalDetector(
                 patterns: config.inbound.informationalPatterns),
             verdicts: VerdictDetector(phrases: config.inbound.verdictPhrases),
+            botAskers: config.inbound.botAskers,
             horizon: horizon)
     }
 }

@@ -19,6 +19,7 @@ let audit = InboundAudit(
     supersession: SupersessionDetector(phrases: configuration.inbound.supersessionPhrases),
     informational: try InformationalDetector(patterns: configuration.inbound.informationalPatterns),
     verdicts: VerdictDetector(phrases: configuration.inbound.verdictPhrases),
+    botAskers: configuration.inbound.botAskers,
     horizon: try configuration.inbound.horizonDate())
 
 let result = audit.run(threads, against: previousSnapshot)

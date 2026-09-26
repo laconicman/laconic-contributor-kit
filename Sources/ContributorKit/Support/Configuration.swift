@@ -47,6 +47,8 @@ public struct Configuration: Codable, Sendable {
         public var informationalPatterns: [String]
         /// Phrases an asker's reply **opens** with when it declares the ask fixed.
         public var verdictPhrases: [String]
+        /// Asker logins whose reply after mine confirms only when it is a verdict.
+        public var botAskers: [String]
         /// `<summary>` phrases whose `<details>` block unwraps into prose;
         /// anything else collapses to a `[collapsed: …]` marker line.
         public var keptDetailsSummaries: [String]
@@ -83,6 +85,7 @@ public struct Configuration: Codable, Sendable {
             var supersessionPhrases: [String]?
             var informationalPatterns: [String]?
             var verdictPhrases: [String]?
+            var botAskers: [String]?
             var keptDetailsSummaries: [String]?
             var acknowledgementKinds: [String]?
             var horizon: String?
@@ -94,6 +97,7 @@ public struct Configuration: Codable, Sendable {
                 if let v = supersessionPhrases { out.supersessionPhrases = v }
                 if let v = informationalPatterns { out.informationalPatterns = v }
                 if let v = verdictPhrases { out.verdictPhrases = v }
+                if let v = botAskers { out.botAskers = v }
                 if let v = keptDetailsSummaries { out.keptDetailsSummaries = v }
                 if let v = acknowledgementKinds { out.acknowledgementKinds = v }
                 if let v = horizon { out.horizon = v }
@@ -142,6 +146,7 @@ public struct Configuration: Codable, Sendable {
             let supersession = partial.supersessionPhrases,
             let informational = partial.informationalPatterns,
             let verdicts = partial.verdictPhrases,
+            let botAskers = partial.botAskers,
             let keptDetails = partial.keptDetailsSummaries,
             let kinds = partial.acknowledgementKinds
         else {
@@ -152,7 +157,8 @@ public struct Configuration: Codable, Sendable {
             inbound: InboundSettings(
                 boilerplateBlocks: blocks, boilerplatePatterns: patterns,
                 supersessionPhrases: supersession, informationalPatterns: informational,
-                verdictPhrases: verdicts, keptDetailsSummaries: keptDetails,
+                verdictPhrases: verdicts, botAskers: botAskers,
+                keptDetailsSummaries: keptDetails,
                 horizon: partial.horizon, acknowledgementKinds: kinds))
     }
 
