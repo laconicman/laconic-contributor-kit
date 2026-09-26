@@ -16,15 +16,22 @@ Per thread it reports the kit's state beside what GitHub and the asker say:
 It then sorts the disagreements into the four cases of issue #7:
   1  confirmed-before-reply    kit says answered-claimed; the asker's verdict precedes my reply
   2  one-login-two-roles       kit says open-ask; the asker's login replied (fix session or verdict)
-  3  correction-as-confirm     kit says answered-confirmed; the asker's later reply is not a verdict
-  4  unresolved                GitHub says the thread is still open (flagged when a closed PR
-                               quiets it by default)
+  3  correction-as-confirm     kit says answered-confirmed; the asker's latest reply after mine
+                               is not a verdict
+     correction-not-listed     kit says asker-replied, and its default view does not list it
+  4  unresolved                GitHub says the thread is still open, labelled by whether the
+                               kit's default view (no --all) lists it
+
+The default view is read from a second `contrib in --json` run without `--all`, so "listed"
+is observed rather than inferred from a state. Since issue #7 the kit reports each inline
+thread's `resolution` too, and that is checked against this walk's own reading.
 
 Nothing is written anywhere but stdout and, with --capture, the given directory. The kit's
 snapshot is left untouched (`--no-snapshot`).
 
 Exit status: 0 on a complete walk, 1 when a tool fails, 2 on an anomaly — a truncated
-comment page, or a thread count that differs from the kit's own `inline threads` counter.
+comment page, a thread count that differs from the kit's own `inline threads` counter, or a
+kit `resolution` that disagrees with GitHub's.
 A zero is only a zero when the provenance lines above it show what was examined.
 
 Usage:
@@ -139,16 +146,19 @@ def classify(thread, me, phrase):
     }
 
 
-def case_of(row, closed):
+def case_of(row):
     s = row["state"]
     if not row["isResolved"]:
-        return "4 unresolved" + (" (quieted: closed PR)" if closed and s == "answered-claimed" else "")
+        return "4 unresolved" + (" (listed)" if row["listed"] else " (NOT listed by default)")
     if s == "answered-claimed" and "verdict" in row["askerBefore"]:
         return "1 confirmed-before-reply"
     if s == "open-ask" and (row["askerBefore"] or row["askerAfter"]):
         return "2 one-login-two-roles"
-    if s == "answered-confirmed" and row["askerAfter"] and "verdict" not in row["askerAfter"]:
+    # The asker's latest reply after mine decides: a verdict confirms, anything else is a question.
+    if s == "answered-confirmed" and row["askerAfter"] and row["askerAfter"][-1] != "verdict":
         return "3 correction-as-confirm"
+    if s == "asker-replied" and not row["listed"]:
+        return "3 correction-not-listed"
     return None
 
 
@@ -167,10 +177,13 @@ def main():
     try:
         me = normalise(args.me or run(["gh", "api", "user", "--jq", ".login"]).strip())
         rows, anomalies, provenance = [], [], []
+        resolution_compared = 0
         for pr in args.prs:
             state, threads, pages = fetch_threads(owner, name, pr)
             kit = json.loads(run([args.contrib, "in", args.repo, "--pr", str(pr),
                                   "--all", "--json", "--no-snapshot"]))
+            listed = {i["id"] for i in json.loads(run([args.contrib, "in", args.repo, "--pr", str(pr),
+                                                       "--json", "--no-snapshot"]))["items"]}
             counters = {c["label"]: c["value"] for c in kit["provenance"]["counters"]}
             items = {i["id"]: i for i in kit["items"]}
             provenance.append(f"#{pr} {state.lower()}: {len(threads)} threads (GraphQL), "
@@ -189,9 +202,17 @@ def main():
                 row["pr"] = pr
                 item = items.get(row["id"])
                 row["state"] = item["state"] if item else "MISSING"
+                row["listed"] = row["id"] in listed
                 if not item:
                     anomalies.append(f"#{pr}: {row['id']} has no contrib item")
-                row["case"] = case_of(row, state != "OPEN")
+                elif "resolution" in item:
+                    resolution_compared += 1
+                    kr = item["resolution"] or {}
+                    if (kr.get("isResolved"), normalise(kr.get("resolvedBy")) or None) != \
+                            (row["isResolved"], row["resolvedBy"]):
+                        anomalies.append(f"#{pr}: {row['id']} resolution: contrib {kr} ≠ GitHub "
+                                         f"{row['isResolved']}/{row['resolvedBy']}")
+                row["case"] = case_of(row)
                 rows.append(row)
     except ToolFailure as e:
         print(f"tool failure: {e}", file=sys.stderr)
@@ -206,12 +227,16 @@ def main():
         for line in provenance:
             print("  " + line)
         print(f"  me={me}  verdict phrase={args.verdict_phrase!r}  rows={len(rows)}")
+        # Said whether or not it disagreed: a check that never ran reports no anomaly too.
+        print(f"  contrib resolution compared with GitHub's on {resolution_compared} of {len(rows)} threads")
         print("\n— contrib state × GitHub resolution × asker replies —")
         table = Counter((r["pr"], r["state"], r["isResolved"], r["iReplied"],
                          "+".join(r["askerBefore"]) or "-", "+".join(r["askerAfter"]) or "-") for r in rows)
         print(f"  {'PR':>3} {'contrib state':20} {'resolved':8} {'I replied':9} {'asker before me':16} {'asker after me':15} n")
         for k in sorted(table, key=str):
             print(f"  {k[0]:>3} {k[1]:20} {str(k[2]):8} {str(k[3]):9} {k[4][:16]:16} {k[5][:15]:15} {table[k]}")
+        replied = [r for r in rows if r["state"] == "asker-replied"]
+        print(f"\n— asker-replied: {len(replied)} row(s), {sum(r['listed'] for r in replied)} listed by default —")
         print("\n— disagreements, by issue #7 case —")
         cases = Counter(r["case"] for r in rows if r["case"])
         for case in sorted(cases):

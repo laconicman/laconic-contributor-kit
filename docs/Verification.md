@@ -88,9 +88,10 @@ by decision rather than by oversight: see `Decisions.md` on era acknowledgement.
 A session asked a narrow question of `laconicman/telegram-kb` — *which threads did the
 reviewer say are resolved but are still open?* — and answered it twice: with
 `contrib in --all --json` on PRs #1–#7, and with an independent GraphQL walk that reads
-`isResolved` and `resolvedBy`, which the kit deliberately does not.
-`scripts/resolution-crosscheck.py` is that walk, kept as an oracle; it needs no kit code
-and exits 2 when its thread count disagrees with the kit's own counter.
+`isResolved` and `resolvedBy`, which the kit did not read then.
+`scripts/resolution-crosscheck.py` is that walk, kept as an oracle. It needs no kit code,
+and it exits 2 when its thread count disagrees with the kit's own counter, or when the
+kit's reported `resolution` disagrees with GitHub's.
 
 | Claim | Evidence |
 |---|---|
@@ -110,6 +111,30 @@ What the walk found that the kit gets wrong is issue #7. There are four cases:
 One real thread per case — plus a control from #2 — is cut verbatim from that capture
 into `Tests/ContributorKitTests/Fixtures/resolution/`, because the live state moves on: the
 case-4 thread is due to be answered and resolved.
+
+**After the fix, same day, live.** The oracle was re-run against the fixed build while the
+case-4 thread was still unresolved:
+
+| Case | Before | After | How |
+|---|---|---|---|
+| Verdict before my reply | 12 | 0 | all 12 now `answered-confirmed` |
+| One login, two roles | 20 | 20 | the documented limit; the 4 verdict-only threads stay `open-ask` by design |
+| Correction read as confirmation | 2 | 0 | both now `asker-replied`, and both listed by a default run |
+| Unresolved, quieted after merge | 1 | 1 | still unresolved on GitHub, and a default `contrib in --pr 1` now lists it (`to re-read 1`) |
+
+The oracle observes "listed" from a second `contrib in --json` run without `--all`; it
+does not infer it from a state. The kit's `resolution` agreed with GitHub's on 111 of 111
+threads. A build without that key reports 0 compared, so a skipped check cannot pass for
+agreement. A forged disagreement exits 2.
+
+Each rule was also checked against a mutant, each of which the suite killed:
+
+| Mutant | Test that failed |
+|---|---|
+| The verdict phrase matched anywhere, not at the opening | *the verdict phrase mid-reply, or quoted, is not a verdict* |
+| No bot gate: any non-verdict after mine lists | *a human asker's plain reply after mine still confirms* |
+| Any non-verdict after mine lists, whatever came later | *the bot asker's latest reply after mine decides* |
+| Closure quiets an unresolved thread too | *a merged PR keeps an unresolved answered-claimed thread listed, and only that* |
 
 ## Three defects the live trial found
 
