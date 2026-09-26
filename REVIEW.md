@@ -82,7 +82,7 @@ from a failure on a real upstream pull request. Generic Swift advice is not want
 - `contrib loc --range` must never touch the network; it has to stay usable offline and on
   a repository with no GitHub remote. Flag any `gh` call reachable from `LocCommand`.
 - Both pipes in `SystemCommandRunner` must be drained concurrently. Reading them serially
-  deadlocks against `waitUntilExit` once output exceeds the 64 KB pipe buffer, which
+  deadlocks against the wait for exit once output exceeds the 64 KB pipe buffer, which
   `cloc --by-file` does on a large range.
 
 ## Ignore

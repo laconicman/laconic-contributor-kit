@@ -493,6 +493,34 @@ struct ContractTests {
         #expect(counting.failures == 1)
     }
 
+    /// `waitUntilExit()` parks its thread in a run loop, and a task that resumed on
+    /// another cooperative thread after launch could stay parked there after the child
+    /// had exited and been reaped: a full `swift test` hung over ten minutes in
+    /// `countingRunner` that way. This batch hung on every try against that runner.
+    /// The time limit names the test if it hangs again; it cannot end the run, since a
+    /// blocked thread never sees the cancellation.
+    @Test(
+        "many short subprocesses in flight together each return their own result",
+        .timeLimit(.minutes(1)))
+    func concurrentRunsAllReturn() async throws {
+        let runs = 400, width = 8
+        let counting = CountingCommandRunner(SystemCommandRunner())
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            for i in 0..<runs {
+                if i >= width { try await group.next() }
+                group.addTask {
+                    let out = try await counting.run(
+                        ["sh", "-c", "echo \(i); exit \(i % 2)"], cwd: nil)
+                    #expect(out.stdoutText == "\(i)\n")
+                    #expect(out.status == Int32(i % 2))
+                }
+            }
+            try await group.waitForAll()
+        }
+        #expect(counting.count == runs)
+        #expect(counting.failures == runs / 2)
+    }
+
     // MARK: - Globs
 
     @Test("the glob subset behaves at the edges that matter")
