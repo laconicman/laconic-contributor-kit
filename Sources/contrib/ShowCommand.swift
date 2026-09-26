@@ -9,9 +9,10 @@ struct ShowCommand: AsyncParsableCommand {
         discussion: """
             The table truncates, and `gh api … --jq '.body'` is the road back to
             hand-rolled fetches. `show` prints one item whole: the stripped ask as the
-            audit sees it, your last reply for an inline thread, the recorded
-            acknowledgement, and a line diff against the last recorded read — or the
-            acknowledged text, when the record kept its prose.
+            audit sees it, your last reply and the asker's replies for an inline
+            thread — each labelled by author, time, and whether it came after yours —
+            the recorded acknowledgement, and a line diff against the last recorded
+            read — or the acknowledged text, when the record kept its prose.
 
             The snapshot records what was shown: the item's fresh entry is written
             under the repository lock, so the next `contrib in` no longer reports
@@ -144,6 +145,22 @@ struct ShowCommand: AsyncParsableCommand {
             print("")
             print("── my reply " + String(repeating: "─", count: 54))
             print(item.text.reply ?? "(no reply from you yet)")
+
+            // The reply a state rests on travels with it: a correction the audit read
+            // as a confirmation was invisible here, because only my side was printed.
+            let thread = fetched.threads.first { $0.root?.id == id }
+            let askerReplies = thread.map(audit.askerReplies(in:)) ?? []
+            print("")
+            print("── the asker's replies " + String(repeating: "─", count: 43))
+            if askerReplies.isEmpty { print("(no reply from the asker)") }
+            for (index, reply) in askerReplies.enumerated() {
+                if index > 0 { print("") }
+                let order =
+                    item.text.reply == nil
+                    ? "" : reply.isAfterMyLastReply ? " — after your last reply" : " — before your last reply"
+                print("\(reply.comment.author), \(GitHubTime.string(reply.comment.createdAt))\(order)")
+                print(audit.stripper.prose(of: reply.comment.body))
+            }
         }
         if let ack = previous?.acknowledged {
             print("")

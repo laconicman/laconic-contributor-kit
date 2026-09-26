@@ -111,6 +111,20 @@ extension Fixtures {
                 issueComments: try data("threads/pr-\(pr).issuecomments.json")))
     }
 
+    /// One `laconicman/telegram-kb` pull request from `Fixtures/resolution/`, decoded by
+    /// the live client rather than a test decoder: each file is a one-page
+    /// `ThreadDetail.graphql` response whose thread nodes were copied verbatim from the
+    /// captures issue #7 was written from (each file's `_fixture` key says which).
+    static func resolution(pr: Int) async throws -> PullRequestThreads {
+        let runner = RecordedCommandRunner([
+            try .file(
+                match: ["api", "graphql"],
+                root.appending(path: "resolution/telegram-kb-pr-\(pr).json"))
+        ])
+        return try await GHCommandClient(runner: runner, queryPath: "unused")
+            .threads(repository: "laconicman/telegram-kb", number: pr)
+    }
+
     static func audit(me: String? = "laconicman", horizon: Date? = nil) throws -> InboundAudit {
         let config = try Configuration.builtInDefaults()
         return InboundAudit(

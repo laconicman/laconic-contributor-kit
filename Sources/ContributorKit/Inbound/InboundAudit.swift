@@ -81,6 +81,30 @@ public struct InboundAudit: Sendable {
         return false
     }
 
+    /// One reply from the asker's own login in an inline thread.
+    public struct AskerReply: Sendable {
+        public var comment: RemoteComment
+        /// Posted after my last reply. `false` when I have not replied at all.
+        public var isAfterMyLastReply: Bool
+    }
+
+    /// The replies in `thread` from the root's login that are not mine, oldest first.
+    ///
+    /// One definition for the audit, which decides on them, and for `contrib show`,
+    /// which prints them: a state that rests on the asker's reply has to arrive with
+    /// that reply, and two readings of "the asker" would let the two disagree.
+    public func askerReplies(in thread: RemoteThread) -> [AskerReply] {
+        guard let root = thread.root else { return [] }
+        let lastMine = thread.replies.last(where: isMine)
+        return thread.replies
+            .filter { !isMine($0) && $0.author.caseInsensitiveCompare(root.author) == .orderedSame }
+            .map { reply in
+                AskerReply(
+                    comment: reply,
+                    isAfterMyLastReply: lastMine.map { reply.createdAt > $0.createdAt } ?? false)
+            }
+    }
+
     public func run(_ pr: PullRequestThreads, against previous: Snapshot?) -> Result {
         let closed = pr.isClosed
         let subject = Subject.format(repository: pr.repository, number: pr.number)
@@ -103,9 +127,7 @@ public struct InboundAudit: Sendable {
             let replies = Array(thread.replies)
             let mine = replies.filter(isMine)
             for reply in mine { snapshot.authored.insert(reply.id) }
-            let askerReplies = replies.filter {
-                !isMine($0) && $0.author.caseInsensitiveCompare(root.author) == .orderedSame
-            }
+            let askerReplies = askerReplies(in: thread)
 
             // Display text is the stripped prose on every channel. An inline Devin
             // body opens with its marker and closes with a badge block, so the raw
@@ -119,7 +141,7 @@ public struct InboundAudit: Sendable {
             // suppressing one on a marker can only ever hide a real ask, and did.
             let state: ItemState
             if let lastMine = mine.last {
-                if askerReplies.contains(where: { $0.createdAt > lastMine.createdAt }) {
+                if askerReplies.contains(where: \.isAfterMyLastReply) {
                     state = .answeredConfirmed
                 } else if let edited = root.lastEditedAt, edited > lastMine.createdAt {
                     state = .editedAfterMyAnswer
