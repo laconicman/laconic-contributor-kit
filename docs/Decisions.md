@@ -51,6 +51,9 @@ with Devin's `✅ **Resolved**:`) now confirms my reply, before or after it.
   supersession paid for, when a mid-sentence mention retracted a live ask.
 - **It needs my reply.** A verdict upgrades my claim to confirmed. It never manufactures a
   reply I did not write, so a verdict-only thread stays `open-ask` until one line clears it.
+- **An edit after my reply outranks an earlier verdict.** That verdict judged the ask as it
+  stood then, so `edited-after-my-answer` wins and stays owed. A DeepWiki pre-review caught
+  this ordering.
 - **Seeded for one reviewer.** 92 of 92 verdicts carried the phrase, and 0 of 19
   fix-session replies under the same login did. That is one reviewer on one repository;
   see *Reading a reviewer's declared metadata — withdrawn* for what an unverified reading

@@ -104,8 +104,10 @@ public enum RESTThreadDecoder {
                 .compactMap { inlineComments[$0] }
                 .sorted { $0.createdAt < $1.createdAt }
             let path = inline.first { $0.id == rootID }?.path
-            // The REST capture carries no `isResolved`; `false` is the honest default,
-            // and the Design article says resolution is not "answered" anyway.
+            // The REST capture carries no `isResolved`, so it stays `nil` — unknown. It
+            // used to default to `false`, which was harmless while nothing read it; now
+            // that resolution is reported and keeps closure from quieting a thread, a
+            // made-up "unresolved" would be a false fact on the surface.
             return RemoteThread(comments: [root] + replies, path: path)
         }
 

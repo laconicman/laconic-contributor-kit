@@ -12,7 +12,9 @@ import Foundation
 /// other.
 public struct RemoteThread: Codable, Sendable {
     public var comments: [RemoteComment]
-    public var isResolved: Bool
+    /// `nil` when the source does not say — REST carries no resolution. Unknown is not
+    /// unresolved: the item then reports no resolution at all.
+    public var isResolved: Bool?
     /// Who resolved it, `[bot]` suffix removed (``Login``) so it compares with a comment
     /// author's login. `nil` when unresolved, or when the source does not say.
     public var resolvedBy: String?
@@ -20,7 +22,7 @@ public struct RemoteThread: Codable, Sendable {
     public var path: String?
 
     public init(
-        comments: [RemoteComment], isResolved: Bool = false, resolvedBy: String? = nil,
+        comments: [RemoteComment], isResolved: Bool? = nil, resolvedBy: String? = nil,
         isOutdated: Bool = false, path: String? = nil
     ) {
         self.comments = comments

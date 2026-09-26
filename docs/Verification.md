@@ -135,6 +135,7 @@ Each rule was also checked against a mutant, each of which the suite killed:
 | No bot gate: any non-verdict after mine lists | *a human asker's plain reply after mine still confirms* |
 | Any non-verdict after mine lists, whatever came later | *the bot asker's latest reply after mine decides* |
 | Closure quiets an unresolved thread too | *a merged PR keeps an unresolved answered-claimed thread listed, and only that* |
+| An earlier verdict outranks an edit after my reply | *an edit after my reply outranks an earlier verdict; an interleaved verdict confirms* |
 
 ## Three defects the live trial found
 

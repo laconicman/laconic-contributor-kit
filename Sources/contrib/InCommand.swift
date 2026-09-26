@@ -27,7 +27,8 @@ struct InCommand: AsyncParsableCommand {
             { "ask": <the whole ask>, "reply": <my reply, or null> }. `resolution` is
             null off inline threads, else { "isResolved", "resolvedBy", "byAsker" } —
             reported, never a discharge: a thread is resolved for more reasons than
-            the asker's consent.
+            the asker's consent. `byAsker` is derived: resolvedBy compared with the
+            root's author.
             """
     )
 

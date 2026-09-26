@@ -59,7 +59,7 @@ struct ResolutionTests {
         let pr = try await Fixtures.resolution(pr: 5)
         let thread = try #require(pr.threads.first)
         let root = try #require(thread.root)
-        #expect(thread.isResolved)
+        #expect(thread.isResolved == true)
         #expect(thread.resolvedBy == Login.normalised(rawLogin))
         #expect(thread.resolvedBy == root.author)
 
@@ -80,8 +80,8 @@ struct ResolutionTests {
             var flipped = pr
             flipped.threads = pr.threads.map { thread in
                 var thread = thread
-                thread.isResolved.toggle()
-                thread.resolvedBy = thread.isResolved ? "someone-else" : nil
+                thread.isResolved = !(thread.isResolved ?? false)
+                thread.resolvedBy = thread.isResolved == true ? "someone-else" : nil
                 return thread
             }
             let states = try Fixtures.audit().run(pr, against: nil).items.map(\.state)
@@ -116,6 +116,28 @@ struct ResolutionTests {
                 == " — resolved by laconicman")
     }
 
+    /// REST carries no resolution. The decoder used to default it to `false`, harmless
+    /// while nothing read it; reported, that would be a made-up "unresolved", and it
+    /// would keep every closed thread listed. Unknown reports nothing, and closure
+    /// quiets it as before.
+    @Test("a source that does not say reports no resolution, and closure still quiets it")
+    func unknownResolutionIsNotUnresolved() throws {
+        let rest = try Fixtures.threads(pr: 5233, comments: "pr-5233.positive.comments.json")
+        #expect(!rest.threads.isEmpty)
+        #expect(rest.threads.allSatisfy { $0.isResolved == nil })
+
+        let thread = RemoteThread(comments: [
+            comment("discussion_r1", "reviewer", at: 0, "Please add a test."),
+            comment("discussion_r2", "laconicman", at: 10, "Added."),
+        ])
+        #expect(thread.isResolved == nil, "the premise: nothing said")
+        let merged = pullRequest(threads: [thread], state: "MERGED")
+        let item = try #require(try Fixtures.audit().run(merged, against: nil).items.first)
+        #expect(item.state == .answeredClaimed)
+        #expect(item.resolution == nil)
+        #expect(!item.awaitsLook, "closure quiets a thread nobody said is unresolved")
+    }
+
     // MARK: - B: closure does not quiet an unresolved thread
 
     /// Case 4: my reply deferred the finding to tech debt, so nothing ever made the
@@ -131,7 +153,7 @@ struct ResolutionTests {
         // This thread alone, so the provenance note counts nothing else.
         pr.threads = pr.threads.filter { $0.root?.id == id }
         let open = try #require(pr.threads.first)
-        #expect(!open.isResolved, "the premise: the reviewer never resolved it")
+        #expect(open.isResolved == false, "the premise: the reviewer never resolved it")
 
         var resolved = pr
         resolved.threads = pr.threads.map { thread in
@@ -190,6 +212,38 @@ struct ResolutionTests {
         #expect(item.state == .openAsk)
     }
 
+    /// An earlier verdict judged the ask as it stood then. If the asker edits the ask
+    /// after my reply, the edit is newer than the verdict, and the owed state wins —
+    /// the verdict must not de-owe a changed ask. The reverse of the same shape: a
+    /// verdict posted *between* two replies of mine still confirms, like case 1.
+    /// Neither occurs in the captures; both are constructed.
+    @Test("an edit after my reply outranks an earlier verdict; an interleaved verdict confirms")
+    func earlierVerdictAgainstLaterEvents() throws {
+        let bot = "devin-ai-integration"
+        let verdict = "✅ **Resolved**: the redirect is refused."
+
+        var root = comment("discussion_r1", bot, at: 0, "🔴 **A finding**")
+        root.lastEditedAt = Date(timeIntervalSince1970: 30)
+        let edited = RemoteThread(comments: [
+            root,
+            comment("discussion_r2", bot, at: 10, verdict),
+            comment("discussion_r3", "laconicman", at: 20, "Fixed."),
+        ])
+        #expect(
+            try Fixtures.audit().run(pullRequest(threads: [edited]), against: nil).items.first?.state
+                == .editedAfterMyAnswer)
+
+        let interleaved = RemoteThread(comments: [
+            comment("discussion_r1", bot, at: 0, "🔴 **A finding**"),
+            comment("discussion_r2", "laconicman", at: 10, "Fixed."),
+            comment("discussion_r3", bot, at: 20, verdict),
+            comment("discussion_r4", "laconicman", at: 30, "And the docs, in def5678."),
+        ])
+        #expect(
+            try Fixtures.audit().run(pullRequest(threads: [interleaved]), against: nil).items.first?.state
+                == .answeredConfirmed)
+    }
+
     /// The shape that always worked — my reply, then the verdict — still does.
     @Test("a verdict after my reply still confirms it")
     func verdictAfterMyReplyConfirms() async throws {
@@ -224,6 +278,16 @@ struct ResolutionTests {
         ])
         let result = try Fixtures.audit().run(pullRequest(threads: [thread]), against: nil)
         #expect(result.items.first?.state == .answeredClaimed)
+
+        // Matched on prose, not the raw body: a reply that opens with an HTML marker
+        // still opens, as far as the reader can see, with the verdict.
+        let marked = RemoteThread(comments: [
+            comment("discussion_r1", reviewer, at: 0, "🔴 **A finding**"),
+            comment(
+                "discussion_r2", reviewer, at: 5,
+                "<!-- devin-review-comment {\"kind\": \"verdict\"} -->\n\n✅ **Resolved**: fixed."),
+        ])
+        #expect(try Fixtures.audit().askerReplies(in: marked).first?.isVerdict == true)
     }
 
     // MARK: - A′: a bot asker's non-verdict reply is a question

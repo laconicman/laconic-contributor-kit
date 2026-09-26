@@ -24,9 +24,9 @@ public struct InboundItem: Codable, Sendable {
     ///
     /// **Reported, never decided on** (``RemoteThread``): resolution happens for more
     /// reasons than the asker's consent, so the reader is given who did it rather than
-    /// a conclusion. `byAsker` is the one comparison worth making for them — the item
-    /// carries no author — and it cannot tell a reviewer bot from its own fix session,
-    /// which share a login.
+    /// a conclusion. `byAsker` is the one derived field — the kit compares `resolvedBy`
+    /// with the root's author, since the item carries no author — and it cannot tell a
+    /// reviewer bot from its own fix session, which share a login.
     public struct Resolution: Codable, Sendable, Equatable {
         public var isResolved: Bool
         public var resolvedBy: String?
@@ -49,7 +49,8 @@ public struct InboundItem: Codable, Sendable {
     /// changed — which is the majority, and why this is a differ and not a reporter.
     public var changed: String?
     public var text: Text
-    /// Inline threads only; `nil` on the channels that have no resolution.
+    /// Inline threads only; `nil` on the channels that have no resolution, and on a
+    /// thread whose source did not say.
     public var resolution: Resolution? = nil
 
     /// Not part of the `--json` item contract — carried for terminal grouping only

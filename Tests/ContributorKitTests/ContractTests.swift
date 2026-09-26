@@ -12,36 +12,45 @@ struct ContractTests {
     /// the minimum text and `resolution` — **nothing else**. Both failure modes cost the
     /// same thing, so this is pinned as an exact key set rather than a superset.
     @Test("--json emits exactly the eight keys, and no more")
-    func jsonContractIsExact() throws {
-        let pr = try Fixtures.threads(pr: 5233, comments: "pr-5233.positive.comments.json")
-        let result = try Fixtures.audit().run(pr, against: nil)
-        var provenance = Provenance(command: "test")
-        provenance.examined("items", result.items.count)
+    func jsonContractIsExact() async throws {
+        // Both sources: the REST capture, which carries no resolution, and the GraphQL
+        // one, which does. `--all`, so the resolved threads are in the document too.
+        let rest = try Fixtures.threads(pr: 5233, comments: "pr-5233.positive.comments.json")
+        let live = try await Fixtures.resolution(pr: 1)
+        var resolutionObjects = 0
+        for (pr, saysResolution) in [(rest, false), (live, true)] {
+            let result = try Fixtures.audit().run(pr, against: nil)
+            var provenance = Provenance(command: "test")
+            provenance.examined("items", result.items.count)
 
-        let data = try InboundReporting.json(result, provenance: provenance)
-        let document = try #require(
-            try JSONSerialization.jsonObject(with: data) as? [String: Any])
-        #expect(Set(document.keys) == ["provenance", "items"])
+            let data = try InboundReporting.json(
+                result, provenance: provenance, options: .init(all: true))
+            let document = try #require(
+                try JSONSerialization.jsonObject(with: data) as? [String: Any])
+            #expect(Set(document.keys) == ["provenance", "items"])
 
-        let items = try #require(document["items"] as? [[String: Any]])
-        #expect(!items.isEmpty)
-        #expect(items.contains { $0["kind"] as? String == Channel.inlineThread.rawValue })
-        for item in items {
-            #expect(
-                Set(item.keys)
-                    == ["id", "kind", "permalink", "state", "question", "changed", "text", "resolution"],
-                "item \(item["id"] ?? "?")")
-            let text = try #require(item["text"] as? [String: Any])
-            #expect(Set(text.keys) == ["ask", "reply"])
-            // An object on an inline thread — every key, `resolvedBy` null or not — and
-            // null on the channels that have no resolution.
-            if item["kind"] as? String == Channel.inlineThread.rawValue {
-                let resolution = try #require(item["resolution"] as? [String: Any])
-                #expect(Set(resolution.keys) == ["isResolved", "resolvedBy", "byAsker"])
-            } else {
-                #expect(item["resolution"] is NSNull)
+            let items = try #require(document["items"] as? [[String: Any]])
+            #expect(items.contains { $0["kind"] as? String == Channel.inlineThread.rawValue })
+            for item in items {
+                #expect(
+                    Set(item.keys)
+                        == ["id", "kind", "permalink", "state", "question", "changed", "text", "resolution"],
+                    "item \(item["id"] ?? "?")")
+                let text = try #require(item["text"] as? [String: Any])
+                #expect(Set(text.keys) == ["ask", "reply"])
+                // An object — every key, `resolvedBy` null or not — on an inline thread
+                // whose source said; null on the other channels and when it did not.
+                let isInline = item["kind"] as? String == Channel.inlineThread.rawValue
+                if isInline && saysResolution {
+                    let resolution = try #require(item["resolution"] as? [String: Any])
+                    #expect(Set(resolution.keys) == ["isResolved", "resolvedBy", "byAsker"])
+                    resolutionObjects += 1
+                } else {
+                    #expect(item["resolution"] is NSNull, "item \(item["id"] ?? "?")")
+                }
             }
         }
+        #expect(resolutionObjects > 0, "the object shape was examined, not only nulls")
     }
 
     /// `changed` is present as `null` rather than absent, so a consumer reads a null

@@ -37,7 +37,8 @@ public enum ItemState: String, Codable, Sendable, CaseIterable {
     /// A verdict counts whenever it was posted. A reviewer that re-reviews on push can
     /// confirm a fix before I reply; twelve threads on one pull request did. It never
     /// stands in for my reply, though: a verdict on a thread I never replied to leaves it
-    /// `open-ask`.
+    /// `open-ask`. And an ask edited after my reply is `edited-after-my-answer`, however
+    /// early the verdict was: the edit is newer than the verdict.
     case answeredConfirmed = "answered-confirmed"
     /// Channel 1: a **bot** asker (`inbound.botAskers`) replied after my reply, and its
     /// latest reply is not its verdict.

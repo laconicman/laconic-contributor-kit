@@ -64,7 +64,8 @@ public struct InboundAudit: Sendable {
         /// held back and by which boundary, so the number is never silently smaller.
         public var owed: [InboundItem] { items.filter { $0.state.isOwed && $0.isVisible } }
         /// Answered but unconfirmed and unchecked, on an open subject or an unresolved
-        /// thread — the list that asks *is my reply actually responsive?*
+        /// thread — the list that asks *is my reply actually responsive?*, or of a bot
+        /// asker's reply, *confirmation or correction?*
         public var toReRead: [InboundItem] {
             items.filter { $0.isVisible && $0.awaitsLook }
         }
@@ -157,19 +158,23 @@ public struct InboundAudit: Sendable {
             let state: ItemState
             if let lastMine = mine.last {
                 // The asker's latest reply after mine decides. From a person any reply
-                // confirms, as it always has; from a bot asker only its verdict does,
-                // because the same login carries the bot's fix sessions, whose replies
-                // are news about my fix and not a confirmation of it. With nothing from
-                // the asker after mine, a verdict posted earlier still confirms: a
-                // reviewer that re-reviews on push can confirm a fix before I reply. A
-                // verdict never manufactures a reply of mine, though.
+                // confirms, as it always has — the verdict phrase changes nothing there.
+                // Only a bot asker's non-verdict is a question, because the same login
+                // carries the bot's fix sessions, whose replies are news about my fix
+                // and not a confirmation of it.
+                //
+                // With nothing from the asker after mine, a verdict posted earlier still
+                // confirms — a reviewer that re-reviews on push can confirm a fix before
+                // I reply — unless the ask was edited after my reply: that edit is newer
+                // than the verdict, which then says nothing about the ask as it stands.
+                // A verdict never manufactures a reply of mine.
                 if let latest = askerReplies.last(where: \.isAfterMyLastReply) {
                     state =
-                        latest.isVerdict || !isBot(root.author) ? .answeredConfirmed : .askerReplied
-                } else if askerReplies.contains(where: \.isVerdict) {
-                    state = .answeredConfirmed
+                        isBot(root.author) && !latest.isVerdict ? .askerReplied : .answeredConfirmed
                 } else if let edited = root.lastEditedAt, edited > lastMine.createdAt {
                     state = .editedAfterMyAnswer
+                } else if askerReplies.contains(where: \.isVerdict) {
+                    state = .answeredConfirmed
                 } else if let check = previous?.entries[root.id]?.acknowledged,
                     check.bodySha256AtAck == root.bodySHA256,
                     check.replyIDAtAck == lastMine.id
@@ -197,10 +202,13 @@ public struct InboundAudit: Sendable {
                     text: .init(
                         ask: rootProse.isEmpty ? root.body : rootProse,
                         reply: mine.last.map { stripper.prose(of: $0.body) }),
-                    // Reported beside `state`, never an input to it.
-                    resolution: .init(
-                        isResolved: thread.isResolved, resolvedBy: thread.resolvedBy,
-                        byAsker: thread.resolvedBy.map { Login.same($0, root.author) } ?? false),
+                    // Reported beside `state`, never an input to it — and only when the
+                    // source said: unknown is not unresolved.
+                    resolution: thread.isResolved.map { isResolved in
+                        .init(
+                            isResolved: isResolved, resolvedBy: thread.resolvedBy,
+                            byAsker: thread.resolvedBy.map { Login.same($0, root.author) } ?? false)
+                    },
                     roundID: root.reviewID, roundAt: root.createdAt, author: root.author,
                     previousState: before == state ? nil : before,
                     beyondHorizon: horizon.map { root.createdAt < $0 } ?? false,
