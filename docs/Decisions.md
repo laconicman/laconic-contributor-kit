@@ -40,6 +40,23 @@ This is not inference from proximity. The never-infer rule is about inferring
 Implemented for inline threads only, since the other two channels have no thread to
 reply into.
 
+### Resolution is reported, never decided on
+
+Decided 2026-09-26, from issue #7. Every inline item carries GitHub's `isResolved`, the
+login that resolved the thread (a GitHub App's `[bot]` suffix removed), and whether that
+login is the asker's — in the table, in `contrib show`, and as `resolution`, the eighth
+key of the `--json` item.
+
+**No state reads it.** A thread is resolved for more reasons than the asker's consent: I
+can resolve my own, a maintainer can, and a reviewer bot's fix session resolves under the
+reviewer's own login. So the reader is told *who* resolved it, and keeps the ability to
+tell those reasons apart; the audit draws no conclusion from it. `byAsker` exists because
+the item carries no author to compare against. It cannot separate a reviewer bot from its
+own fix session, which share a login — see *Still open*.
+
+The contract grew a key because the reader needed it. Across seven pull requests the one
+unresolved thread was indistinguishable, in `--json`, from the 110 resolved ones.
+
 ### Supersession
 
 A reviewer can **retract** an obligation — *"This report is out of date. Scroll down for

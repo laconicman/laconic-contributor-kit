@@ -40,6 +40,82 @@ struct ResolutionTests {
         #expect(sessionReplies.allSatisfy { !$0.isAfterMyLastReply })
     }
 
+    // MARK: - Resolution, reported and never decided on
+
+    /// `ThreadDetail.graphql` fetched `resolvedBy` and the decode dropped it. The
+    /// reviewer resolves as `devin-ai-integration[bot]` and comments as
+    /// `devin-ai-integration`, so it is carried with the suffix removed — the one
+    /// spelling that compares with the asker.
+    @Test("resolvedBy survives decode with [bot] removed, and reaches the item")
+    func resolvedByIsCarried() async throws {
+        let raw = try JSONDecoder().decode(
+            ThreadDetailResponse.self,
+            from: try Fixtures.data("resolution/telegram-kb-pr-5.json"))
+        let rawLogin = try #require(
+            raw.data?.repository?.issueOrPullRequest?.reviewThreads?.nodes?.first?
+                .resolvedBy?.login)
+        #expect(rawLogin.hasSuffix("[bot]"), "the premise: the capture carries the suffix")
+
+        let pr = try await Fixtures.resolution(pr: 5)
+        let thread = try #require(pr.threads.first)
+        let root = try #require(thread.root)
+        #expect(thread.isResolved)
+        #expect(thread.resolvedBy == Login.normalised(rawLogin))
+        #expect(thread.resolvedBy == root.author)
+
+        let item = try #require(
+            try Fixtures.audit().run(pr, against: nil).items.first { $0.id == root.id })
+        #expect(
+            item.resolution
+                == .init(isResolved: true, resolvedBy: root.author, byAsker: true))
+    }
+
+    /// A thread is resolved for more reasons than the asker's consent, so the flag is
+    /// shown to the reader and read by no state. Flipping it on every captured thread
+    /// must move nothing.
+    @Test("no state reads the resolution")
+    func resolutionDecidesNoState() async throws {
+        for number in [1, 2, 3, 5, 6] {
+            let pr = try await Fixtures.resolution(pr: number)
+            var flipped = pr
+            flipped.threads = pr.threads.map { thread in
+                var thread = thread
+                thread.isResolved.toggle()
+                thread.resolvedBy = thread.isResolved ? "someone-else" : nil
+                return thread
+            }
+            let states = try Fixtures.audit().run(pr, against: nil).items.map(\.state)
+            let flippedStates = try Fixtures.audit().run(flipped, against: nil).items.map(\.state)
+            #expect(!states.isEmpty, "#\(number) examined something")
+            #expect(states == flippedStates, "#\(number)")
+        }
+    }
+
+    /// The table names who resolved a thread, so a resolution by the asker reads
+    /// differently from one by me or by a maintainer.
+    @Test("the table says whether, and by whom, a thread was resolved")
+    func resolutionNote() {
+        func item(_ resolution: InboundItem.Resolution?) -> InboundItem {
+            InboundItem(
+                id: "x", kind: resolution == nil ? .reviewBody : .inlineThread, permalink: "u",
+                state: .answeredClaimed, question: "q", changed: nil,
+                text: .init(ask: "a", reply: "r"), resolution: resolution)
+        }
+        #expect(InboundReporting.resolutionNote(item(nil)) == "")
+        #expect(
+            InboundReporting.resolutionNote(
+                item(.init(isResolved: false, resolvedBy: nil, byAsker: false)))
+                == " — unresolved")
+        #expect(
+            InboundReporting.resolutionNote(
+                item(.init(isResolved: true, resolvedBy: "reviewer", byAsker: true)))
+                == " — resolved by the asker")
+        #expect(
+            InboundReporting.resolutionNote(
+                item(.init(isResolved: true, resolvedBy: "laconicman", byAsker: false)))
+                == " — resolved by laconicman")
+    }
+
     // MARK: - Helpers
 
     private func thread(pr: Int, _ rootID: String) async throws -> RemoteThread? {

@@ -56,9 +56,13 @@ post rounds after a merge, and a close can carry a condition addressed to you.
 The provenance block reports `to re-read` beside `owed` and never folds one into the other.
 A round is complete at `owed 0` **and** `to re-read 0` — or when the PR is closed.
 
-**`isResolved` is not "answered."** The maintainer sets resolution. A thread can be
-resolved with no reply from you, and an open thread can be fully answered. Never
-substitute one for the other.
+**`isResolved` is not "answered."** A thread is resolved for more reasons than the asker's
+consent: you can resolve your own, a maintainer can, and a reviewer bot's fix session
+resolves under the reviewer's own login. A thread can be resolved with no reply from you,
+and an open thread can be fully answered. So every inline item *reports* its resolution
+and who set it — `— resolved by …` or `— unresolved` in the table, `resolution` in
+`--json` — and no state is decided on it. Read who resolved it; never substitute it for
+an answer.
 
 **"No change needed" still needs an acknowledgement.** Filtering out the items that
 need no action is how they become the next unanswered thread. Let the reply be one

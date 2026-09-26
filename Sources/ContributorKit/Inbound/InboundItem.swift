@@ -3,10 +3,11 @@ import Foundation
 /// One line of `contrib in`'s worklist.
 ///
 /// The `--json` shape is exactly <doc:Design>'s contract: `id`, `kind`, `permalink`,
-/// `state`, `question`, `changed`, and the minimum text — the ask, and my reply if
-/// there is one. **Nothing else.** Both failure modes cost the same thing: if the CLI
-/// judges meaning it will be wrong and the model re-derives anyway; if it dumps raw
-/// comments the model re-enumerates, which is the waste being eliminated.
+/// `state`, `question`, `changed`, the minimum text — the ask, and my reply if there is
+/// one — and an inline thread's `resolution`. **Nothing else.** Both failure modes cost
+/// the same thing: if the CLI judges meaning it will be wrong and the model re-derives
+/// anyway; if it dumps raw comments the model re-enumerates, which is the waste being
+/// eliminated.
 public struct InboundItem: Codable, Sendable {
     public struct Text: Codable, Sendable {
         public var ask: String
@@ -19,6 +20,26 @@ public struct InboundItem: Codable, Sendable {
         }
     }
 
+    /// GitHub's resolution of an inline thread, and whose login set it.
+    ///
+    /// **Reported, never decided on** (``RemoteThread``): resolution happens for more
+    /// reasons than the asker's consent, so the reader is given who did it rather than
+    /// a conclusion. `byAsker` is the one comparison worth making for them — the item
+    /// carries no author — and it cannot tell a reviewer bot from its own fix session,
+    /// which share a login.
+    public struct Resolution: Codable, Sendable, Equatable {
+        public var isResolved: Bool
+        public var resolvedBy: String?
+        public var byAsker: Bool
+
+        public func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(isResolved, forKey: .isResolved)
+            try container.encode(resolvedBy, forKey: .resolvedBy)
+            try container.encode(byAsker, forKey: .byAsker)
+        }
+    }
+
     public var id: String
     public var kind: Channel
     public var permalink: String
@@ -28,6 +49,8 @@ public struct InboundItem: Codable, Sendable {
     /// changed — which is the majority, and why this is a differ and not a reporter.
     public var changed: String?
     public var text: Text
+    /// Inline threads only; `nil` on the channels that have no resolution.
+    public var resolution: Resolution? = nil
 
     /// Not part of the `--json` item contract — carried for terminal grouping only
     /// (<doc:Design>), and stripped before encoding.
@@ -79,12 +102,12 @@ public struct InboundItem: Codable, Sendable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, kind, permalink, state, question, changed, text
+        case id, kind, permalink, state, question, changed, text, resolution
     }
 
-    /// All seven keys, always — `changed` and `text.reply` encode as `null` rather
-    /// than vanishing. The contract is *exactly* these keys, so a consumer reads a
-    /// null instead of having to tell "absent" from "nothing changed".
+    /// All eight keys, always — `changed`, `text.reply` and `resolution` encode as
+    /// `null` rather than vanishing. The contract is *exactly* these keys, so a consumer
+    /// reads a null instead of having to tell "absent" from "nothing changed".
     public func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(id, forKey: .id)
@@ -94,5 +117,6 @@ public struct InboundItem: Codable, Sendable {
         try container.encode(question, forKey: .question)
         try container.encode(changed, forKey: .changed)
         try container.encode(text, forKey: .text)
+        try container.encode(resolution, forKey: .resolution)
     }
 }

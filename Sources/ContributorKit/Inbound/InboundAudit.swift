@@ -172,6 +172,10 @@ public struct InboundAudit: Sendable {
                     text: .init(
                         ask: rootProse.isEmpty ? root.body : rootProse,
                         reply: mine.last.map { stripper.prose(of: $0.body) }),
+                    // Reported beside `state`, never an input to it.
+                    resolution: .init(
+                        isResolved: thread.isResolved, resolvedBy: thread.resolvedBy,
+                        byAsker: thread.resolvedBy.map { Login.same($0, root.author) } ?? false),
                     roundID: root.reviewID, roundAt: root.createdAt, author: root.author,
                     previousState: before == state ? nil : before,
                     beyondHorizon: horizon.map { root.createdAt < $0 } ?? false,

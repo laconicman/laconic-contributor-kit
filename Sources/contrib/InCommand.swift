@@ -22,9 +22,12 @@ struct InCommand: AsyncParsableCommand {
             new; the snapshot is what makes the second run useful.
 
             --json emits { provenance, items }, and each item is exactly:
-              id, kind, permalink, state, question, changed, text
+              id, kind, permalink, state, question, changed, text, resolution
             `changed` is null when nothing moved. **`text` is an OBJECT**, not a string:
-            { "ask": <the whole ask>, "reply": <my reply, or null> }.
+            { "ask": <the whole ask>, "reply": <my reply, or null> }. `resolution` is
+            null off inline threads, else { "isResolved", "resolvedBy", "byAsker" } —
+            reported, never a discharge: a thread is resolved for more reasons than
+            the asker's consent.
             """
     )
 

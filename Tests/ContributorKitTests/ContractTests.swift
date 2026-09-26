@@ -8,10 +8,10 @@ import Testing
 @Suite("contracts")
 struct ContractTests {
 
-    /// <doc:Design>: per item `id`, `kind`, `permalink`, `state`, `question`, `changed`
-    /// and the minimum text — **nothing else**. Both failure modes cost the same
-    /// thing, so this is pinned as an exact key set rather than a superset.
-    @Test("--json emits exactly the seven keys, and no more")
+    /// <doc:Design>: per item `id`, `kind`, `permalink`, `state`, `question`, `changed`,
+    /// the minimum text and `resolution` — **nothing else**. Both failure modes cost the
+    /// same thing, so this is pinned as an exact key set rather than a superset.
+    @Test("--json emits exactly the eight keys, and no more")
     func jsonContractIsExact() throws {
         let pr = try Fixtures.threads(pr: 5233, comments: "pr-5233.positive.comments.json")
         let result = try Fixtures.audit().run(pr, against: nil)
@@ -25,18 +25,28 @@ struct ContractTests {
 
         let items = try #require(document["items"] as? [[String: Any]])
         #expect(!items.isEmpty)
+        #expect(items.contains { $0["kind"] as? String == Channel.inlineThread.rawValue })
         for item in items {
             #expect(
-                Set(item.keys) == ["id", "kind", "permalink", "state", "question", "changed", "text"],
+                Set(item.keys)
+                    == ["id", "kind", "permalink", "state", "question", "changed", "text", "resolution"],
                 "item \(item["id"] ?? "?")")
             let text = try #require(item["text"] as? [String: Any])
             #expect(Set(text.keys) == ["ask", "reply"])
+            // An object on an inline thread — every key, `resolvedBy` null or not — and
+            // null on the channels that have no resolution.
+            if item["kind"] as? String == Channel.inlineThread.rawValue {
+                let resolution = try #require(item["resolution"] as? [String: Any])
+                #expect(Set(resolution.keys) == ["isResolved", "resolvedBy", "byAsker"])
+            } else {
+                #expect(item["resolution"] is NSNull)
+            }
         }
     }
 
     /// `changed` is present as `null` rather than absent, so a consumer reads a null
     /// instead of having to tell "key missing" from "nothing changed".
-    @Test("changed and reply encode as null, never as an absent key")
+    @Test("changed, reply and resolution encode as null, never as an absent key")
     func nullsAreExplicit() throws {
         let item = InboundItem(
             id: "x", kind: .reviewBody, permalink: "u", state: .obligationOpen,
@@ -46,6 +56,7 @@ struct ContractTests {
                 as? [String: Any])
         #expect(object["changed"] is NSNull)
         #expect((object["text"] as? [String: Any])?["reply"] is NSNull)
+        #expect(object["resolution"] is NSNull)
     }
 
     // MARK: - The provenance gate

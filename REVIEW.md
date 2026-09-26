@@ -25,7 +25,7 @@ from a failure on a real upstream pull request. Generic Swift advice is not want
 
 ## Conventions
 
-- Flag any key added to `InboundItem.encode(to:)` beyond the seven in the contract, unless
+- Flag any key added to `InboundItem.encode(to:)` beyond the eight in the contract, unless
   the PR also updates `Sources/ContributorKit/ContributorKit.docc/Design.md` and
   `ContractTests.jsonContractIsExact`.
 - `Counts` must never gain a `total`, and no code may sum `code + comment + blank`. LOC is

@@ -217,7 +217,9 @@ struct ShowCommand: AsyncParsableCommand {
         lines.append("")
         let marker = item.state.isOwed ? "●" : "·"
         let author = item.author.map { " \($0)" } ?? ""
-        lines.append("\(marker) \(item.id)  [\(item.state.rawValue)]\(author)")
+        lines.append(
+            "\(marker) \(item.id)  [\(item.state.rawValue)]\(author)"
+                + InboundReporting.resolutionNote(item))
         if let round = item.roundID, let at = item.roundAt {
             lines.append("  round \(round), \(String(GitHubTime.string(at).prefix(10)))")
         }

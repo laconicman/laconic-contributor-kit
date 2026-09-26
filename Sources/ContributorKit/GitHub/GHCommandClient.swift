@@ -89,6 +89,7 @@ public struct GHCommandClient: GitHubClient {
                     RemoteThread(
                         comments: comments,
                         isResolved: node.isResolved ?? false,
+                        resolvedBy: node.resolvedBy?.login,
                         isOutdated: node.isOutdated ?? false,
                         path: node.path))
             }

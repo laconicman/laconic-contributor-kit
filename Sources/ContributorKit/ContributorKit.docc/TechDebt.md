@@ -38,7 +38,7 @@ one extra `gh api pulls/N/comments` call to locate it in the diff.
 **Cost.** One avoidable fetch per round. Measured as small, but it is the only fetch the
 kit has not absorbed, and `reviewThreads.path` is already in the GraphQL response.
 
-**Discharge.** Add `path` to the item — which widens the seven-key `--json` contract, so it
+**Discharge.** Add `path` to the item — which widens the eight-key `--json` contract, so it
 needs the contract's rationale revisited in <doc:Design>, not just a field.
 
 ### TD-4 — `edited-after-my-answer` fires on markup-only edits · deferred
