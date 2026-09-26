@@ -1,0 +1,120 @@
+{
+  "_fixture": {
+    "source": "laconicman/telegram-kb#1, `scripts/resolution-crosscheck.py --capture`, 2026-09-26 around 14:00 UTC",
+    "cut": "reviewThreads.nodes copied verbatim for root ids 4025099437, 4024609952; the envelope is ThreadDetail.graphql's, with pullRequestState/closed/merged taken from the capture's `state`",
+    "captureShape": "the capture's query carries no viewerDidAuthor, lastEditedAt or pullRequestReview, so authorship is decided by login (--me) and no round id is present"
+  },
+  "data": {
+    "repository": {
+      "issueOrPullRequest": {
+        "__typename": "PullRequest",
+        "number": 1,
+        "url": "https://github.com/laconicman/telegram-kb/pull/1",
+        "pullRequestState": "MERGED",
+        "closed": true,
+        "merged": true,
+        "reviewThreads": {
+          "pageInfo": {
+            "hasNextPage": false,
+            "endCursor": null
+          },
+          "nodes": [
+            {
+              "isResolved": true,
+              "isOutdated": true,
+              "path": "Sources/TelegramKBIngest/WebPreviewSource.swift",
+              "resolvedBy": {
+                "login": "devin-ai-integration[bot]"
+              },
+              "comments": {
+                "totalCount": 3,
+                "pageInfo": {
+                  "hasNextPage": false
+                },
+                "nodes": [
+                  {
+                    "databaseId": 4025099437,
+                    "author": {
+                      "login": "devin-ai-integration"
+                    },
+                    "createdAt": "2026-09-16T10:42:24Z",
+                    "url": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r4025099437",
+                    "body": "<!-- devin-review-comment {\"id\": \"BUG_pr-review-job-14c7a0c5f6b94c44a542e921c64a9da3_0001\", \"file_path\": \"Sources/TelegramKBIngest/WebPreviewSource.swift\", \"start_line\": 103, \"end_line\": 109, \"side\": \"RIGHT\", \"based_on_repo_rules\": true, \"kind\": \"bug\"} -->\n\n🔴 **Redirected crawl falsely completes backfill**\n\nWhen preview access disappears mid-crawl, `fetch` returns a redirected 200 page and `crawl` records exhaustion. The truncated backfill then blocks later syncs.\n\n<details>\n<summary>Learn more</summary>\n\n`URLSessionPageFetcher` follows redirects and exposes the destination as `FetchResult.finalURL`. The classifier uses that destination to distinguish a real `/s/` preview from Telegram's plain channel page, but the crawler checks only the final status. If preview access is disabled after classification or during pagination, Telegram can redirect the request to the plain page with status 200. Parsing that page yields no posts, so this guard sets `reachedEnd`; [afterWalk](https://github.com/laconicman/telegram-kb/blob/a55c9d7370a2c009531e972128e438fc26563744/Sources/TelegramKBStore/Store.swift#L512-L530 \"Sources/TelegramKBStore/Store.swift:512-530\") then makes `backfillComplete` true. Later ordinary syncs trust that state and never revisit the missing history.\n\n**Example:** A backfill commits messages 500–1000. Before the next page request, the owner disables the web preview. The request redirects to `t.me/channel`, returns 200, and the crawler marks the 1–499 gap complete instead of failing.\n\n**Recommended fix:** Before parsing, verify that `result.finalURL` still identifies the requested `/s/<channel>` listing. Throw a non-exhaustion crawl error on redirects away from that listing, and add an end-to-end test where a later page redirects to the plain channel URL.\n\n</details>\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/1\" target=\"_blank\">\n  <picture>\n    <source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=3\">\n    <img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=3\" alt=\"Devin Review\">\n  </picture>\n</a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+                  },
+                  {
+                    "databaseId": 4025269613,
+                    "author": {
+                      "login": "devin-ai-integration"
+                    },
+                    "createdAt": "2026-09-16T11:01:54Z",
+                    "url": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r4025269613",
+                    "body": "✅ **Resolved**: The crawler now rejects a final URL outside /s/ before parsing or recording exhaustion."
+                  },
+                  {
+                    "databaseId": 4025275851,
+                    "author": {
+                      "login": "laconicman"
+                    },
+                    "createdAt": "2026-09-16T11:02:43Z",
+                    "url": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r4025275851",
+                    "body": "Valid and the sharpest one yet — fixed in fea078a. It is the same false-completion trap as an error page, wearing a 200: `t.me/s/<ch>` 302s to the plain channel page, which answers 200 and parses as zero message blocks, so the walk recorded exhaustion and sealed a truncated backfill. `crawl` now checks `finalURL.path` has the `/s/` prefix, exactly as `ChannelClassifier` already did for the same reason, and throws `CrawlError.previewUnavailable`.\n\nFixing it turned up a second path of the same kind, which round 9's foreign-block filter had opened: a page whose blocks all belong to *another* channel also produced zero posts and claimed the end. Only a page with no message blocks at all proves exhaustion now; an all-foreign page stops the walk and claims nothing. Tests `redirectMidWalkIsNotExhaustion` and `allForeignPageIsNotExhaustion`, both with mutants."
+                  }
+                ]
+              }
+            },
+            {
+              "isResolved": false,
+              "isOutdated": false,
+              "path": "Sources/TelegramKBStore/Store.swift",
+              "resolvedBy": null,
+              "comments": {
+                "totalCount": 4,
+                "pageInfo": {
+                  "hasNextPage": false
+                },
+                "nodes": [
+                  {
+                    "databaseId": 4024609952,
+                    "author": {
+                      "login": "devin-ai-integration"
+                    },
+                    "createdAt": "2026-09-16T09:43:31Z",
+                    "url": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r4024609952",
+                    "body": "<!-- devin-review-comment {\"id\": \"ANALYSIS_pr-review-job-b25b685391d54d08ab7f4d04756445ac_0002\", \"file_path\": \"Sources/TelegramKBStore/Store.swift\", \"start_line\": 26, \"end_line\": 26, \"side\": \"RIGHT\", \"kind\": \"analysis\"} -->\n\n🔍 **Same-channel syncs remain concurrent**\n\nThe busy timeout serializes commits, not crawls. Two processes can snapshot one channel's state and later overwrite newer progress with stale final state.\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/1\" target=\"_blank\">\n  <picture>\n    <source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=3\">\n    <img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=3\" alt=\"Devin Review\">\n  </picture>\n</a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+                  },
+                  {
+                    "databaseId": 4024842237,
+                    "author": {
+                      "login": "laconicman"
+                    },
+                    "createdAt": "2026-09-16T10:11:10Z",
+                    "url": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r4024842237",
+                    "body": "Correct, and it is recorded rather than fixed: TD-21, with the reasoning in Design § *One writer per store*. The timeout serialises commits, which is the right treatment for two syncs of *different* channels sharing one file, and does nothing for two syncs of the same channel — each snapshots the state at its own start, so the later final write can be older than the other's progress. That costs re-crawling rather than posts, but I have not proven even that, which is why it is open.\n\nThe planned discharge is a lease row in the database itself — channel identity, pid, heartbeat, taken in a transaction — so both processes can see it without a lock file, plus an actor keyed by channel inside a process once sync crawls channels concurrently. This PR is already seven rounds long; I would rather land that with the identity migration (S7), which changes what the lease would be keyed on."
+                  },
+                  {
+                    "databaseId": 4024969113,
+                    "author": {
+                      "login": "laconicman"
+                    },
+                    "createdAt": "2026-09-16T10:26:45Z",
+                    "url": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r4024969113",
+                    "body": "Re-read after the edit: the finding text is byte-identical — the edit only appended the Devin Review badge markup — so the ask is unchanged and the answer above stands. TD-21 carries it, and since that reply the discharge has gained its implementation notes (a DeepWiki consult on GRDB: check-and-claim belongs in one `dbPool.write` because GRDB begins writes as IMMEDIATE, and the lease's staleness threshold must exceed the 10s busy timeout, or contenders fail on the timeout instead of losing the race cleanly)."
+                  },
+                  {
+                    "databaseId": 4025073164,
+                    "author": {
+                      "login": "laconicman"
+                    },
+                    "createdAt": "2026-09-16T10:39:11Z",
+                    "url": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r4025073164",
+                    "body": "Edited again, and again only the badge markup moved — the finding's two sentences are unchanged. The answer stands: TD-21 holds this, with the implementation notes added since (check-and-claim in one `dbPool.write`, staleness threshold above the 10s busy timeout)."
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

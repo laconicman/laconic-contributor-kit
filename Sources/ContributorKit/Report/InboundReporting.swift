@@ -71,8 +71,8 @@ public enum InboundReporting {
     }
 
     /// The `--json` contract, exactly: a provenance block, and per item `id`, `kind`,
-    /// `permalink`, `state`, `question`, `changed` and the minimum text. **Nothing
-    /// else** (<doc:Design>).
+    /// `permalink`, `state`, `question`, `changed`, the minimum text and `resolution`.
+    /// **Nothing else** (<doc:Design>).
     public static func json(
         _ result: InboundAudit.Result, provenance: Provenance, options: Options = .init()
     ) throws -> Data {
@@ -109,12 +109,13 @@ public enum InboundReporting {
         provenance.examined("to re-read", result.toReRead.count)
         if pr.isClosed {
             let quiet = result.items.filter {
-                $0.isVisible && $0.state.needsLook && $0.changed == nil
+                $0.isVisible && $0.state.needsLook && !$0.isListedByDefault
             }.count
             if quiet > 0 {
                 provenance.note(
-                    "\(pr.state.lowercased()) — \(quiet) answered-claimed item(s) not listed; "
-                        + "owed items are listed regardless")
+                    "\(pr.state.lowercased()) — \(quiet) answered-claimed or asker-replied "
+                        + "item(s) on resolved threads not listed; owed items and unresolved "
+                        + "threads are listed regardless")
             }
         }
         provenance.examined("pages fetched", pr.pagesFetched)
@@ -216,7 +217,8 @@ public enum InboundReporting {
         var lines: [String] = []
         let marker = item.state.isOwed ? "●" : "·"
         let author = item.author.map { " \($0)" } ?? ""
-        lines.append("\(indent)\(marker) \(item.id)  [\(item.state.rawValue)]\(author)")
+        lines.append(
+            "\(indent)\(marker) \(item.id)  [\(item.state.rawValue)]\(author)\(resolutionNote(item))")
         if let changed = item.changed {
             lines.append("\(indent)  changed: \(changed)")
         }
@@ -236,12 +238,24 @@ public enum InboundReporting {
         }
         if item.state.isOwed || item.state.needsLook || item.state == .collapsedUnexamined {
             lines.append("\(indent)  → \(item.question)")
-            if item.kind != .inlineThread || item.state.needsLook {
+            if item.state == .askerReplied {
+                lines.append("\(indent)    contrib show \(item.id) \(repository)")
+            } else if item.kind != .inlineThread || item.state == .answeredClaimed {
                 lines.append("\(indent)    contrib ack \(item.id) --with none:\"…\"")
             }
         }
         lines.append("\(indent)  \(item.permalink)")
         return lines
+    }
+
+    /// ` — unresolved`, ` — resolved by the asker`, or ` — resolved by <login>`; empty
+    /// off inline threads. Who resolved a thread is evidence for the reader — a thread
+    /// is resolved for more reasons than the asker's consent — never for the audit.
+    public static func resolutionNote(_ item: InboundItem) -> String {
+        guard let resolution = item.resolution else { return "" }
+        guard resolution.isResolved else { return " — unresolved" }
+        if resolution.byAsker { return " — resolved by the asker" }
+        return resolution.resolvedBy.map { " — resolved by \($0)" } ?? " — resolved"
     }
 
     private static func oneLine(_ text: String, limit: Int = 150) -> String {

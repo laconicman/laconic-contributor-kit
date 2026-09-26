@@ -1,0 +1,79 @@
+{
+  "_fixture": {
+    "source": "laconicman/telegram-kb#6, `scripts/resolution-crosscheck.py --capture`, 2026-09-26 around 14:00 UTC",
+    "cut": "reviewThreads.nodes copied verbatim for root ids 4097650348; the envelope is ThreadDetail.graphql's, with pullRequestState/closed/merged taken from the capture's `state`",
+    "captureShape": "the capture's query carries no viewerDidAuthor, lastEditedAt or pullRequestReview, so authorship is decided by login (--me) and no round id is present"
+  },
+  "data": {
+    "repository": {
+      "issueOrPullRequest": {
+        "__typename": "PullRequest",
+        "number": 6,
+        "url": "https://github.com/laconicman/telegram-kb/pull/6",
+        "pullRequestState": "OPEN",
+        "closed": false,
+        "merged": false,
+        "reviewThreads": {
+          "pageInfo": {
+            "hasNextPage": false,
+            "endCursor": null
+          },
+          "nodes": [
+            {
+              "isResolved": true,
+              "isOutdated": true,
+              "path": "Sources/tgkb/Sync.swift",
+              "resolvedBy": {
+                "login": "devin-ai-integration[bot]"
+              },
+              "comments": {
+                "totalCount": 4,
+                "pageInfo": {
+                  "hasNextPage": false
+                },
+                "nodes": [
+                  {
+                    "databaseId": 4097650348,
+                    "author": {
+                      "login": "devin-ai-integration"
+                    },
+                    "createdAt": "2026-09-24T19:32:54Z",
+                    "url": "https://github.com/laconicman/telegram-kb/pull/6#discussion_r4097650348",
+                    "body": "<!-- devin-review-comment {\"id\": \"BUG_pr-review-job-15ace3304cc94ee78a7647e6c6cea3df_0002\", \"file_path\": \"Sources/tgkb/Sync.swift\", \"start_line\": 55, \"end_line\": 55, \"side\": \"RIGHT\", \"based_on_repo_rules\": false, \"kind\": \"bug\"} -->\n\n🟡 **Checkpoint failures disappear after sync**\n\nIf cleanup fails with a non-BUSY database error, `try?` discards it. The sync reports success while its WAL remains unreclaimed.\n\n<details>\n<summary>Learn more</summary>\n\n[truncateWAL](https://github.com/laconicman/telegram-kb/blob/1d163a5cec563d76d015a193283c91f2257deefa/Sources/TelegramKBStore/Store.swift#L80-L89 \"Sources/TelegramKBStore/Store.swift:80-89\") deliberately ignores only SQLITE_BUSY; other database failures propagate. The deferred `try?` immediately suppresses those other failures as well. This can make a completed sync exit normally even though the promised checkpoint failed, leaving the WAL untouched without a diagnostic.\n\n**Example:** A crawl commits its last page, then a checkpoint fails with an I/O error. The error is discarded and `tgkb sync` reports success, although no space was reclaimed.\n\n**Recommended fix:** Run cleanup in a path that distinguishes BUSY from other failures and surfaces non-BUSY checkpoint errors. Preserve any original crawl error when cleanup also fails, rather than overwriting it.\n\n</details>\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/6\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+                  },
+                  {
+                    "databaseId": 4097808502,
+                    "author": {
+                      "login": "laconicman"
+                    },
+                    "createdAt": "2026-09-24T19:50:54Z",
+                    "url": "https://github.com/laconicman/telegram-kb/pull/6#discussion_r4097808502",
+                    "body": "Fixed by moving cleanup into `ChannelSync.sync` — the layer tests can drive, which also resolves the wiring finding below. BUSY stays absorbed inside `truncateWAL`; any other error now sets `Outcome.walCleanupFailed`, which the CLI turns into a stderr warning while the sync exit stays honest. On the error path the reclaim is still attempted (`try?`, deliberately — the crawl error is the one that must propagate). The `--import-resolutions` path bypasses ChannelSync, so it owns a scoped defer with the same warn-on-error."
+                  },
+                  {
+                    "databaseId": 4097918529,
+                    "author": {
+                      "login": "laconicman"
+                    },
+                    "createdAt": "2026-09-24T20:02:00Z",
+                    "url": "https://github.com/laconicman/telegram-kb/pull/6#discussion_r4097918529",
+                    "body": "Re-checked after the markup edit — the ask is unchanged, and the fix stands as described above (`Outcome.walCleanupFailed` → stderr warning; error-path reclaim attempted with the crawl error dominant)."
+                  },
+                  {
+                    "databaseId": 4098504225,
+                    "author": {
+                      "login": "devin-ai-integration"
+                    },
+                    "createdAt": "2026-09-24T21:09:29Z",
+                    "url": "https://github.com/laconicman/telegram-kb/pull/6#discussion_r4098504225",
+                    "body": "Closed out the last remaining `try?` in 33047f7: `ChannelSync.sync`'s failed-walk branch still swallowed a non-BUSY cleanup failure. It now throws `ChannelSync.CleanupAlsoFailed(walk:cleanup:)` — the walk's error leads, the cleanup's rides along — so nothing vanishes on either path. Regression `failedWalkReportsFailedCleanup` + mutant restoring the `try?`. (The two older ChannelSync mutants were also rebased onto the `walk()` extraction; they had stopped applying.)"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

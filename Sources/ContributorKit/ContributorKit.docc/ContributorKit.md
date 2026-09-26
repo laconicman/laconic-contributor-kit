@@ -18,6 +18,8 @@ let audit = InboundAudit(
     stripper: try BoilerplateStripper(settings: configuration.inbound),
     supersession: SupersessionDetector(phrases: configuration.inbound.supersessionPhrases),
     informational: try InformationalDetector(patterns: configuration.inbound.informationalPatterns),
+    verdicts: VerdictDetector(phrases: configuration.inbound.verdictPhrases),
+    botAskers: configuration.inbound.botAskers,
     horizon: try configuration.inbound.horizonDate())
 
 let result = audit.run(threads, against: previousSnapshot)
@@ -52,6 +54,7 @@ count examined whether or not anything was found, and exits non-zero on an anoma
 - ``BoilerplateStripper``
 - ``SupersessionDetector``
 - ``InformationalDetector``
+- ``VerdictDetector``
 
 ### Reaching GitHub
 

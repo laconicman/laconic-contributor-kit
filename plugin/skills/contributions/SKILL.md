@@ -24,7 +24,8 @@ table is the whole contract; there is no case where the right response is "ignor
 | `open-ask` | A root ask from someone else, no reply from me | — | **Answer it, or say why it should be left out.** "Separate PR" is a fine answer. Silence is not. |
 | `answered-claimed` | I replied; the asker has not confirmed | Is my reply actually *responsive* to the ask, or only adjacent to it? | Re-read both. If the reply dodged, reply again. If it answers, **record that**: `contrib ack <id> --with none:"<why it answers>"`. Listed until one of those happens. |
 | `answered-checked` | I recorded that my reply answers the ask; ask and reply unchanged since | None | Nothing. A new reply or an edited ask lists it again. |
-| `answered-confirmed` | The asker replied after my reply | None | Nothing. The asker confirmed it themselves. |
+| `answered-confirmed` | I replied, and the asker replied after me — or posted its verdict phrase (`✅ **Resolved**:` for Devin Review) at any point. A bot asker's reply after mine confirms only when its latest one is the verdict | None | Nothing. The asker confirmed it themselves. |
+| `asker-replied` | A bot asker (`inbound.botAskers`) replied after me, and its latest reply is not its verdict — often its own fix session reporting on my fix | Confirmation, or correction? | `contrib show <id> <repo>` prints the reply. **Answer it in the thread** — say what you checked, or fix what it found. Your reply makes it `answered-claimed`. `ack` is refused here. Listed, never owed. |
 | `edited-after-my-answer` | `lastEditedAt` > my reply | Does the edit change what is being asked? | If it does, answer the new ask. If not, say so once. |
 | `obligation-open` | A review body or issue comment from someone else, nothing recorded | Does this need a response, or is it already absorbed? | Either way, **record which**: `contrib ack <id> --with …`. |
 | `obligation-acknowledged` | Recorded, body unmoved | None | Nothing. |
@@ -48,17 +49,25 @@ findings. A category label cannot carry that decision.
 everything goes on after you absorb it in some way; going on as if nothing was posted
 is the contributor's mistake. So review bodies are listed first and never auto-cleared.
 
-**Closure quiets `answered-claimed` and nothing else.** On a closed or merged PR nobody is
-waiting on the responsiveness check, so those drop out of the default view — still counted,
-and listed again if anything about them moves. Owed items are listed regardless: reviewers
-post rounds after a merge, and a close can carry a condition addressed to you.
+**Closure quiets `answered-claimed` and `asker-replied` and nothing else — and only on a
+resolved thread.** On a closed or merged PR nobody is waiting on those questions, so they
+drop out of the default view — still counted, and listed again if anything about them moves. A thread still
+**unresolved** stays listed: that is the asker's side disagreeing with the closure, as when a
+reply deferred the finding and the reviewer never resolved it. Owed items are listed
+regardless: reviewers post rounds after a merge, and a close can carry a condition addressed
+to you.
 
 The provenance block reports `to re-read` beside `owed` and never folds one into the other.
-A round is complete at `owed 0` **and** `to re-read 0` — or when the PR is closed.
+A round is complete at `owed 0` **and** `to re-read 0`; on a closed PR, `to re-read` counts
+only unresolved threads.
 
-**`isResolved` is not "answered."** The maintainer sets resolution. A thread can be
-resolved with no reply from you, and an open thread can be fully answered. Never
-substitute one for the other.
+**`isResolved` is not "answered."** A thread is resolved for more reasons than the asker's
+consent: you can resolve your own, a maintainer can, and a reviewer bot's fix session
+resolves under the reviewer's own login. A thread can be resolved with no reply from you,
+and an open thread can be fully answered. So every inline item *reports* its resolution
+and who set it — `— resolved by …` or `— unresolved` in the table, `resolution` in
+`--json` — and no state is decided on it. Read who resolved it; never substitute it for
+an answer.
 
 **"No change needed" still needs an acknowledgement.** Filtering out the items that
 need no action is how they become the next unanswered thread. Let the reply be one

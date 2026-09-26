@@ -69,13 +69,25 @@ the same three endpoints, and ~193,000 raw.
 
 Both failure modes cost the same thing. If the tool judges meaning it will be wrong and
 the reader re-derives anyway; if it dumps raw comments the reader re-enumerates, which is
-the waste being eliminated. Hence ``InboundItem``'s seven-key contract: `id`, `kind`,
-`permalink`, `state`, `question`, `changed`, `text`, and nothing else.
+the waste being eliminated. Hence ``InboundItem``'s eight-key contract: `id`, `kind`,
+`permalink`, `state`, `question`, `changed`, `text`, `resolution`, and nothing else.
+
+`resolution` is the one key that reports rather than settles. It carries GitHub's
+`isResolved` flag for an inline thread, the login that resolved it, and whether that
+login is the asker's. A thread is resolved for more reasons than the asker's consent: I
+can resolve my own, a maintainer can, and a reviewer bot's fix session resolves under the
+reviewer's own login. So the reader gets *who* resolved it, and the audit never decides a
+state on it. It was seven keys until 2026-09-26, when issue #7 showed why the reader needs
+this: the one unresolved thread across seven pull requests was indistinguishable, in the
+contract, from the 110 resolved ones.
 
 ## Reading a reviewer's declared metadata — the limit
 
 Supersession is allowed: a reviewer writing *"This report is out of date"* has retracted
-the ask, and taking the asker at their word is not judging meaning.
+the ask, and taking the asker at their word is not judging meaning. A verdict is the same
+move in the other direction. A reply from the asker's login that opens `✅ **Resolved**:`
+confirms my reply (``VerdictDetector``). Both phrases are matched only where the asker
+puts them, at the opening; a mention elsewhere means nothing.
 
 **A category label is not intent, and this line was drawn the hard way.** The kit briefly
 read one reviewer's `kind: "analysis"` marker as "a receipt, not an ask", on 13 confirming

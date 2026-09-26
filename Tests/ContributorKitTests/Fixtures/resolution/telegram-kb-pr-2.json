@@ -1,0 +1,70 @@
+{
+  "_fixture": {
+    "source": "laconicman/telegram-kb#2, `scripts/resolution-crosscheck.py --capture`, 2026-09-26 around 14:00 UTC",
+    "cut": "reviewThreads.nodes copied verbatim for root ids 4058500969; the envelope is ThreadDetail.graphql's, with pullRequestState/closed/merged taken from the capture's `state`",
+    "captureShape": "the capture's query carries no viewerDidAuthor, lastEditedAt or pullRequestReview, so authorship is decided by login (--me) and no round id is present"
+  },
+  "data": {
+    "repository": {
+      "issueOrPullRequest": {
+        "__typename": "PullRequest",
+        "number": 2,
+        "url": "https://github.com/laconicman/telegram-kb/pull/2",
+        "pullRequestState": "MERGED",
+        "closed": true,
+        "merged": true,
+        "reviewThreads": {
+          "pageInfo": {
+            "hasNextPage": false,
+            "endCursor": null
+          },
+          "nodes": [
+            {
+              "isResolved": true,
+              "isOutdated": true,
+              "path": "Sources/TelegramKBStore/Search.swift",
+              "resolvedBy": {
+                "login": "devin-ai-integration[bot]"
+              },
+              "comments": {
+                "totalCount": 3,
+                "pageInfo": {
+                  "hasNextPage": false
+                },
+                "nodes": [
+                  {
+                    "databaseId": 4058500969,
+                    "author": {
+                      "login": "devin-ai-integration"
+                    },
+                    "createdAt": "2026-09-20T23:51:20Z",
+                    "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4058500969",
+                    "body": "<!-- devin-review-comment {\"id\": \"BUG_pr-review-job-0400633e562e4e77b694347cea2c27bd_0001\", \"file_path\": \"Sources/TelegramKBStore/Search.swift\", \"start_line\": 136, \"end_line\": 136, \"side\": \"RIGHT\", \"based_on_repo_rules\": false, \"kind\": \"bug\"} -->\n\n🔴 **Large cursor offsets crash search**\n\nA decoded cursor near `Int.max` makes `offset + cap` overflow before the database read. That search traps instead of returning `cursorMalformed`.\n\n<details>\n<summary>Learn more</summary>\n\nCursor text is caller-controlled and `Cursor.decode` accepts every nonnegative `Int`. Swift checked arithmetic traps when adding a positive page size to an offset near `Int.max`. The later `end + words.count` calculation also needs protection, so guarding only this addition leaves another crash path.\n\n**Example:** A cursor encoding offset `9223372036854775807` with a matching fingerprint and any generation decodes successfully on a 64-bit process. Searching with limit `1` traps at `offset + cap`; the malformed-cursor error is never returned.\n\n**Recommended fix:** Validate decoded offsets and all pagination additions with `addingReportingOverflow`. Reject values that cannot form both query limits with `SearchError.cursorMalformed`, and define a bounded response for an excessive first-page limit.\n\n</details>\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/2\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+                  },
+                  {
+                    "databaseId": 4059814147,
+                    "author": {
+                      "login": "laconicman"
+                    },
+                    "createdAt": "2026-09-21T06:44:47Z",
+                    "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4059814147",
+                    "body": "Valid, fixed in cbfd116, and I agree with the severity: cursor text arrives from a model, so \"absurd input traps the process\" is a real path for an MCP server rather than a theoretical one. The decoder now bounds the offset (`0...Cursor.maxOffset`, a hundred million — far past any corpus this indexes and far from `Int.max`), and the page arithmetic is overflow-checked on top of that. Either way the answer is `cursorMalformed`, not a crash. Test `hugeCursorOffsetIsRefused` forges cursors at `Int.max`, `Int.max - 1` and one past the bound; mutant included."
+                  },
+                  {
+                    "databaseId": 4059829278,
+                    "author": {
+                      "login": "devin-ai-integration"
+                    },
+                    "createdAt": "2026-09-21T06:47:47Z",
+                    "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4059829278",
+                    "body": "✅ **Resolved**: Cursor decoding now bounds offsets and search uses checked arithmetic for offset plus page size. The remaining first-page-limit overflow is a distinct unchecked addition."
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

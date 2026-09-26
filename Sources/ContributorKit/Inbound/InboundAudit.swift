@@ -16,18 +16,26 @@ public struct InboundAudit: Sendable {
     public let stripper: BoilerplateStripper
     public let supersession: SupersessionDetector
     public let informational: InformationalDetector
+    /// The asker's own "this is fixed" phrase (`inbound.verdictPhrases`).
+    public let verdicts: VerdictDetector
+    /// Askers whose reply after mine confirms only when it is a verdict
+    /// (`inbound.botAskers`) — a reviewer bot whose login also carries its fix sessions.
+    public let botAskers: [String]
     /// Items raised before this are counted and not listed (`inbound.horizon`).
     public let horizon: Date?
 
     public init(
         me: String?, stripper: BoilerplateStripper, supersession: SupersessionDetector,
-        informational: InformationalDetector, horizon: Date? = nil
+        informational: InformationalDetector, verdicts: VerdictDetector,
+        botAskers: [String], horizon: Date? = nil
     ) {
         self.horizon = horizon
         self.me = me
         self.stripper = stripper
         self.supersession = supersession
         self.informational = informational
+        self.verdicts = verdicts
+        self.botAskers = botAskers
     }
 
     public struct Result: Sendable {
@@ -55,10 +63,11 @@ public struct InboundAudit: Sendable {
         /// until something about it moves; the provenance block reports how many were
         /// held back and by which boundary, so the number is never silently smaller.
         public var owed: [InboundItem] { items.filter { $0.state.isOwed && $0.isVisible } }
-        /// Answered but unconfirmed and unchecked, on an open subject — the list that
-        /// asks *is my reply actually responsive?*
+        /// Answered but unconfirmed and unchecked, on an open subject or an unresolved
+        /// thread — the list that asks *is my reply actually responsive?*, or of a bot
+        /// asker's reply, *confirmation or correction?*
         public var toReRead: [InboundItem] {
-            items.filter { $0.isVisible && $0.state.needsLook && !$0.subjectClosed }
+            items.filter { $0.isVisible && $0.awaitsLook }
         }
         /// Items the horizon is holding back this run.
         public var beyondHorizon: [InboundItem] { items.filter { !$0.isVisible } }
@@ -79,6 +88,37 @@ public struct InboundAudit: Sendable {
         if comment.viewerDidAuthor { return true }
         if let me { return comment.author.caseInsensitiveCompare(me) == .orderedSame }
         return false
+    }
+
+    private func isBot(_ login: String) -> Bool {
+        botAskers.contains { Login.same($0, login) }
+    }
+
+    /// One reply from the asker's own login in an inline thread.
+    public struct AskerReply: Sendable {
+        public var comment: RemoteComment
+        /// Opens with the asker's verdict phrase (``VerdictDetector``).
+        public var isVerdict: Bool
+        /// Posted after my last reply. `false` when I have not replied at all.
+        public var isAfterMyLastReply: Bool
+    }
+
+    /// The replies in `thread` from the root's login that are not mine, oldest first.
+    ///
+    /// One definition for the audit, which decides on them, and for `contrib show`,
+    /// which prints them: a state that rests on the asker's reply has to arrive with
+    /// that reply, and two readings of "the asker" would let the two disagree.
+    public func askerReplies(in thread: RemoteThread) -> [AskerReply] {
+        guard let root = thread.root else { return [] }
+        let lastMine = thread.replies.last(where: isMine)
+        return thread.replies
+            .filter { !isMine($0) && $0.author.caseInsensitiveCompare(root.author) == .orderedSame }
+            .map { reply in
+                AskerReply(
+                    comment: reply,
+                    isVerdict: verdicts.isVerdict(stripper.prose(of: reply.body)),
+                    isAfterMyLastReply: lastMine.map { reply.createdAt > $0.createdAt } ?? false)
+            }
     }
 
     public func run(_ pr: PullRequestThreads, against previous: Snapshot?) -> Result {
@@ -103,9 +143,7 @@ public struct InboundAudit: Sendable {
             let replies = Array(thread.replies)
             let mine = replies.filter(isMine)
             for reply in mine { snapshot.authored.insert(reply.id) }
-            let askerReplies = replies.filter {
-                !isMine($0) && $0.author.caseInsensitiveCompare(root.author) == .orderedSame
-            }
+            let askerReplies = askerReplies(in: thread)
 
             // Display text is the stripped prose on every channel. An inline Devin
             // body opens with its marker and closes with a badge block, so the raw
@@ -119,10 +157,24 @@ public struct InboundAudit: Sendable {
             // suppressing one on a marker can only ever hide a real ask, and did.
             let state: ItemState
             if let lastMine = mine.last {
-                if askerReplies.contains(where: { $0.createdAt > lastMine.createdAt }) {
-                    state = .answeredConfirmed
+                // The asker's latest reply after mine decides. From a person any reply
+                // confirms, as it always has — the verdict phrase changes nothing there.
+                // Only a bot asker's non-verdict is a question, because the same login
+                // carries the bot's fix sessions, whose replies are news about my fix
+                // and not a confirmation of it.
+                //
+                // With nothing from the asker after mine, a verdict posted earlier still
+                // confirms — a reviewer that re-reviews on push can confirm a fix before
+                // I reply — unless the ask was edited after my reply: that edit is newer
+                // than the verdict, which then says nothing about the ask as it stands.
+                // A verdict never manufactures a reply of mine.
+                if let latest = askerReplies.last(where: \.isAfterMyLastReply) {
+                    state =
+                        isBot(root.author) && !latest.isVerdict ? .askerReplied : .answeredConfirmed
                 } else if let edited = root.lastEditedAt, edited > lastMine.createdAt {
                     state = .editedAfterMyAnswer
+                } else if askerReplies.contains(where: \.isVerdict) {
+                    state = .answeredConfirmed
                 } else if let check = previous?.entries[root.id]?.acknowledged,
                     check.bodySha256AtAck == root.bodySHA256,
                     check.replyIDAtAck == lastMine.id
@@ -150,6 +202,13 @@ public struct InboundAudit: Sendable {
                     text: .init(
                         ask: rootProse.isEmpty ? root.body : rootProse,
                         reply: mine.last.map { stripper.prose(of: $0.body) }),
+                    // Reported beside `state`, never an input to it — and only when the
+                    // source said: unknown is not unresolved.
+                    resolution: thread.isResolved.map { isResolved in
+                        .init(
+                            isResolved: isResolved, resolvedBy: thread.resolvedBy,
+                            byAsker: thread.resolvedBy.map { Login.same($0, root.author) } ?? false)
+                    },
                     roundID: root.reviewID, roundAt: root.createdAt, author: root.author,
                     previousState: before == state ? nil : before,
                     beyondHorizon: horizon.map { root.createdAt < $0 } ?? false,
@@ -342,6 +401,8 @@ extension InboundAudit {
                 phrases: configuration.inbound.supersessionPhrases),
             informational: try InformationalDetector(
                 patterns: configuration.inbound.informationalPatterns),
+            verdicts: VerdictDetector(phrases: configuration.inbound.verdictPhrases),
+            botAskers: configuration.inbound.botAskers,
             horizon: try configuration.inbound.horizonDate())
     }
 }

@@ -40,6 +40,69 @@ This is not inference from proximity. The never-infer rule is about inferring
 Implemented for inline threads only, since the other two channels have no thread to
 reply into.
 
+**Amended 2026-09-26 (issue #7): the asker's verdict confirms whenever it was posted.**
+A reviewer that re-reviews on push can confirm a fix before I reply. On
+`laconicman/telegram-kb#1` Devin Review did that on twelve threads, and each stayed
+`answered-claimed` because its confirmation came first. A reply from the asker's login
+whose stripped prose **opens** with a configured phrase (`inbound.verdictPhrases`, seeded
+with Devin's `✅ **Resolved**:`) now confirms my reply, before or after it.
+
+- **Opening only.** A reply that mentions the phrase is not a verdict. This is the lesson
+  supersession paid for, when a mid-sentence mention retracted a live ask.
+- **It needs my reply.** A verdict upgrades my claim to confirmed. It never manufactures a
+  reply I did not write, so a verdict-only thread stays `open-ask` until one line clears it.
+- **An edit after my reply outranks an earlier verdict.** That verdict judged the ask as it
+  stood then, so `edited-after-my-answer` wins and stays owed. A DeepWiki pre-review caught
+  this ordering.
+- **Seeded for one reviewer.** 92 of 92 verdicts carried the phrase, and 0 of 19
+  fix-session replies under the same login did. That is one reviewer on one repository;
+  see *Reading a reviewer's declared metadata — withdrawn* for what an unverified reading
+  of declared structure once cost.
+
+Matching a fixed phrase where the asker puts it is declared structure, not meaning — the
+same move supersession makes. The boundary sentence in `ItemState.swift` now says so.
+
+**Amended again, same day: from a bot asker, only the verdict confirms.** A reviewer
+bot's login also carries its fix sessions. On `telegram-kb#3` I replied "Fixed", and the
+reviewer's login then replied *"Closed the remaining half of this in f7c1a98"*. My fix
+had missed a path. Any asker-login reply after mine counted as confirmation, so the one
+reply I most needed to read was cleared. The same thing happened on `#6`.
+
+- **Gated to configured bots** (`inbound.botAskers`, seeded with `devin-ai-integration`,
+  matched with a GitHub App's `[bot]` suffix ignored). A person's "LGTM, thanks" after my
+  reply confirms, as it always has.
+- **The asker's latest reply after mine decides.** A verdict confirms. From a bot, anything
+  else is the new state `asker-replied`: *confirmation, or correction?* It is listed and
+  never owed. A verdict that follows a correction is the reviewer re-checking once the
+  rest was closed, so it confirms. A correction that follows a verdict is news the verdict
+  predates, so it lists.
+- **Cleared by replying, not by `ack`.** A check would judge my reply while the asker's
+  later one went unread, and the audit decides `asker-replied` before it reads any check.
+  So `ack` refuses and names the remedy: read the reply with `contrib show`, then answer it
+  in the thread. That reply makes the thread `answered-claimed` again. The cost is a
+  public one-liner even when the bot's reply was harmless; judged worth it over a new
+  snapshot field.
+- **`contrib show` prints the asker's replies**, each labelled by time, verdict, and
+  whether it came after mine. A state whose question is *confirmation or correction?* has
+  to arrive with the reply it asks about. That is what made this state legal.
+
+### Resolution is reported, never decided on
+
+Decided 2026-09-26, from issue #7. Every inline item carries GitHub's `isResolved`, the
+login that resolved the thread (a GitHub App's `[bot]` suffix removed), and whether that
+login is the asker's — in the table, in `contrib show`, and as `resolution`, the eighth
+key of the `--json` item.
+
+**No state reads it.** A thread is resolved for more reasons than the asker's consent: I
+can resolve my own, a maintainer can, and a reviewer bot's fix session resolves under the
+reviewer's own login. So the reader is told *who* resolved it, and keeps the ability to
+tell those reasons apart; the audit draws no conclusion from it. `byAsker` exists because
+the item carries no author to compare against. It cannot separate a reviewer bot from its
+own fix session, which share a login — see *Still open*.
+
+The contract grew a key because the reader needed it. Across seven pull requests the one
+unresolved thread was indistinguishable, in `--json`, from the 110 resolved ones.
+
 ### Supersession
 
 A reviewer can **retract** an obligation — *"This report is out of date. Scroll down for
@@ -244,9 +307,21 @@ It now stays listed until one of three things happens:
   `answered-checked`. The record is keyed to the ask's body hash *and* to the reply it
   judged, so a later reply or an edited ask lists the thread again.
 - **The PR or issue closes** → it drops out of the default view, still counted, and is
-  listed again if anything about it moves.
+  listed again if anything about it moves — **unless the thread is still unresolved**
+  (amended 2026-09-26, issue #7).
 
 The cost is a longer default list where a reviewer never confirms; judged manageable.
+
+**The amendment.** Across seven pull requests, the only thread the reviewer never resolved
+was one whose reply had deferred the finding to tech debt. Its pull request merged, and
+the default view hid it among twelve quiet `answered-claimed` threads under
+*"merged — 13 answered-claimed item(s) not listed"*. An unresolved thread is the asker's
+side disagreeing with the closure, so closure no longer quiets it. It stays listed and
+counts in `to re-read`. `contrib ack` still clears it as `answered-checked`, and resolving
+the thread quiets it.
+
+This **lists and never clears**: `isResolved` only stops closure from hiding something. It
+never marks anything answered, and never makes anything owed.
 
 **Closure quiets only this list.** Owed items stay listed on a closed or merged subject,
 because both trials produced counter-examples to "closed means done": a round of six
@@ -302,6 +377,21 @@ and verify the reading against more than one repository before trusting it to su
 anything.* A category label is not intent.
 
 ## Still open
+- **One login, two roles.** When a reviewer bot's fix session posts under the reviewer's
+  own login, its replies land among the asker's, and none of mine. On `telegram-kb#5`
+  that made 20 finished threads `open-ask`: fixed, replied to, and resolved by the
+  reviewer. No login-based "delegate" setting can separate the two roles. Making that
+  login "mine" also claims the roots, and every thread then drops at the self-authored
+  guard. Only the verdict phrase tells them apart today, and the 4 verdict-only threads
+  among the 20 stay `open-ask` on purpose: a verdict never stands in for my reply. A test
+  pins the session-only thread as `open-ask`, so any fix shows up as a diff. The real fix
+  is a marker only the reviewer can emit on its sessions' replies.
+- **A `--unresolved` display filter** for `contrib in`. The operator expected it to exist
+  already, and it would have answered issue #7's question in one command. It was not added
+  with #7: closure no longer hides an unresolved thread, and every inline `--json` item now
+  carries `resolution`, so `contrib in … --all --json` piped through
+  `jq '.items[] | select(.resolution.isResolved == false)'` answers the same question. A filter is compatible with REVIEW.md, since it hides nothing
+  from the state. Add it if the jq line turns out to be the common case.
 - **Whether a backticked reference suppresses GitHub's cross-reference event.** Needed to
   choose `referenceStyle`; a write to a public repository, so not tested here.
 - **`upstream-commitments.md` has two rows with `id=A10`.** Must be resolved before the

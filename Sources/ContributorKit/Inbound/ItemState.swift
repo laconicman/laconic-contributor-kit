@@ -9,8 +9,12 @@ import Foundation
 /// > exactly the text needed to answer it, and marks everything it already settled so
 /// > the model does not re-check it.
 ///
-/// Every case below is a fact about ids, authorship, timestamps and hashes. Not one of
-/// them required reading what a comment *says*.
+/// Every case below is a fact about ids, authorship, timestamps and hashes — or about a
+/// **fixed phrase the asker emits about its own comment**: a retraction (`superseded`), a
+/// bot's run announcement (`informational`), a verdict (`answered-confirmed`, and its
+/// absence in `asker-replied`). A fixed phrase is declared structure, matched only where
+/// the asker puts it; it is not a reading of what the comment means. No case here
+/// paraphrases, scores or interprets prose.
 public enum ItemState: String, Codable, Sendable, CaseIterable {
     /// Channel 1: a root ask from someone else with no reply from me.
     case openAsk = "open-ask"
@@ -22,13 +26,30 @@ public enum ItemState: String, Codable, Sendable, CaseIterable {
     /// The record is keyed to the ask's body hash and to the reply it judged, so a new
     /// reply or an edit to the ask makes it stale and the thread is listed again.
     case answeredChecked = "answered-checked"
-    /// Channel 1: the asker themselves replied after my reply.
+    /// Channel 1: the asker themselves replied after my reply, or posted its verdict
+    /// (``VerdictDetector``) anywhere in a thread I replied to.
     ///
     /// Stronger evidence than anything else here, and the field report is right that
     /// <doc:Design> did not admit it: it is the asker confirming the answer, where my own reply
     /// only records a claim. Not an inference from proximity — <doc:Design>'s rule is about
     /// inferring acceptance from *timing*; this is the asker speaking.
+    ///
+    /// A verdict counts whenever it was posted. A reviewer that re-reviews on push can
+    /// confirm a fix before I reply; twelve threads on one pull request did. It never
+    /// stands in for my reply, though: a verdict on a thread I never replied to leaves it
+    /// `open-ask`. And an ask edited after my reply is `edited-after-my-answer`, however
+    /// early the verdict was: the edit is newer than the verdict.
     case answeredConfirmed = "answered-confirmed"
+    /// Channel 1: a **bot** asker (`inbound.botAskers`) replied after my reply, and its
+    /// latest reply is not its verdict.
+    ///
+    /// From a person, a reply after mine confirms. A reviewer bot's login also carries its
+    /// fix sessions, whose "Fixed in …" or "Closed the remaining half of this in …" is
+    /// news about my fix, not a confirmation of it. One such correction, which said my fix
+    /// had missed a path, was cleared as `answered-confirmed`. Not owed, but listed: the
+    /// question is *confirmation or correction?*, and `contrib show` prints the reply it
+    /// is about.
+    case askerReplied = "asker-replied"
     /// The ask was edited after my answer was posted. <doc:Design>'s sharpest check, and free
     /// given the snapshot: my answer may no longer address it.
     case editedAfterMyAnswer = "edited-after-my-answer"
@@ -73,19 +94,21 @@ public enum ItemState: String, Codable, Sendable, CaseIterable {
     public var isOwed: Bool {
         switch self {
         case .openAsk, .obligationOpen, .reopenedByEdit, .editedAfterMyAnswer: return true
-        case .answeredClaimed, .answeredChecked, .answeredConfirmed, .obligationAcknowledged,
-            .superseded, .noProse, .informational, .collapsedUnexamined:
+        case .answeredClaimed, .answeredChecked, .answeredConfirmed, .askerReplied,
+            .obligationAcknowledged, .superseded, .noProse, .informational,
+            .collapsedUnexamined:
             return false
         }
     }
 
     /// Not owed, but carrying a question nobody has answered: *is my reply actually
-    /// responsive?* Listed by default until the asker confirms or a check is recorded.
+    /// responsive?*, or *is the asker's reply a confirmation or a correction?* Listed by
+    /// default until the asker confirms, a check is recorded, or I reply again.
     ///
     /// It used to appear only on the run it changed and vanish on the next, so the one
     /// item carrying a live meaning question was the one hidden by default — whether or
     /// not anyone had looked. Reported twice by the same trial session.
-    public var needsLook: Bool { self == .answeredClaimed }
+    public var needsLook: Bool { self == .answeredClaimed || self == .askerReplied }
 
     /// The meaning question this state hands to the model — the decision table
     /// `SKILL.md` carries, kept here so the two cannot drift.
@@ -99,6 +122,8 @@ public enum ItemState: String, Codable, Sendable, CaseIterable {
             return "None. You re-read your reply against the ask and recorded that it answers it."
         case .answeredConfirmed:
             return "None. The asker confirmed it themselves; read only if you doubt the match."
+        case .askerReplied:
+            return "The asker replied after you without its verdict — a confirmation, or a correction? `contrib show` prints the reply; answer it in the thread."
         case .editedAfterMyAnswer:
             return "Does the edit change what is being asked? Is my answer now wrong, or merely older?"
         case .obligationOpen:

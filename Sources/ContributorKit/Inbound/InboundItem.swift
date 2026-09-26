@@ -3,10 +3,11 @@ import Foundation
 /// One line of `contrib in`'s worklist.
 ///
 /// The `--json` shape is exactly <doc:Design>'s contract: `id`, `kind`, `permalink`,
-/// `state`, `question`, `changed`, and the minimum text — the ask, and my reply if
-/// there is one. **Nothing else.** Both failure modes cost the same thing: if the CLI
-/// judges meaning it will be wrong and the model re-derives anyway; if it dumps raw
-/// comments the model re-enumerates, which is the waste being eliminated.
+/// `state`, `question`, `changed`, the minimum text — the ask, and my reply if there is
+/// one — and an inline thread's `resolution`. **Nothing else.** Both failure modes cost
+/// the same thing: if the CLI judges meaning it will be wrong and the model re-derives
+/// anyway; if it dumps raw comments the model re-enumerates, which is the waste being
+/// eliminated.
 public struct InboundItem: Codable, Sendable {
     public struct Text: Codable, Sendable {
         public var ask: String
@@ -19,6 +20,26 @@ public struct InboundItem: Codable, Sendable {
         }
     }
 
+    /// GitHub's resolution of an inline thread, and whose login set it.
+    ///
+    /// **Reported, never decided on** (``RemoteThread``): resolution happens for more
+    /// reasons than the asker's consent, so the reader is given who did it rather than
+    /// a conclusion. `byAsker` is the one derived field — the kit compares `resolvedBy`
+    /// with the root's author, since the item carries no author — and it cannot tell a
+    /// reviewer bot from its own fix session, which share a login.
+    public struct Resolution: Codable, Sendable, Equatable {
+        public var isResolved: Bool
+        public var resolvedBy: String?
+        public var byAsker: Bool
+
+        public func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(isResolved, forKey: .isResolved)
+            try container.encode(resolvedBy, forKey: .resolvedBy)
+            try container.encode(byAsker, forKey: .byAsker)
+        }
+    }
+
     public var id: String
     public var kind: Channel
     public var permalink: String
@@ -28,6 +49,9 @@ public struct InboundItem: Codable, Sendable {
     /// changed — which is the majority, and why this is a differ and not a reporter.
     public var changed: String?
     public var text: Text
+    /// Inline threads only; `nil` on the channels that have no resolution, and on a
+    /// thread whose source did not say.
+    public var resolution: Resolution? = nil
 
     /// Not part of the `--json` item contract — carried for terminal grouping only
     /// (<doc:Design>), and stripped before encoding.
@@ -56,16 +80,26 @@ public struct InboundItem: Codable, Sendable {
         return changed != nil && !isNewToSnapshot
     }
 
+    /// A `needsLook` question someone may still be waiting on.
+    ///
+    /// Closure quiets it — once the subject is closed nobody is waiting on the
+    /// responsiveness check — **unless the thread is still unresolved**. That is the
+    /// asker's side of the thread disagreeing with closure, and it only keeps the item
+    /// listed: nothing is cleared or owed on it. Issue #7's case 4 was the one open
+    /// thread across seven pull requests, and closure hid it among twelve quiet ones.
+    public var awaitsLook: Bool {
+        state.needsLook && (!subjectClosed || resolution?.isResolved == false)
+    }
+
     /// Listed without `--all`?
     ///
     /// Owed items always, wherever the subject stands: reviewers post rounds after a
     /// merge, and a close can carry a condition addressed to me. A `needsLook` item
-    /// only while the subject is open — once it is closed nobody is waiting on the
-    /// responsiveness check — unless something about it actually moved.
+    /// while it ``awaitsLook``, or once something about it actually moved.
     public var isListedByDefault: Bool {
         guard isVisible else { return false }
         if state.isOwed { return true }
-        if state.needsLook && !subjectClosed { return true }
+        if awaitsLook { return true }
         // Unexamined is not empty: the flag lists until someone acknowledges it —
         // the whole point is that a collapsed section cannot be told from a hidden
         // ask without looking, so looking (or declining to) must be a recorded act.
@@ -79,12 +113,12 @@ public struct InboundItem: Codable, Sendable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, kind, permalink, state, question, changed, text
+        case id, kind, permalink, state, question, changed, text, resolution
     }
 
-    /// All seven keys, always — `changed` and `text.reply` encode as `null` rather
-    /// than vanishing. The contract is *exactly* these keys, so a consumer reads a
-    /// null instead of having to tell "absent" from "nothing changed".
+    /// All eight keys, always — `changed`, `text.reply` and `resolution` encode as
+    /// `null` rather than vanishing. The contract is *exactly* these keys, so a consumer
+    /// reads a null instead of having to tell "absent" from "nothing changed".
     public func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(id, forKey: .id)
@@ -94,5 +128,6 @@ public struct InboundItem: Codable, Sendable {
         try container.encode(question, forKey: .question)
         try container.encode(changed, forKey: .changed)
         try container.encode(text, forKey: .text)
+        try container.encode(resolution, forKey: .resolution)
     }
 }

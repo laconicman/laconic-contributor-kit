@@ -83,6 +83,60 @@ review day. What it established:
 **Two defects and one wart it found, all now fixed** — see below. One gap was left open
 by decision rather than by oversight: see `Decisions.md` on era acknowledgement.
 
+## From a resolution cross-check, 2026-09-26
+
+A session asked a narrow question of `laconicman/telegram-kb` — *which threads did the
+reviewer say are resolved but are still open?* — and answered it twice: with
+`contrib in --all --json` on PRs #1–#7, and with an independent GraphQL walk that reads
+`isResolved` and `resolvedBy`, which the kit did not read then.
+`scripts/resolution-crosscheck.py` is that walk, kept as an oracle. It needs no kit code,
+and it exits 2 when its thread count disagrees with the kit's own counter, or when the
+kit's reported `resolution` disagrees with GitHub's.
+
+| Claim | Evidence |
+|---|---|
+| Accounting is exact across seven PRs | inline threads 53/13/17/3/20/5/0 by both paths; every PR's item count = threads + others' review bodies and issue comments; no anomalies |
+| Pagination past one page, live | PR #1 took two pages; nothing was truncated |
+| `answered-confirmed` now has real data at volume | 74 threads confirmed by the asker's `✅ **Resolved**:` after my reply |
+
+What the walk found that the kit gets wrong is issue #7. There are four cases:
+
+| Case | Threads |
+|---|---|
+| The asker's verdict **before** my reply | 12 |
+| One app login for both the reviewer and its fix session | 20 |
+| An asker reply after mine that **corrected** my fix | 2 |
+| The only unresolved thread, quieted on a merged PR | 1 |
+
+One real thread per case — plus a control from #2 — is cut verbatim from that capture
+into `Tests/ContributorKitTests/Fixtures/resolution/`, because the live state moves on: the
+case-4 thread is due to be answered and resolved.
+
+**After the fix, same day, live.** The oracle was re-run against the fixed build while the
+case-4 thread was still unresolved:
+
+| Case | Before | After | How |
+|---|---|---|---|
+| Verdict before my reply | 12 | 0 | all 12 now `answered-confirmed` |
+| One login, two roles | 20 | 20 | the documented limit; the 4 verdict-only threads stay `open-ask` by design |
+| Correction read as confirmation | 2 | 0 | both now `asker-replied`, and both listed by a default run |
+| Unresolved, quieted after merge | 1 | 1 | still unresolved on GitHub, and a default `contrib in --pr 1` now lists it (`to re-read 1`) |
+
+The oracle observes "listed" from a second `contrib in --json` run without `--all`; it
+does not infer it from a state. The kit's `resolution` agreed with GitHub's on 111 of 111
+threads. A build without that key reports 0 compared, so a skipped check cannot pass for
+agreement. A forged disagreement exits 2.
+
+Each rule was also checked against a mutant, each of which the suite killed:
+
+| Mutant | Test that failed |
+|---|---|
+| The verdict phrase matched anywhere, not at the opening | *the verdict phrase mid-reply, or quoted, is not a verdict* |
+| No bot gate: any non-verdict after mine lists | *a human asker's plain reply after mine still confirms* |
+| Any non-verdict after mine lists, whatever came later | *the bot asker's latest reply after mine decides* |
+| Closure quiets an unresolved thread too | *a merged PR keeps an unresolved answered-claimed thread listed, and only that* |
+| An earlier verdict outranks an edit after my reply | *an edit after my reply outranks an earlier verdict; an interleaved verdict confirms* |
+
 ## Three defects the live trial found
 
 1. **The differ could not see state transitions.** The run straight after answering six

@@ -46,6 +46,16 @@ public enum AcknowledgementEligibility {
                 """
         case .answeredConfirmed:
             return "\(id) is already confirmed by the asker. There is nothing to record."
+        case .askerReplied:
+            // A check here would judge my reply while the asker's later one went unread,
+            // and the audit decides this state before it ever reads a check.
+            return """
+                \(id): the asker replied after you, and not with its verdict. Read that \
+                reply — `contrib show \(id) <owner>/<repo>` — and answer it in the thread. \
+                Your reply lists it as answered-claimed, which a verdict confirms or `ack` \
+                checks. Already replied on GitHub? Refresh the snapshot first — \
+                `contrib in`, or `ack --refresh`.
+                """
         case nil:
             return "\(id) has no recorded state yet. Run `contrib in` for its PR first."
         default:

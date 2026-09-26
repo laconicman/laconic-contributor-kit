@@ -11,9 +11,12 @@ from a failure on a real upstream pull request. Generic Swift advice is not want
   reproduces the bug this kit was built after.
 - Flag any call site passing a `Channel.inlineThread` comment to `InformationalDetector`.
   Suppressing an inline thread on a marker can only hide a real ask; it did, for ten runs.
-- Reject any `informationalPatterns` entry in
+- Reject any `informationalPatterns` or `verdictPhrases` entry in
   `Sources/ContributorKit/Resources/inbound.default.yml` that is not a fixed, unambiguous
-  phrase. A reviewer's category label is not a statement of intent.
+  phrase. A reviewer's category label is not a statement of intent. A new verdict phrase
+  also needs a measurement behind it, like the Devin one's 92-of-92.
+- Require `VerdictDetector` to match only the **opening** of a reply's stripped prose. A
+  reply that mentions or quotes the phrase must not confirm anything.
 - Require every new stored property on `Snapshot`, `Snapshot.Entry` or `Acknowledgement`
   to decode when absent: `Optional`, or `decodeIfPresent` in `Snapshot.init(from:)`. A
   non-optional property with a default breaks every existing state directory on upgrade.
@@ -25,7 +28,7 @@ from a failure on a real upstream pull request. Generic Swift advice is not want
 
 ## Conventions
 
-- Flag any key added to `InboundItem.encode(to:)` beyond the seven in the contract, unless
+- Flag any key added to `InboundItem.encode(to:)` beyond the eight in the contract, unless
   the PR also updates `Sources/ContributorKit/ContributorKit.docc/Design.md` and
   `ContractTests.jsonContractIsExact`.
 - `Counts` must never gain a `total`, and no code may sum `code + comment + blank`. LOC is
@@ -52,6 +55,10 @@ from a failure on a real upstream pull request. Generic Swift advice is not want
 - Reject any inference that an obligation was discharged from timing, proximity,
   `isResolved`, or a closed state. Only a recorded `Acknowledgement` or the asker's own
   reply clears one.
+- Flag any `ItemState` decided from `RemoteThread.isResolved` or `resolvedBy`. They are
+  reported on the item (`InboundItem.resolution`), and one listing rule reads
+  `isResolved`: an unresolved thread is not quieted by closure
+  (`InboundItem.awaitsLook`). They are read nowhere else.
 - Flag any code path that stores state no reader consults. `AcknowledgementEligibility`
   exists because `ack` on an inline thread once reported success and changed nothing.
 - Reject `Bundle.module` used outside `Sources/ContributorKit/Support/Configuration.swift` and

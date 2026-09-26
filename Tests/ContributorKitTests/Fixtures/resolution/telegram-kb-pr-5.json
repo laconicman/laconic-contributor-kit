@@ -1,0 +1,95 @@
+{
+  "_fixture": {
+    "source": "laconicman/telegram-kb#5, `scripts/resolution-crosscheck.py --capture`, 2026-09-26 around 14:00 UTC",
+    "cut": "reviewThreads.nodes copied verbatim for root ids 4098761481, 4097237099; the envelope is ThreadDetail.graphql's, with pullRequestState/closed/merged taken from the capture's `state`",
+    "captureShape": "the capture's query carries no viewerDidAuthor, lastEditedAt or pullRequestReview, so authorship is decided by login (--me) and no round id is present"
+  },
+  "data": {
+    "repository": {
+      "issueOrPullRequest": {
+        "__typename": "PullRequest",
+        "number": 5,
+        "url": "https://github.com/laconicman/telegram-kb/pull/5",
+        "pullRequestState": "OPEN",
+        "closed": false,
+        "merged": false,
+        "reviewThreads": {
+          "pageInfo": {
+            "hasNextPage": false,
+            "endCursor": null
+          },
+          "nodes": [
+            {
+              "isResolved": true,
+              "isOutdated": true,
+              "path": "Sources/TelegramKBMCP/ToolHandler.swift",
+              "resolvedBy": {
+                "login": "devin-ai-integration[bot]"
+              },
+              "comments": {
+                "totalCount": 2,
+                "pageInfo": {
+                  "hasNextPage": false
+                },
+                "nodes": [
+                  {
+                    "databaseId": 4098761481,
+                    "author": {
+                      "login": "devin-ai-integration"
+                    },
+                    "createdAt": "2026-09-24T21:40:03Z",
+                    "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4098761481",
+                    "body": "<!-- devin-review-comment {\"id\": \"BUG_pr-review-job-affabd4512bf403cbce287710f40b344_0001\", \"file_path\": \"Sources/TelegramKBMCP/ToolHandler.swift\", \"start_line\": 276, \"end_line\": 276, \"side\": \"RIGHT\", \"based_on_repo_rules\": false, \"kind\": \"bug\"} -->\n\n🔴 **Oversized limit terminates the server**\n\nA floating-point `limit` above `Int.max` makes `Args.int` trap during conversion, before the page-size clamp runs. The MCP server exits instead of rejecting the argument.\n\n<details>\n<summary>Learn more</summary>\n\n`limit` is a JSON number decoded as an MCP `Value`. A whole-valued double can exceed the range of Swift `Int`; checking whether it equals its rounded value does not make `Int(double)` safe. The conversion traps before the handler can return a result or `MCPError.invalidParams`.\n\n**Example:** `search_posts` with `{\"query\":\"swift\",\"limit\":1e20}` reaches the double branch; `1e20.rounded()` equals `1e20`, but converting it to `Int` terminates the process rather than clamping to 100.\n\n**Recommended fix:** Check that the double is finite, nonnegative, integral, and representable before converting; alternatively clamp values above `max` in the double domain before conversion. Reject other numeric values with `MCPError.invalidParams`, and test a whole-valued number larger than `Int.max`.\n\n</details>\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/5\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+                  },
+                  {
+                    "databaseId": 4098872826,
+                    "author": {
+                      "login": "devin-ai-integration"
+                    },
+                    "createdAt": "2026-09-24T21:54:46Z",
+                    "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4098872826",
+                    "body": "Fixed in a595d78. `Args.int` now uses `Int(exactly:)` and saturates to `Int.max`/`Int.min` for finite whole doubles outside the `Int` range, so the existing `>= 0` check and `min(n, max)` clamp apply instead of a trap. Test `hugeLimitIsClampedNotFatal` (`1e20` → clamped page, `-1e20` → invalidParams, `1.5` → invalidParams) plus a mutant that puts `Int(x)` back."
+                  }
+                ]
+              }
+            },
+            {
+              "isResolved": true,
+              "isOutdated": true,
+              "path": "Sources/TelegramKBMCP/ToolHandler.swift",
+              "resolvedBy": {
+                "login": "devin-ai-integration[bot]"
+              },
+              "comments": {
+                "totalCount": 2,
+                "pageInfo": {
+                  "hasNextPage": false
+                },
+                "nodes": [
+                  {
+                    "databaseId": 4097237099,
+                    "author": {
+                      "login": "devin-ai-integration"
+                    },
+                    "createdAt": "2026-09-24T18:48:02Z",
+                    "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4097237099",
+                    "body": "<!-- devin-review-comment {\"id\": \"BUG_pr-review-job-96b9db8c88c54eb19c11a2a6703f2c5d_0001\", \"file_path\": \"Sources/TelegramKBMCP/ToolHandler.swift\", \"start_line\": 132, \"end_line\": 133, \"side\": \"RIGHT\", \"based_on_repo_rules\": false, \"kind\": \"bug\"} -->\n\n🔴 **Link matches beyond 100 are unreachable**\n\nWhen a URL has over 100 matches, `find_links` caps every request at 100 without offering pagination. Clients cannot retrieve the remaining posts despite the reported `total`.\n\n<details>\n<summary>Learn more</summary>\n\n`find_links` reads a bounded first page from `Store.links(to:limit:)` and reports the full count, but the tool has no cursor or offset argument. Increasing `limit` cannot advance past the first 100 results because `Args.int` clamps it. This is a permanent retrieval gap, not simply a compact default response.\n\n**Example:** A URL shared by 140 posts returns 100 links and `total: 140`. Calling again with `limit: 140` returns the same 100; the other 40 cannot be requested.\n\n**Recommended fix:** Add stable pagination to `Store.links(to:)` and expose an opaque cursor and `next_cursor` in `find_links`, with ordering that uniquely identifies each link row. Test traversal past 100 matches.\n\n</details>\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/5\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+                  },
+                  {
+                    "databaseId": 4098759414,
+                    "author": {
+                      "login": "devin-ai-integration"
+                    },
+                    "createdAt": "2026-09-24T21:39:48Z",
+                    "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4098759414",
+                    "body": "✅ **Resolved**: Resolved: find_links now accepts and propagates cursors and returns next_cursor, making matches beyond the capped page reachable."
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}
