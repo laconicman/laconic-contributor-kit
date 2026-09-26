@@ -20,6 +20,8 @@ from a failure on a real upstream pull request. Generic Swift advice is not want
 - Require every new stored property on `Snapshot`, `Snapshot.Entry` or `Acknowledgement`
   to decode when absent: `Optional`, or `decodeIfPresent` in `Snapshot.init(from:)`. A
   non-optional property with a default breaks every existing state directory on upgrade.
+  Both `Snapshot` and `Snapshot.Entry` decode by hand: an `Optional` property left out of
+  their `init(from:)` still compiles, and loads as `nil` forever.
 - Require a matching fixture in `Tests/ContributorKitTests/Fixtures/snapshots/` whenever
   the snapshot schema gains a field.
 - Require a new `Sources/ContributorKit/Inbound/ItemState.swift` case to add a row to

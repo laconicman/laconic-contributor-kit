@@ -584,6 +584,41 @@ struct SnapshotCompatibilityTests {
         #expect(snapshot.entries["pullrequestreview-3"]?.prose
             == "Please add a regression test.")
     }
+
+    /// Written by a newer build: one entry holds a state this build does not know. It
+    /// used to fail the whole load with a `DecodingError`. Now that entry has no
+    /// recorded state, and nothing else is lost — re-encoded, the snapshot is the file
+    /// minus that one key.
+    @Test("a state this build does not know loads as nil, and nothing else is lost")
+    func unknownState() throws {
+        let fixture = try Fixtures.data("snapshots/schema1-unknown-state.json")
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appending(path: "ck-unknown-state-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = SnapshotStore(directory: directory)
+        try FileManager.default.createDirectory(
+            at: store.url(for: "o/r").deletingLastPathComponent(),
+            withIntermediateDirectories: true)
+        try fixture.write(to: store.url(for: "o/r"))
+
+        let snapshot = try #require(try store.load(repository: "o/r"))
+        #expect(try #require(snapshot.entries["discussion_r1"]).state == nil)
+        #expect(snapshot.entries["discussion_r4"]?.state == .answeredChecked)
+
+        var expected = try #require(
+            try JSONSerialization.jsonObject(with: fixture) as? [String: Any])
+        var entries = try #require(expected["entries"] as? [String: Any])
+        var unknown = try #require(entries["discussion_r1"] as? [String: Any])
+        let raw = try #require(unknown.removeValue(forKey: "state") as? String)
+        #expect(ItemState(rawValue: raw) == nil, "the fixture must hold a state this build lacks")
+        entries["discussion_r1"] = unknown
+        expected["entries"] = entries
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let actual = try JSONSerialization.jsonObject(with: try encoder.encode(snapshot))
+        #expect(actual as? NSDictionary == expected as NSDictionary)
+    }
 }
 
 /// Round 2 of this repository's own review. Each test fails against the old behaviour.

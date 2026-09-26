@@ -158,6 +158,31 @@ The layout is one path component per name. It began as `<owner>__<repo>.json`, w
 Snapshots written at the old path are read and merged, never chosen between — both files
 can exist holding different pull requests.
 
+### A state from a newer build
+
+Decided 2026-09-26, from a review of #8. Every build on a machine shares one state
+directory, and `ItemState` keeps growing — `collapsed-unexamined`, then `asker-replied`.
+**An entry holding a state this build does not know loads with no recorded state**, and
+the next run re-classifies it. The stored state feeds only the `was → now` line and
+`ack`'s eligibility check; no classification reads it. A downgrade costs one transition
+line, on one run.
+
+Before, one such entry failed the whole snapshot with a `DecodingError` that read like a
+corrupt file. The schema-version guard never ran: it checks a snapshot that has already
+decoded. Builds from before this change still fail that way on `asker-replied`; nothing
+can reach back and fix them.
+
+**The alternative was a schema bump per new state.** It gives a clean refusal, but only to
+a build that decodes far enough to reach the guard, and it costs history. The guard is
+`==`, so the upgraded build would refuse every existing snapshot too, unless it grew a
+migration. The refusal's remedy is deleting the file, acknowledgements included, and no
+run can re-derive those. For an additive change, which a new state is, keeping history
+wins.
+
+A bump is still right when a stored value changes meaning — a raw value reused for
+something else. `nil` is only safe for a value that is unknown; an old build would read a
+reused one wrongly, not fail to read it.
+
 ### Guards
 
 A provenance block on **every** command, not a separate `contrib check`. A guard you
