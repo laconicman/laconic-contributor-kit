@@ -109,12 +109,13 @@ public enum InboundReporting {
         provenance.examined("to re-read", result.toReRead.count)
         if pr.isClosed {
             let quiet = result.items.filter {
-                $0.isVisible && $0.state.needsLook && $0.changed == nil
+                $0.isVisible && $0.state.needsLook && !$0.isListedByDefault
             }.count
             if quiet > 0 {
                 provenance.note(
-                    "\(pr.state.lowercased()) — \(quiet) answered-claimed item(s) not listed; "
-                        + "owed items are listed regardless")
+                    "\(pr.state.lowercased()) — \(quiet) answered-claimed item(s) on resolved "
+                        + "threads not listed; owed items and unresolved threads are listed "
+                        + "regardless")
             }
         }
         provenance.examined("pages fetched", pr.pagesFetched)

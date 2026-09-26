@@ -48,13 +48,17 @@ findings. A category label cannot carry that decision.
 everything goes on after you absorb it in some way; going on as if nothing was posted
 is the contributor's mistake. So review bodies are listed first and never auto-cleared.
 
-**Closure quiets `answered-claimed` and nothing else.** On a closed or merged PR nobody is
-waiting on the responsiveness check, so those drop out of the default view — still counted,
-and listed again if anything about them moves. Owed items are listed regardless: reviewers
-post rounds after a merge, and a close can carry a condition addressed to you.
+**Closure quiets `answered-claimed` and nothing else — and only on a resolved thread.** On a
+closed or merged PR nobody is waiting on the responsiveness check, so those drop out of the
+default view — still counted, and listed again if anything about them moves. A thread still
+**unresolved** stays listed: that is the asker's side disagreeing with the closure, as when a
+reply deferred the finding and the reviewer never resolved it. Owed items are listed
+regardless: reviewers post rounds after a merge, and a close can carry a condition addressed
+to you.
 
 The provenance block reports `to re-read` beside `owed` and never folds one into the other.
-A round is complete at `owed 0` **and** `to re-read 0` — or when the PR is closed.
+A round is complete at `owed 0` **and** `to re-read 0`; on a closed PR, `to re-read` counts
+only unresolved threads.
 
 **`isResolved` is not "answered."** A thread is resolved for more reasons than the asker's
 consent: you can resolve your own, a maintainer can, and a reviewer bot's fix session

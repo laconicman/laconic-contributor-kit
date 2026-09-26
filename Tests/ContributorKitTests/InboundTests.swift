@@ -1082,13 +1082,15 @@ struct InboundTests {
 
     /// Closure quiets the responsiveness question and **nothing else**. Reviewers post
     /// rounds after a merge — a trial handled six findings posted on an already-merged PR
-    /// — and a close can carry a condition addressed to the contributor.
+    /// — and a close can carry a condition addressed to the contributor. (Resolved here:
+    /// an unresolved thread stays listed after closure — `ResolutionTests`.)
     @Test("a closed PR quiets answered-claimed but never an ask")
     func closureQuietsOnlyTheReReadList() throws {
-        let answered = RemoteThread(comments: [
-            comment("discussion_r1", "reviewer", at: 0),
-            comment("discussion_r2", "laconicman", at: 10),
-        ])
+        let answered = RemoteThread(
+            comments: [
+                comment("discussion_r1", "reviewer", at: 0),
+                comment("discussion_r2", "laconicman", at: 10),
+            ], isResolved: true, resolvedBy: "reviewer")
         let postMergeAsk = RemoteThread(comments: [comment("discussion_r3", "reviewer", at: 50)])
         var pr = pullRequest(threads: [answered, postMergeAsk])
         pr.state = "MERGED"

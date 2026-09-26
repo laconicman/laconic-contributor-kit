@@ -52,6 +52,10 @@ from a failure on a real upstream pull request. Generic Swift advice is not want
 - Reject any inference that an obligation was discharged from timing, proximity,
   `isResolved`, or a closed state. Only a recorded `Acknowledgement` or the asker's own
   reply clears one.
+- Flag any `ItemState` decided from `RemoteThread.isResolved` or `resolvedBy`. They are
+  reported on the item (`InboundItem.resolution`), and one listing rule reads
+  `isResolved`: an unresolved thread is not quieted by closure
+  (`InboundItem.awaitsLook`). They are read nowhere else.
 - Flag any code path that stores state no reader consults. `AcknowledgementEligibility`
   exists because `ack` on an inline thread once reported success and changed nothing.
 - Reject `Bundle.module` used outside `Sources/ContributorKit/Support/Configuration.swift` and

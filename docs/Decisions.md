@@ -261,9 +261,21 @@ It now stays listed until one of three things happens:
   `answered-checked`. The record is keyed to the ask's body hash *and* to the reply it
   judged, so a later reply or an edited ask lists the thread again.
 - **The PR or issue closes** → it drops out of the default view, still counted, and is
-  listed again if anything about it moves.
+  listed again if anything about it moves — **unless the thread is still unresolved**
+  (amended 2026-09-26, issue #7).
 
 The cost is a longer default list where a reviewer never confirms; judged manageable.
+
+**The amendment.** Across seven pull requests, the only thread the reviewer never resolved
+was one whose reply had deferred the finding to tech debt. Its pull request merged, and
+the default view hid it among twelve quiet `answered-claimed` threads under
+*"merged — 13 answered-claimed item(s) not listed"*. An unresolved thread is the asker's
+side disagreeing with the closure, so closure no longer quiets it. It stays listed and
+counts in `to re-read`. `contrib ack` still clears it as `answered-checked`, and resolving
+the thread quiets it.
+
+This **lists and never clears**: `isResolved` only stops closure from hiding something. It
+never marks anything answered, and never makes anything owed.
 
 **Closure quiets only this list.** Owed items stay listed on a closed or merged subject,
 because both trials produced counter-examples to "closed means done": a round of six

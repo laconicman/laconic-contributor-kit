@@ -79,16 +79,26 @@ public struct InboundItem: Codable, Sendable {
         return changed != nil && !isNewToSnapshot
     }
 
+    /// A `needsLook` question someone may still be waiting on.
+    ///
+    /// Closure quiets it — once the subject is closed nobody is waiting on the
+    /// responsiveness check — **unless the thread is still unresolved**. That is the
+    /// asker's side of the thread disagreeing with closure, and it only keeps the item
+    /// listed: nothing is cleared or owed on it. Issue #7's case 4 was the one open
+    /// thread across seven pull requests, and closure hid it among twelve quiet ones.
+    public var awaitsLook: Bool {
+        state.needsLook && (!subjectClosed || resolution?.isResolved == false)
+    }
+
     /// Listed without `--all`?
     ///
     /// Owed items always, wherever the subject stands: reviewers post rounds after a
     /// merge, and a close can carry a condition addressed to me. A `needsLook` item
-    /// only while the subject is open — once it is closed nobody is waiting on the
-    /// responsiveness check — unless something about it actually moved.
+    /// while it ``awaitsLook``, or once something about it actually moved.
     public var isListedByDefault: Bool {
         guard isVisible else { return false }
         if state.isOwed { return true }
-        if state.needsLook && !subjectClosed { return true }
+        if awaitsLook { return true }
         // Unexamined is not empty: the flag lists until someone acknowledges it —
         // the whole point is that a collapsed section cannot be told from a hidden
         // ask without looking, so looking (or declining to) must be a recorded act.

@@ -55,10 +55,10 @@ public struct InboundAudit: Sendable {
         /// until something about it moves; the provenance block reports how many were
         /// held back and by which boundary, so the number is never silently smaller.
         public var owed: [InboundItem] { items.filter { $0.state.isOwed && $0.isVisible } }
-        /// Answered but unconfirmed and unchecked, on an open subject — the list that
-        /// asks *is my reply actually responsive?*
+        /// Answered but unconfirmed and unchecked, on an open subject or an unresolved
+        /// thread — the list that asks *is my reply actually responsive?*
         public var toReRead: [InboundItem] {
-            items.filter { $0.isVisible && $0.state.needsLook && !$0.subjectClosed }
+            items.filter { $0.isVisible && $0.awaitsLook }
         }
         /// Items the horizon is holding back this run.
         public var beyondHorizon: [InboundItem] { items.filter { !$0.isVisible } }

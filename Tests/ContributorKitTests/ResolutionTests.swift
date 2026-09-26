@@ -116,6 +116,50 @@ struct ResolutionTests {
                 == " — resolved by laconicman")
     }
 
+    // MARK: - B: closure does not quiet an unresolved thread
+
+    /// Case 4: my reply deferred the finding to tech debt, so nothing ever made the
+    /// reviewer's claim false and it never resolved the thread. It was the only
+    /// unresolved thread across seven pull requests, and the merge hid it among twelve
+    /// quiet `answered-claimed` ones. The same thread resolved is the control: closure
+    /// still quiets that — the mutant for dropping the exception.
+    @Test("a merged PR keeps an unresolved answered-claimed thread listed, and only that")
+    func unresolvedThreadOutlivesTheMerge() async throws {
+        let id = "discussion_r4024609952"
+        var pr = try await Fixtures.resolution(pr: 1)
+        #expect(pr.isClosed, "the premise: #1 is merged")
+        // This thread alone, so the provenance note counts nothing else.
+        pr.threads = pr.threads.filter { $0.root?.id == id }
+        let open = try #require(pr.threads.first)
+        #expect(!open.isResolved, "the premise: the reviewer never resolved it")
+
+        var resolved = pr
+        resolved.threads = pr.threads.map { thread in
+            guard thread.root?.id == id else { return thread }
+            var thread = thread
+            thread.isResolved = true
+            thread.resolvedBy = thread.root?.author
+            return thread
+        }
+
+        for (fetched, listed) in [(pr, true), (resolved, false)] {
+            // A second run, so nothing reads as moved.
+            let first = try Fixtures.audit().run(fetched, against: nil)
+            let second = try Fixtures.audit().run(fetched, against: first.updatedSnapshot)
+            let item = try #require(second.items.first { $0.id == id })
+            #expect(item.state == .answeredClaimed)
+            #expect(item.changed == nil)
+            #expect(item.isListedByDefault == listed, "listed: \(listed)")
+            #expect(second.toReRead.map(\.id) == (listed ? [id] : []))
+            #expect(second.owed.isEmpty, "listed is not owed")
+
+            var provenance = Provenance(command: "contrib in")
+            InboundReporting.record(second, fetched, previous: first.updatedSnapshot, into: &provenance)
+            let quiet = provenance.notes.contains { $0.contains("not listed") && $0.contains("answered-claimed") }
+            #expect(quiet == !listed, "the quiet count names only what is really unlisted")
+        }
+    }
+
     // MARK: - Helpers
 
     private func thread(pr: Int, _ rootID: String) async throws -> RemoteThread? {

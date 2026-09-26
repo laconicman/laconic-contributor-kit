@@ -3,7 +3,8 @@ import Foundation
 /// An inline review thread: ordered comments, the first of which is the root ask.
 ///
 /// `isResolved` and `resolvedBy` are **reported**, on every inline item, and no state is
-/// ever decided on them. **`isResolved` is not
+/// ever decided on them. One listing rule reads `isResolved`: a closed subject does not
+/// quiet a thread that is still unresolved (``InboundItem/awaitsLook``). **`isResolved` is not
 /// "answered"** (<doc:Design>): a thread is resolved for more reasons than the asker's
 /// consent — I can resolve my own, a maintainer can, a reviewer bot's fix session
 /// resolves under the reviewer's own login — a thread can be resolved with no reply
