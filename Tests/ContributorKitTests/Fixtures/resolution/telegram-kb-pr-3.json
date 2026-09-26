@@ -1,0 +1,70 @@
+{
+  "_fixture": {
+    "source": "laconicman/telegram-kb#3, `scripts/resolution-crosscheck.py --capture`, 2026-09-26 around 14:00 UTC",
+    "cut": "reviewThreads.nodes copied verbatim for root ids 4095575834; the envelope is ThreadDetail.graphql's, with pullRequestState/closed/merged taken from the capture's `state`",
+    "captureShape": "the capture's query carries no viewerDidAuthor, lastEditedAt or pullRequestReview, so authorship is decided by login (--me) and no round id is present"
+  },
+  "data": {
+    "repository": {
+      "issueOrPullRequest": {
+        "__typename": "PullRequest",
+        "number": 3,
+        "url": "https://github.com/laconicman/telegram-kb/pull/3",
+        "pullRequestState": "OPEN",
+        "closed": false,
+        "merged": false,
+        "reviewThreads": {
+          "pageInfo": {
+            "hasNextPage": false,
+            "endCursor": null
+          },
+          "nodes": [
+            {
+              "isResolved": true,
+              "isOutdated": false,
+              "path": "Sources/TelegramKBSync/ChannelSync.swift",
+              "resolvedBy": {
+                "login": "devin-ai-integration[bot]"
+              },
+              "comments": {
+                "totalCount": 3,
+                "pageInfo": {
+                  "hasNextPage": false
+                },
+                "nodes": [
+                  {
+                    "databaseId": 4095575834,
+                    "author": {
+                      "login": "devin-ai-integration"
+                    },
+                    "createdAt": "2026-09-24T15:49:41Z",
+                    "url": "https://github.com/laconicman/telegram-kb/pull/3#discussion_r4095575834",
+                    "body": "<!-- devin-review-comment {\"id\": \"BUG_pr-review-job-9c26e76985a24b4c8d585aa71f1011bc_0001\", \"file_path\": \"Sources/TelegramKBSync/ChannelSync.swift\", \"start_line\": 57, \"end_line\": 58, \"side\": \"RIGHT\", \"based_on_repo_rules\": false, \"kind\": \"bug\"} -->\n\n🔴 **Reassigned username mixes two chat histories**\n\nWhen an imported group's username becomes previewable for another chat, `ChannelSync` writes that chat's posts into the group's row. `ensureChannel` retains the existing row, and `updateIdentity` replaces its raw ID without checking it. Search then mixes posts from two chats.\n\n<details>\n<summary>Learn more</summary>\n\nAn imported group is stored under its username with its verified bare chat ID. [ensureChannel](https://github.com/laconicman/telegram-kb/blob/42805cc960f9b3c374e14e89a05cac2d809307b9/Sources/TelegramKBStore/Store.swift#L393-L401 \"Sources/TelegramKBStore/Store.swift:393-401\") does not change an existing row, and [updateIdentity](https://github.com/laconicman/telegram-kb/blob/42805cc960f9b3c374e14e89a05cac2d809307b9/Sources/TelegramKBStore/Store.swift#L407-L415 \"Sources/TelegramKBStore/Store.swift:407-415\") replaces its ID without checking it. If the username is later reassigned to a broadcast channel, the classifier now calls that username previewable; the new lease prevents concurrent writes but does not prevent writes for a different chat. The pages are committed before the discovered raw ID is written, so the group's older posts and the new channel's posts share one key.\n\n**Example:** An import stores group `@example` with raw ID 101. Telegram later assigns `@example` to channel 202; `tgkb sync example` writes channel 202's posts into group 101's row and changes its stored ID to 202.\n\n**Recommended fix:** Validate the raw ID and reachability against the existing row before the first `commitPage`, while holding the lease. Refuse a conflicting identity rather than rewriting it after posts commit; arrange for the crawler to expose the page's identity before its callback persists posts.\n\n</details>\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/3\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+                  },
+                  {
+                    "databaseId": 4096048166,
+                    "author": {
+                      "login": "laconicman"
+                    },
+                    "createdAt": "2026-09-24T16:36:18Z",
+                    "url": "https://github.com/laconicman/telegram-kb/pull/3#discussion_r4096048166",
+                    "body": "Fixed. `commitPage` now takes the page's `rawChannelID` — `crawl`'s `onPage` surfaces the id from the page's `data-view` (known before the first page commits), and `ChatImport` passes the id its verify learned. The stored row is re-checked inside the page write transaction itself: a reassigned username refuses before a post lands, on every page, not once at the end. `reassignedUsernameRefused` covers it; `reassignedUsernameRefused.patch` is the mutant."
+                  },
+                  {
+                    "databaseId": 4098395084,
+                    "author": {
+                      "login": "devin-ai-integration"
+                    },
+                    "createdAt": "2026-09-24T20:56:20Z",
+                    "url": "https://github.com/laconicman/telegram-kb/pull/3#discussion_r4098395084",
+                    "body": "Closed the remaining half of this in f7c1a98. `commitPage`'s id check covered a group imported *with* verification, but an offline / `--no-verify` import stores `rawChannelID = 0`, which that check treats as unknown — so a preview under the reassigned name still landed in the group's row. `Store.ensureChannel` now refuses a `.webPreview` request for a row stored as `.group` (`StoreError.channelImported`), inside the leased write and before the first page is fetched. Regression test `unverifiedGroupRefused` + mutant `Scripts/mutants/unverifiedGroupRefused.patch`; `reassignedUsernameRefused` now seeds a crawled row so it keeps exercising the id check."
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

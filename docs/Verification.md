@@ -83,6 +83,34 @@ review day. What it established:
 **Two defects and one wart it found, all now fixed** — see below. One gap was left open
 by decision rather than by oversight: see `Decisions.md` on era acknowledgement.
 
+## From a resolution cross-check, 2026-09-26
+
+A session asked a narrow question of `laconicman/telegram-kb` — *which threads did the
+reviewer say are resolved but are still open?* — and answered it twice: with
+`contrib in --all --json` on PRs #1–#7, and with an independent GraphQL walk that reads
+`isResolved` and `resolvedBy`, which the kit deliberately does not.
+`scripts/resolution-crosscheck.py` is that walk, kept as an oracle; it needs no kit code
+and exits 2 when its thread count disagrees with the kit's own counter.
+
+| Claim | Evidence |
+|---|---|
+| Accounting is exact across seven PRs | inline threads 53/13/17/3/20/5/0 by both paths; every PR's item count = threads + others' review bodies and issue comments; no anomalies |
+| Pagination past one page, live | PR #1 took two pages; nothing was truncated |
+| `answered-confirmed` now has real data at volume | 74 threads confirmed by the asker's `✅ **Resolved**:` after my reply |
+
+What the walk found that the kit gets wrong is issue #7. There are four cases:
+
+| Case | Threads |
+|---|---|
+| The asker's verdict **before** my reply | 12 |
+| One app login for both the reviewer and its fix session | 20 |
+| An asker reply after mine that **corrected** my fix | 2 |
+| The only unresolved thread, quieted on a merged PR | 1 |
+
+One real thread per case — plus a control from #2 — is cut verbatim from that capture
+into `Tests/ContributorKitTests/Fixtures/resolution/`, because the live state moves on: the
+case-4 thread is due to be answered and resolved.
+
 ## Three defects the live trial found
 
 1. **The differ could not see state transitions.** The run straight after answering six
