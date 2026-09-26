@@ -40,6 +40,25 @@ This is not inference from proximity. The never-infer rule is about inferring
 Implemented for inline threads only, since the other two channels have no thread to
 reply into.
 
+**Amended 2026-09-26 (issue #7): the asker's verdict confirms whenever it was posted.**
+A reviewer that re-reviews on push can confirm a fix before I reply. On
+`laconicman/telegram-kb#1` Devin Review did that on twelve threads, and each stayed
+`answered-claimed` because its confirmation came first. A reply from the asker's login
+whose stripped prose **opens** with a configured phrase (`inbound.verdictPhrases`, seeded
+with Devin's `✅ **Resolved**:`) now confirms my reply, before or after it.
+
+- **Opening only.** A reply that mentions the phrase is not a verdict. This is the lesson
+  supersession paid for, when a mid-sentence mention retracted a live ask.
+- **It needs my reply.** A verdict upgrades my claim to confirmed. It never manufactures a
+  reply I did not write, so a verdict-only thread stays `open-ask` until one line clears it.
+- **Seeded for one reviewer.** 92 of 92 verdicts carried the phrase, and 0 of 19
+  fix-session replies under the same login did. That is one reviewer on one repository;
+  see *Reading a reviewer's declared metadata — withdrawn* for what an unverified reading
+  of declared structure once cost.
+
+Matching a fixed phrase where the asker puts it is declared structure, not meaning — the
+same move supersession makes. The boundary sentence in `ItemState.swift` now says so.
+
 ### Resolution is reported, never decided on
 
 Decided 2026-09-26, from issue #7. Every inline item carries GitHub's `isResolved`, the

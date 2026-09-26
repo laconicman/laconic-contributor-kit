@@ -11,9 +11,12 @@ from a failure on a real upstream pull request. Generic Swift advice is not want
   reproduces the bug this kit was built after.
 - Flag any call site passing a `Channel.inlineThread` comment to `InformationalDetector`.
   Suppressing an inline thread on a marker can only hide a real ask; it did, for ten runs.
-- Reject any `informationalPatterns` entry in
+- Reject any `informationalPatterns` or `verdictPhrases` entry in
   `Sources/ContributorKit/Resources/inbound.default.yml` that is not a fixed, unambiguous
-  phrase. A reviewer's category label is not a statement of intent.
+  phrase. A reviewer's category label is not a statement of intent. A new verdict phrase
+  also needs a measurement behind it, like the Devin one's 92-of-92.
+- Require `VerdictDetector` to match only the **opening** of a reply's stripped prose. A
+  reply that mentions or quotes the phrase must not confirm anything.
 - Require every new stored property on `Snapshot`, `Snapshot.Entry` or `Acknowledgement`
   to decode when absent: `Optional`, or `decodeIfPresent` in `Snapshot.init(from:)`. A
   non-optional property with a default breaks every existing state directory on upgrade.

@@ -160,7 +160,89 @@ struct ResolutionTests {
         }
     }
 
+    // MARK: - A: the asker's verdict confirms, whenever it was posted
+
+    /// Case 1: the reviewer re-reviewed on push, posted `✅ **Resolved**:`, and *then* I
+    /// replied. Only an asker reply after mine used to confirm, so a confirmation that
+    /// arrived first counted for nothing — twelve such threads on one pull request.
+    @Test("a verdict before my reply confirms it")
+    func verdictBeforeMyReplyConfirms() async throws {
+        let pr = try await Fixtures.resolution(pr: 1)
+        let item = try #require(
+            try Fixtures.audit().run(pr, against: nil).items.first {
+                $0.id == "discussion_r4025099437"
+            })
+        #expect(item.state == .answeredConfirmed)
+    }
+
+    /// The phrase upgrades my claim to confirmed; it never manufactures a reply I did
+    /// not write. Case 2's verdict-only threads stay owed — one line of reply clears
+    /// each, which is honest.
+    @Test("a verdict with no reply of mine leaves the ask open")
+    func verdictWithoutMyReplyStaysOpen() async throws {
+        let pr = try await Fixtures.resolution(pr: 5)
+        let id = "discussion_r4097237099"
+        let thread = try #require(pr.threads.first { $0.root?.id == id })
+        #expect(
+            try Fixtures.audit().askerReplies(in: thread).contains(where: \.isVerdict),
+            "the premise: the asker's verdict is there")
+        let item = try #require(try Fixtures.audit().run(pr, against: nil).items.first { $0.id == id })
+        #expect(item.state == .openAsk)
+    }
+
+    /// The shape that always worked — my reply, then the verdict — still does.
+    @Test("a verdict after my reply still confirms it")
+    func verdictAfterMyReplyConfirms() async throws {
+        let pr = try await Fixtures.resolution(pr: 2)
+        let item = try #require(try Fixtures.audit().run(pr, against: nil).items.first)
+        #expect(item.id == "discussion_r4058500969")
+        #expect(item.state == .answeredConfirmed)
+    }
+
+    /// **A verdict opens the reply.** Matching anywhere is how supersession once
+    /// retracted a live ask; here it would confirm a thread on a reply that only talks
+    /// about the phrase. No capture holds such a reply, so this is constructed — the
+    /// mutant for dropping the opening-lines restriction.
+    @Test("the verdict phrase mid-reply, or quoted, is not a verdict")
+    func verdictMustOpenTheReply() throws {
+        let detector = VerdictDetector(
+            phrases: try Configuration.builtInDefaults().inbound.verdictPhrases)
+        #expect(detector.isVerdict("✅ **Resolved**: the crawler now rejects the redirect."))
+        #expect(detector.isVerdict("\n  ✅ **resolved**: case and leading space do not matter"))
+        #expect(!detector.isVerdict("I would not call this ✅ **Resolved**: the second path still writes."))
+        #expect(!detector.isVerdict("> ✅ **Resolved**: quoted from the thread above\n\nThis is not fixed."))
+        #expect(!VerdictDetector(phrases: [""]).isVerdict("anything"), "an empty phrase confirms nothing")
+
+        // Through the audit: the asker mentions the phrase before my reply.
+        let reviewer = "devin-ai-integration"
+        let thread = RemoteThread(comments: [
+            comment("discussion_r1", reviewer, at: 0, "🔴 **A finding**"),
+            comment(
+                "discussion_r2", reviewer, at: 5,
+                "Not yet — a reply opening ✅ **Resolved**: would mean it is."),
+            comment("discussion_r3", "laconicman", at: 10, "Fixed in abc1234."),
+        ])
+        let result = try Fixtures.audit().run(pullRequest(threads: [thread]), against: nil)
+        #expect(result.items.first?.state == .answeredClaimed)
+    }
+
     // MARK: - Helpers
+
+    private func comment(
+        _ id: String, _ author: String, at seconds: TimeInterval, _ body: String
+    ) -> RemoteComment {
+        RemoteComment(
+            id: id, channel: .inlineThread, author: author, viewerDidAuthor: false,
+            createdAt: Date(timeIntervalSince1970: seconds), body: body,
+            permalink: "https://github.com/o/r/pull/1#\(id)")
+    }
+
+    private func pullRequest(threads: [RemoteThread], state: String = "OPEN") -> PullRequestThreads {
+        PullRequestThreads(
+            repository: "o/r", number: 1, title: "t", url: "u", state: state,
+            isMerged: state == "MERGED", threads: threads, reviewBodies: [], issueComments: [],
+            pagesFetched: 1)
+    }
 
     private func thread(pr: Int, _ rootID: String) async throws -> RemoteThread? {
         try await Fixtures.resolution(pr: pr).threads.first { $0.root?.id == rootID }

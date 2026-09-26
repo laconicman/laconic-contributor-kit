@@ -24,7 +24,7 @@ table is the whole contract; there is no case where the right response is "ignor
 | `open-ask` | A root ask from someone else, no reply from me | — | **Answer it, or say why it should be left out.** "Separate PR" is a fine answer. Silence is not. |
 | `answered-claimed` | I replied; the asker has not confirmed | Is my reply actually *responsive* to the ask, or only adjacent to it? | Re-read both. If the reply dodged, reply again. If it answers, **record that**: `contrib ack <id> --with none:"<why it answers>"`. Listed until one of those happens. |
 | `answered-checked` | I recorded that my reply answers the ask; ask and reply unchanged since | None | Nothing. A new reply or an edited ask lists it again. |
-| `answered-confirmed` | The asker replied after my reply | None | Nothing. The asker confirmed it themselves. |
+| `answered-confirmed` | I replied, and the asker replied after me — or posted its verdict phrase (`✅ **Resolved**:` for Devin Review) at any point | None | Nothing. The asker confirmed it themselves. |
 | `edited-after-my-answer` | `lastEditedAt` > my reply | Does the edit change what is being asked? | If it does, answer the new ask. If not, say so once. |
 | `obligation-open` | A review body or issue comment from someone else, nothing recorded | Does this need a response, or is it already absorbed? | Either way, **record which**: `contrib ack <id> --with …`. |
 | `obligation-acknowledged` | Recorded, body unmoved | None | Nothing. |

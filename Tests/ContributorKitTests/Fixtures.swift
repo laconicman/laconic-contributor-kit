@@ -133,6 +133,7 @@ extension Fixtures {
             supersession: SupersessionDetector(phrases: config.inbound.supersessionPhrases),
             informational: try InformationalDetector(
                 patterns: config.inbound.informationalPatterns),
+            verdicts: VerdictDetector(phrases: config.inbound.verdictPhrases),
             horizon: horizon)
     }
 }

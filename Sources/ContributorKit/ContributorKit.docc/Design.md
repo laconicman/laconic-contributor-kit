@@ -84,7 +84,10 @@ contract, from the 110 resolved ones.
 ## Reading a reviewer's declared metadata — the limit
 
 Supersession is allowed: a reviewer writing *"This report is out of date"* has retracted
-the ask, and taking the asker at their word is not judging meaning.
+the ask, and taking the asker at their word is not judging meaning. A verdict is the same
+move in the other direction. A reply from the asker's login that opens `✅ **Resolved**:`
+confirms my reply (``VerdictDetector``). Both phrases are matched only where the asker
+puts them, at the opening; a mention elsewhere means nothing.
 
 **A category label is not intent, and this line was drawn the hard way.** The kit briefly
 read one reviewer's `kind: "analysis"` marker as "a receipt, not an ask", on 13 confirming

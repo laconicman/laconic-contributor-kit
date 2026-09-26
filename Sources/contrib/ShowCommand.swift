@@ -10,7 +10,8 @@ struct ShowCommand: AsyncParsableCommand {
             The table truncates, and `gh api … --jq '.body'` is the road back to
             hand-rolled fetches. `show` prints one item whole: the stripped ask as the
             audit sees it, your last reply and the asker's replies for an inline
-            thread — each labelled by author, time, and whether it came after yours —
+            thread — each labelled by author, time, whether it is the asker's verdict,
+            and whether it came after yours —
             the recorded acknowledgement, and a line diff against the last recorded
             read — or the acknowledged text, when the record kept its prose.
 
@@ -155,10 +156,13 @@ struct ShowCommand: AsyncParsableCommand {
             if askerReplies.isEmpty { print("(no reply from the asker)") }
             for (index, reply) in askerReplies.enumerated() {
                 if index > 0 { print("") }
-                let order =
-                    item.text.reply == nil
-                    ? "" : reply.isAfterMyLastReply ? " — after your last reply" : " — before your last reply"
-                print("\(reply.comment.author), \(GitHubTime.string(reply.comment.createdAt))\(order)")
+                let labels =
+                    (reply.isVerdict ? ["verdict"] : [])
+                    + (item.text.reply == nil
+                        ? [] : [reply.isAfterMyLastReply ? "after your last reply" : "before your last reply"])
+                print(
+                    "\(reply.comment.author), \(GitHubTime.string(reply.comment.createdAt))"
+                        + (labels.isEmpty ? "" : " — " + labels.joined(separator: ", ")))
                 print(audit.stripper.prose(of: reply.comment.body))
             }
         }

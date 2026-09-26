@@ -9,8 +9,12 @@ import Foundation
 /// > exactly the text needed to answer it, and marks everything it already settled so
 /// > the model does not re-check it.
 ///
-/// Every case below is a fact about ids, authorship, timestamps and hashes. Not one of
-/// them required reading what a comment *says*.
+/// Every case below is a fact about ids, authorship, timestamps and hashes — or about a
+/// **fixed phrase the asker emits about its own comment**: a retraction (`superseded`), a
+/// bot's run announcement (`informational`), a verdict (`answered-confirmed`). A fixed
+/// phrase is declared structure, matched only where the asker puts it; it is not a
+/// reading of what the comment means. No case here paraphrases, scores or interprets
+/// prose.
 public enum ItemState: String, Codable, Sendable, CaseIterable {
     /// Channel 1: a root ask from someone else with no reply from me.
     case openAsk = "open-ask"
@@ -22,12 +26,18 @@ public enum ItemState: String, Codable, Sendable, CaseIterable {
     /// The record is keyed to the ask's body hash and to the reply it judged, so a new
     /// reply or an edit to the ask makes it stale and the thread is listed again.
     case answeredChecked = "answered-checked"
-    /// Channel 1: the asker themselves replied after my reply.
+    /// Channel 1: the asker themselves replied after my reply, or posted its verdict
+    /// (``VerdictDetector``) anywhere in a thread I replied to.
     ///
     /// Stronger evidence than anything else here, and the field report is right that
     /// <doc:Design> did not admit it: it is the asker confirming the answer, where my own reply
     /// only records a claim. Not an inference from proximity — <doc:Design>'s rule is about
     /// inferring acceptance from *timing*; this is the asker speaking.
+    ///
+    /// A verdict counts whenever it was posted. A reviewer that re-reviews on push can
+    /// confirm a fix before I reply; twelve threads on one pull request did. It never
+    /// stands in for my reply, though: a verdict on a thread I never replied to leaves it
+    /// `open-ask`.
     case answeredConfirmed = "answered-confirmed"
     /// The ask was edited after my answer was posted. <doc:Design>'s sharpest check, and free
     /// given the snapshot: my answer may no longer address it.

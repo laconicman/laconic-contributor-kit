@@ -56,6 +56,21 @@ inbound:
     - "please disregard this review"
     - "this report has been superseded"
 
+  # An asker can CONFIRM a fix in its own words. A reply from the asker's login whose
+  # stripped prose OPENS with one of these is the asker's verdict, and confirms my reply
+  # (`answered-confirmed`) whenever it was posted, before my reply or after it. It never
+  # stands in for a reply I did not write: a verdict with no reply of mine stays
+  # `open-ask`. Opening only, as with supersession, because a reply that mentions the
+  # phrase is not a verdict.
+  #
+  # Seeded for Devin Review only. Its verdicts open `✅ **Resolved**: <what fixed it>` and
+  # carry no marker: 92 of 92 did on laconicman/telegram-kb, 2026-09-26, and none of the
+  # 19 fix-session replies posted under the same login did. That is one reviewer on one
+  # repository. Add another reviewer's phrase only after it has been measured the same
+  # way. A FIXED, UNAMBIGUOUS PHRASE ONLY.
+  verdictPhrases:
+    - "✅ **Resolved**:"
+
   # Forms of acknowledgement `contrib ack --with` accepts. Shape is always checked;
   # existence is checked only where it is free (see Acknowledgement.swift).
   acknowledgementKinds: ["comment", "commit", "pr-body", "none"]

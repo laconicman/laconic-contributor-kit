@@ -16,18 +16,22 @@ public struct InboundAudit: Sendable {
     public let stripper: BoilerplateStripper
     public let supersession: SupersessionDetector
     public let informational: InformationalDetector
+    /// The asker's own "this is fixed" phrase (`inbound.verdictPhrases`).
+    public let verdicts: VerdictDetector
     /// Items raised before this are counted and not listed (`inbound.horizon`).
     public let horizon: Date?
 
     public init(
         me: String?, stripper: BoilerplateStripper, supersession: SupersessionDetector,
-        informational: InformationalDetector, horizon: Date? = nil
+        informational: InformationalDetector, verdicts: VerdictDetector,
+        horizon: Date? = nil
     ) {
         self.horizon = horizon
         self.me = me
         self.stripper = stripper
         self.supersession = supersession
         self.informational = informational
+        self.verdicts = verdicts
     }
 
     public struct Result: Sendable {
@@ -84,6 +88,8 @@ public struct InboundAudit: Sendable {
     /// One reply from the asker's own login in an inline thread.
     public struct AskerReply: Sendable {
         public var comment: RemoteComment
+        /// Opens with the asker's verdict phrase (``VerdictDetector``).
+        public var isVerdict: Bool
         /// Posted after my last reply. `false` when I have not replied at all.
         public var isAfterMyLastReply: Bool
     }
@@ -101,6 +107,7 @@ public struct InboundAudit: Sendable {
             .map { reply in
                 AskerReply(
                     comment: reply,
+                    isVerdict: verdicts.isVerdict(stripper.prose(of: reply.body)),
                     isAfterMyLastReply: lastMine.map { reply.createdAt > $0.createdAt } ?? false)
             }
     }
@@ -141,7 +148,11 @@ public struct InboundAudit: Sendable {
             // suppressing one on a marker can only ever hide a real ask, and did.
             let state: ItemState
             if let lastMine = mine.last {
-                if askerReplies.contains(where: \.isAfterMyLastReply) {
+                // The asker's verdict confirms whenever it was posted: a reviewer that
+                // re-reviews on push can confirm the fix before I get to reply, and
+                // requiring it to come after mine counted that for nothing. It needs a
+                // reply of mine to confirm, though — a verdict never manufactures one.
+                if askerReplies.contains(where: { $0.isAfterMyLastReply || $0.isVerdict }) {
                     state = .answeredConfirmed
                 } else if let edited = root.lastEditedAt, edited > lastMine.createdAt {
                     state = .editedAfterMyAnswer
@@ -368,6 +379,7 @@ extension InboundAudit {
                 phrases: configuration.inbound.supersessionPhrases),
             informational: try InformationalDetector(
                 patterns: configuration.inbound.informationalPatterns),
+            verdicts: VerdictDetector(phrases: configuration.inbound.verdictPhrases),
             horizon: try configuration.inbound.horizonDate())
     }
 }
