@@ -374,6 +374,21 @@ and verify the reading against more than one repository before trusting it to su
 anything.* A category label is not intent.
 
 ## Still open
+- **One login, two roles.** When a reviewer bot's fix session posts under the reviewer's
+  own login, its replies land among the asker's, and none of mine. On `telegram-kb#5`
+  that made 20 finished threads `open-ask`: fixed, replied to, and resolved by the
+  reviewer. No login-based "delegate" setting can separate the two roles. Making that
+  login "mine" also claims the roots, and every thread then drops at the self-authored
+  guard. Only the verdict phrase tells them apart today, and the 4 verdict-only threads
+  among the 20 stay `open-ask` on purpose: a verdict never stands in for my reply. A test
+  pins the session-only thread as `open-ask`, so any fix shows up as a diff. The real fix
+  is a marker only the reviewer can emit on its sessions' replies.
+- **A `--unresolved` display filter** for `contrib in`. The operator expected it to exist
+  already, and it would have answered issue #7's question in one command. It was not added
+  with #7: closure no longer hides an unresolved thread, and every inline `--json` item now
+  carries `resolution`, so `contrib in … --all --json` piped through
+  `jq '.items[] | select(.resolution.isResolved == false)'` answers the same question. A filter is compatible with REVIEW.md, since it hides nothing
+  from the state. Add it if the jq line turns out to be the common case.
 - **Whether a backticked reference suppresses GitHub's cross-reference event.** Needed to
   choose `referenceStyle`; a write to a public repository, so not tested here.
 - **`upstream-commitments.md` has two rows with `id=A10`.** Must be resolved before the
