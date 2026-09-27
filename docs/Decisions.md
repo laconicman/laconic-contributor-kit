@@ -324,6 +324,13 @@ test written to catch it. It now locates the table by its header and reads it wh
   findings were introduced by round-2 fixes; one round-2 finding was a bug in a round-1
   fix. Nothing notices that a new ask sits on lines a previous fix touched. Recorded
   because it is the most consistent pattern observed, not because it is scoped.
+  **Measured again, 2026-09-26**, on the 111 `telegram-kb` findings of issue #7, grouped by
+  file. They fall into families in which each fix drew the next finding. The largest is *an
+  empty or short page taken as proof that history is exhausted*. It came back five times
+  across #1 and #4, one shape per round: transient responses (429/5xx), a repeated page, a
+  redirect to a 200, malformed blocks, and undated pages. `Scripts/run-evals.sh` alone drew
+  7 findings. The threads are in `Tests/ContributorKitTests/Fixtures/resolution/captures/`.
+  Still unscoped.
 
 ### `answered-claimed` stays listed — until confirmed, checked, or closed
 

@@ -78,16 +78,19 @@ does not exist.
 **Discharge.** Reproduce with stderr captured, or close it as unreproducible. It is
 recorded as a thing to watch, not as a defect — the evidence for it is gone.
 
-### TD-7 — pagination past one page has never run · open
+### TD-7 — pagination past one page has never run · discharged
 
 Every live subject across four trials fitted in one page of 100; the largest carried 88
-items. The cursor loop, the page ceiling and the `truncatedFetch` anomaly are exercised by
+items. The cursor loop, the page ceiling and the `truncatedFetch` anomaly were exercised by
 unit test and by construction only.
 
 **Cost.** The one untested path whose failure mode is a silently short list — the exact
 class this kit exists to catch.
 
-**Discharge.** Run against a pull request with more than 100 comments, or synthesise one.
+**Discharged** by the issue #7 cross-check, 2026-09-26. `laconicman/telegram-kb#1` carries
+125 review bodies and took two pages live. Its 53 threads matched an independent GraphQL
+walk, and its 121 items reconcile exactly with nothing truncated. The page *ceiling* and
+`truncatedFetch` are still exercised by construction only.
 
 ### TD-8 — a second human reviewer is untested · open
 
@@ -142,6 +145,30 @@ the decision table for *states*, not for *answering*.
 **Cost.** Every round re-derives the shape of a good reply.
 
 **Discharge.** A second decision table in the skill, mirroring the review skill's rubric.
+
+### TD-13 — two stored enums still decode strictly · deferred
+
+A snapshot entry's `state` from a newer build now loads as "no recorded state"
+(`docs/Decisions.md`, *A state from a newer build*). `Channel` and `Acknowledgement.Kind`
+are stored the same way and still decode strictly, so a value this build does not know
+fails the whole snapshot. After a downgrade, `ack` on such an inline thread also says it
+has "no recorded state *yet*", which reads as if `contrib in` had never run. `contrib in`
+is still the right remedy.
+
+**Cost.** None so far. Both enums are far more stable than `ItemState`, which gained two
+cases in a week.
+
+**Discharge.** The same lenient decode for whichever of the two first gains a value, with
+a fixture, before the release that adds it.
+
+### TD-14 — two concurrency warnings in `LocTests` · open
+
+`LocTests.swift:293` and `:302` warn that a local function captured in a `@Sendable`
+closure is not `@Sendable`. Pre-existing; two sessions found them in passing on 2026-09-26.
+
+**Cost.** Warning noise in every build, where a new warning then hides.
+
+**Discharge.** Mark the local function `@Sendable`, or hoist it, and build warning-free.
 
 ## See Also
 
