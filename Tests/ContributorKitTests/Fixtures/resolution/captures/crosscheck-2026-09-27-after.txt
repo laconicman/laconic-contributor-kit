@@ -1,0 +1,53 @@
+— provenance —
+  #1 merged: 53 threads (GraphQL), 53 (contrib), 121 contrib items
+  #2 merged: 13 threads (GraphQL), 13 (contrib), 29 contrib items
+  #3 open: 17 threads (GraphQL), 17 (contrib), 39 contrib items
+  #4 open: 3 threads (GraphQL), 3 (contrib), 8 contrib items
+  #5 open: 20 threads (GraphQL), 20 (contrib), 46 contrib items
+  #6 open: 5 threads (GraphQL), 5 (contrib), 12 contrib items
+  #7 open: 0 threads (GraphQL), 0 (contrib), 2 contrib items
+  me=laconicman  verdict phrase='✅ **Resolved**:'  rows=111
+  contrib resolution compared with GitHub's on 111 of 111 threads
+
+— contrib state × GitHub resolution × asker replies —
+   PR contrib state        resolved I replied asker before me  asker after me  n
+    1 answered-claimed     False    True      -                -               1
+    1 answered-confirmed   True     True      -                verdict         40
+    1 answered-confirmed   True     True      verdict          -               12
+    2 answered-confirmed   True     True      -                verdict         13
+    3 answered-confirmed   True     True      -                verdict         14
+    3 answered-confirmed   True     True      verdict          -               2
+    3 asker-replied        True     True      -                other           1
+    4 answered-confirmed   True     True      -                verdict         3
+    5 open-ask             True     False     other            -               15
+    5 open-ask             True     False     other+other      -               1
+    5 open-ask             True     False     verdict          -               4
+    6 answered-confirmed   True     True      -                verdict         4
+    6 asker-replied        True     True      -                other           1
+
+— asker-replied: 2 row(s), 2 listed by default —
+
+— disagreements, by issue #7 case —
+  case 2 one-login-two-roles: 20
+      #5 open-ask           🔴 **Link matches beyond 100 are unreachable**  https://github.com/laconicman/telegram-kb/pull/5#discussion_r4097237099
+      #5 open-ask           🟡 **Search results mix two database snapshots**  https://github.com/laconicman/telegram-kb/pull/5#discussion_r4097237210
+      #5 open-ask           🟡 **Date filter drops final-second posts**  https://github.com/laconicman/telegram-kb/pull/5#discussion_r4097237349
+      #5 open-ask           🟡 **Text-only clients see false pagination instructions**  https://github.com/laconicman/telegram-kb/pull/5#discussion_r4097237506
+      #5 open-ask           🔍 **MCP dependency allowlist needs reconciliation**  https://github.com/laconicman/telegram-kb/pull/5#discussion_r4097237667
+      #5 open-ask           🔍 **Format-source documentation omits an emitted value**  https://github.com/laconicman/telegram-kb/pull/5#discussion_r4097237785
+      #5 open-ask           🔴 **Oversized limit terminates the server**  https://github.com/laconicman/telegram-kb/pull/5#discussion_r4098761481
+      #5 open-ask           🟡 **Shortener pagination fails after resolution changes**  https://github.com/laconicman/telegram-kb/pull/5#discussion_r4098761607
+      #5 open-ask           🟡 **Final pages violate their output schemas**  https://github.com/laconicman/telegram-kb/pull/5#discussion_r4098761768
+      #5 open-ask           🔍 **Duplicate links repeat full post hydration**  https://github.com/laconicman/telegram-kb/pull/5#discussion_r4098761906
+      #5 open-ask           🟡 **Text-only pagination points to invalid argument**  https://github.com/laconicman/telegram-kb/pull/5#discussion_r4098885359
+      #5 open-ask           🟡 **Fractional-second search bounds are rejected**  https://github.com/laconicman/telegram-kb/pull/5#discussion_r4098885529
+      #5 open-ask           🟡 **Final-day posts vanish from date-only searches**  https://github.com/laconicman/telegram-kb/pull/5#discussion_r4098885707
+      #5 open-ask           🔍 **Link cursor summary is out of date**  https://github.com/laconicman/telegram-kb/pull/5#discussion_r4098885849
+      #5 open-ask           🟡 **Date-only searches fail client schema validation**  https://github.com/laconicman/telegram-kb/pull/5#discussion_r4099000569
+      #5 open-ask           🟡 **Search dates lose fractional timestamps**  https://github.com/laconicman/telegram-kb/pull/5#discussion_r4099000684
+      #5 open-ask           🔍 **Cursor mutation has stale context**  https://github.com/laconicman/telegram-kb/pull/5#discussion_r4099000812
+      #5 open-ask           🟡 **Link pages can skip tied matches**  https://github.com/laconicman/telegram-kb/pull/5#discussion_r4099230621
+      #5 open-ask           🟡 **Text-only search omits channel and author**  https://github.com/laconicman/telegram-kb/pull/5#discussion_r4099230746
+      #5 open-ask           🔍 **Pagination mutant preserves the total order**  https://github.com/laconicman/telegram-kb/pull/5#discussion_r4099299933
+  case 4 unresolved (listed): 1
+      #1 answered-claimed   🔍 **Same-channel syncs remain concurrent**  https://github.com/laconicman/telegram-kb/pull/1#discussion_r4024609952

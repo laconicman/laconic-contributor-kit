@@ -1,0 +1,578 @@
+[
+ {
+  "data": {
+   "repository": {
+    "pullRequest": {
+     "state": "MERGED",
+     "reviewThreads": {
+      "pageInfo": {
+       "hasNextPage": false,
+       "endCursor": "Y3Vyc29yOnYyOpK0MjAyNi0wOS0yMVQxNzo1NDo1NVrOpHYKDg=="
+      },
+      "nodes": [
+       {
+        "isResolved": true,
+        "isOutdated": true,
+        "path": "Sources/TelegramKBStore/Search.swift",
+        "resolvedBy": {
+         "login": "devin-ai-integration[bot]"
+        },
+        "comments": {
+         "totalCount": 3,
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "databaseId": 4058500969,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-20T23:51:20Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4058500969",
+           "body": "<!-- devin-review-comment {\"id\": \"BUG_pr-review-job-0400633e562e4e77b694347cea2c27bd_0001\", \"file_path\": \"Sources/TelegramKBStore/Search.swift\", \"start_line\": 136, \"end_line\": 136, \"side\": \"RIGHT\", \"based_on_repo_rules\": false, \"kind\": \"bug\"} -->\n\n🔴 **Large cursor offsets crash search**\n\nA decoded cursor near `Int.max` makes `offset + cap` overflow before the database read. That search traps instead of returning `cursorMalformed`.\n\n<details>\n<summary>Learn more</summary>\n\nCursor text is caller-controlled and `Cursor.decode` accepts every nonnegative `Int`. Swift checked arithmetic traps when adding a positive page size to an offset near `Int.max`. The later `end + words.count` calculation also needs protection, so guarding only this addition leaves another crash path.\n\n**Example:** A cursor encoding offset `9223372036854775807` with a matching fingerprint and any generation decodes successfully on a 64-bit process. Searching with limit `1` traps at `offset + cap`; the malformed-cursor error is never returned.\n\n**Recommended fix:** Validate decoded offsets and all pagination additions with `addingReportingOverflow`. Reject values that cannot form both query limits with `SearchError.cursorMalformed`, and define a bounded response for an excessive first-page limit.\n\n</details>\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/2\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+          },
+          {
+           "databaseId": 4059814147,
+           "author": {
+            "login": "laconicman"
+           },
+           "createdAt": "2026-09-21T06:44:47Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4059814147",
+           "body": "Valid, fixed in cbfd116, and I agree with the severity: cursor text arrives from a model, so \"absurd input traps the process\" is a real path for an MCP server rather than a theoretical one. The decoder now bounds the offset (`0...Cursor.maxOffset`, a hundred million — far past any corpus this indexes and far from `Int.max`), and the page arithmetic is overflow-checked on top of that. Either way the answer is `cursorMalformed`, not a crash. Test `hugeCursorOffsetIsRefused` forges cursors at `Int.max`, `Int.max - 1` and one past the bound; mutant included."
+          },
+          {
+           "databaseId": 4059829278,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-21T06:47:47Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4059829278",
+           "body": "✅ **Resolved**: Cursor decoding now bounds offsets and search uses checked arithmetic for offset plus page size. The remaining first-page-limit overflow is a distinct unchecked addition."
+          }
+         ]
+        }
+       },
+       {
+        "isResolved": true,
+        "isOutdated": true,
+        "path": "Sources/TelegramKBStore/SearchFilter.swift",
+        "resolvedBy": {
+         "login": "devin-ai-integration[bot]"
+        },
+        "comments": {
+         "totalCount": 3,
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "databaseId": 4058500989,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-20T23:51:21Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4058500989",
+           "body": "<!-- devin-review-comment {\"id\": \"BUG_pr-review-job-0400633e562e4e77b694347cea2c27bd_0002\", \"file_path\": \"Sources/TelegramKBStore/SearchFilter.swift\", \"start_line\": 82, \"end_line\": 84, \"side\": \"RIGHT\", \"based_on_repo_rules\": false, \"kind\": \"bug\"} -->\n\n🟡 **Post replacements hide pagination drift**\n\nReplacing a post through [`upsert(posts:policy:)`](https://github.com/laconicman/telegram-kb/blob/025e422f8ecbeab8e7a6f491f7e41294889aff48/Sources/TelegramKBStore/Store.swift#L85-L88 \"Sources/TelegramKBStore/Store.swift:85-88\") can leave `indexMovedSinceCursor` false. Its index changes while `ftsMap` count and every channel's `lastSyncedAt` remain unchanged.\n\n<details>\n<summary>Learn more</summary>\n\nThe generation represents the result corpus used by offset pagination. `upsert(posts:policy:)` can delete and recreate both FTS rows for an existing mapping, changing membership or rank without changing the number of mappings. Unlike `commitPage`, it does not update `channel.lastSyncedAt`, so both hashed values remain unchanged.\n\n**Example:** Page one is read for `swift`. Another caller replaces an existing post's text from `other` to `swift` through `upsert(posts:)`; the post count remains constant. Page two can skip or repeat a result after reranking, but `indexMovedSinceCursor` remains false.\n\n**Recommended fix:** Maintain a database-backed search-generation counter in every transaction that changes searchable content. Increment it from both `upsert(posts:)` and `commitPage`, and encode that counter in cursors.\n\n</details>\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/2\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+          },
+          {
+           "databaseId": 4059814239,
+           "author": {
+            "login": "laconicman"
+           },
+           "createdAt": "2026-09-21T06:44:48Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4059814239",
+           "body": "Valid, fixed in cbfd116. The heuristic — newest `lastSyncedAt` plus the indexed-post count — misses a post replaced in place, which changes neither. For completeness: the real sync path does bump `lastSyncedAt` on every page commit, including `--full`, so in practice the gap was on direct store writes. But a drift detector that works only for the writer I happen to have today is the wrong shape, so migration `v5` adds an index generation that every write to either index bumps, including the stale-row cleanup. The cursor records it. Test `inPlaceReplacementReportsDrift` replaces a post under a live cursor; mutant removes the bump."
+          },
+          {
+           "databaseId": 4059829456,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-21T06:47:49Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4059829456",
+           "body": "✅ **Resolved**: Search-index writes now increment the database-backed index generation, including in-place post replacements."
+          }
+         ]
+        }
+       },
+       {
+        "isResolved": true,
+        "isOutdated": true,
+        "path": "Sources/TelegramKBStore/SearchFilter.swift",
+        "resolvedBy": {
+         "login": "devin-ai-integration[bot]"
+        },
+        "comments": {
+         "totalCount": 3,
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "databaseId": 4058501020,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-20T23:51:21Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4058501020",
+           "body": "<!-- devin-review-comment {\"id\": \"BUG_pr-review-job-0400633e562e4e77b694347cea2c27bd_0003\", \"file_path\": \"Sources/TelegramKBStore/SearchFilter.swift\", \"start_line\": 15, \"end_line\": 15, \"side\": \"RIGHT\", \"based_on_repo_rules\": false, \"kind\": \"bug\"} -->\n\n🟡 **Mutated channel filters stop matching**\n\nAssigning `SearchFilter.channel` after initialization bypasses lowercasing, so `IOSDev` filters against the lowercase database value. The same value passed to the initializer matches.\n\n```suggestion\n        public var channel: String? { didSet { channel = channel?.lowercased() } }\n```\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/2\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+          },
+          {
+           "databaseId": 4059814396,
+           "author": {
+            "login": "laconicman"
+           },
+           "createdAt": "2026-09-21T06:44:50Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4059814396",
+           "body": "Valid, fixed in cbfd116 with the suggested `didSet`, kept alongside the initialiser's folding (a `didSet` does not fire during `init`). Test `assignedChannelIsFolded`."
+          },
+          {
+           "databaseId": 4059829655,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-21T06:47:51Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4059829655",
+           "body": "✅ **Resolved**: SearchFilter.channel now lowercases values assigned after initialization."
+          }
+         ]
+        }
+       },
+       {
+        "isResolved": true,
+        "isOutdated": true,
+        "path": "Sources/TelegramKBStore/Search.swift",
+        "resolvedBy": {
+         "login": "devin-ai-integration[bot]"
+        },
+        "comments": {
+         "totalCount": 3,
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "databaseId": 4058501040,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-20T23:51:22Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4058501040",
+           "body": "<!-- devin-review-comment {\"id\": \"ANALYSIS_pr-review-job-0400633e562e4e77b694347cea2c27bd_0001\", \"file_path\": \"Sources/TelegramKBStore/Search.swift\", \"start_line\": 65, \"end_line\": 65, \"side\": \"RIGHT\", \"kind\": \"analysis\"} -->\n\n🔍 **Rank ties lack stable ordering**\n\nBoth FTS queries order only by `bm25` rank. Add a post-identity tie-breaker so offset pages remain stable across equal-ranked results.\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/2\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+          },
+          {
+           "databaseId": 4059814497,
+           "author": {
+            "login": "laconicman"
+           },
+           "createdAt": "2026-09-21T06:44:51Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4059814497",
+           "body": "Valid and worth more than its 🔍: bm25 ties are common — identical or near-identical short posts are everywhere in this corpus — and `ORDER BY rank` alone left their order to SQLite, so an offset could point at a different post on the next page with nothing written in between. Both FTS queries now break ties on channel and message id, fixed in cbfd116. Test `tiesAreOrderedByIdentity` indexes four identical texts and asserts one order three times; mutant removes the tie-break."
+          },
+          {
+           "databaseId": 4059829850,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-21T06:47:54Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4059829850",
+           "body": "✅ **Resolved**: Both FTS queries now break bm25 ties by channel username and message ID."
+          }
+         ]
+        }
+       },
+       {
+        "isResolved": true,
+        "isOutdated": true,
+        "path": "Sources/TelegramKBStore/SearchFilter.swift",
+        "resolvedBy": {
+         "login": "devin-ai-integration[bot]"
+        },
+        "comments": {
+         "totalCount": 3,
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "databaseId": 4058501066,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-20T23:51:23Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4058501066",
+           "body": "<!-- devin-review-comment {\"id\": \"ANALYSIS_pr-review-job-0400633e562e4e77b694347cea2c27bd_0002\", \"file_path\": \"Sources/TelegramKBStore/SearchFilter.swift\", \"start_line\": 89, \"end_line\": 92, \"side\": \"RIGHT\", \"kind\": \"analysis\"} -->\n\n🔍 **Fingerprint uses raw query spelling**\n\nSearch normalizes queries, but `fingerprint` hashes raw text. Confirm whether equivalent casing or normalization must share a cursor.\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/2\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+          },
+          {
+           "databaseId": 4059814599,
+           "author": {
+            "login": "laconicman"
+           },
+           "createdAt": "2026-09-21T06:44:53Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4059814599",
+           "body": "Settled towards sharing, fixed in cbfd116. Refusing was conservative but wrong: `Swift` and `swift`, or `вёрстка` and `верстка`, run the same search and return the same pages, so a cursor from one should continue the other. The fingerprint now hashes the normalised, lowercased query — the same folding the search itself applies. Test `equivalentSpellingsShareACursor`."
+          },
+          {
+           "databaseId": 4059830075,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-21T06:47:57Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4059830075",
+           "body": "✅ **Resolved**: The cursor fingerprint now normalizes query text before hashing."
+          }
+         ]
+        }
+       },
+       {
+        "isResolved": true,
+        "isOutdated": false,
+        "path": "Tests/TelegramKBStoreTests/StoreTests.swift",
+        "resolvedBy": {
+         "login": "devin-ai-integration[bot]"
+        },
+        "comments": {
+         "totalCount": 3,
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "databaseId": 4059830453,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-21T06:48:01Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4059830453",
+           "body": "<!-- devin-review-comment {\"id\": \"ANALYSIS_pr-review-job-fe6c9a53c776472ea66d943757ed1e09_0001\", \"file_path\": \"Tests/TelegramKBStoreTests/StoreTests.swift\", \"start_line\": 31, \"end_line\": 32, \"side\": \"RIGHT\", \"kind\": \"analysis\"} -->\n\n🔍 **Upgrade migrations lack coverage**\n\nCurrent migration coverage starts from an empty file. It cannot exercise ordering dependencies that appear only while upgrading populated older schemas.\n\n*(Refers to [this code](https://github.com/laconicman/telegram-kb/blob/cbfd1165764b3f34b8fc00ffc51f86c9c459c5df/Tests/TelegramKBStoreTests/StoreTests.swift#L31-L32))*\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/2\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+          },
+          {
+           "databaseId": 4064897763,
+           "author": {
+            "login": "laconicman"
+           },
+           "createdAt": "2026-09-21T17:52:44Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4064897763",
+           "body": "Valid, and it is the reason the bug above stayed hidden: an empty v3 store has nothing to rebuild, so the failing code path never ran. `populatedV3StoreUpgrades` in fd1d245 builds a *populated* v3 store with `migrate(upTo: \"v3-watermarks-in-channel\")`, writes the rows v3-era code wrote (channel, post, mapping, single-column FTS rows), then opens it through every later migration and asserts the post is findable and the generation recorded. Its mutant removes v4's table creation and turns it red."
+          },
+          {
+           "databaseId": 4064912699,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-21T17:54:45Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4064912699",
+           "body": "✅ **Resolved**: The new populatedV3StoreUpgrades test creates real v3 data and migrates it through later versions."
+          }
+         ]
+        }
+       },
+       {
+        "isResolved": true,
+        "isOutdated": false,
+        "path": "Scripts/mutation-check.sh",
+        "resolvedBy": {
+         "login": "devin-ai-integration[bot]"
+        },
+        "comments": {
+         "totalCount": 3,
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "databaseId": 4059830529,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-21T06:48:02Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4059830529",
+           "body": "<!-- devin-review-comment {\"id\": \"ANALYSIS_pr-review-job-fe6c9a53c776472ea66d943757ed1e09_0002\", \"file_path\": \"Scripts/mutation-check.sh\", \"side\": \"RIGHT\", \"kind\": \"analysis\"} -->\n\n🔍 **Concurrent mutation logs collide**\n\nParallel harness runs share fixed `/tmp` log names. Their diagnostics can overwrite each other and report output from another run.\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/2\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+          },
+          {
+           "databaseId": 4064898322,
+           "author": {
+            "login": "laconicman"
+           },
+           "createdAt": "2026-09-21T17:52:49Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4064898322",
+           "body": "Fixed the part that can be fixed, in fd1d245: logs go to a per-run `mktemp -d` directory, cleaned up on interrupt, so two runs no longer overwrite each other's diagnostics. The larger point is worth stating in the script, and it now does: two runs in one checkout remain unsafe regardless, because both apply patches to the same working tree. Separate log files do not make that safe, and a lock would only hide it."
+          },
+          {
+           "databaseId": 4064913057,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-21T17:54:47Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4064913057",
+           "body": "✅ **Resolved**: Each run now creates a distinct mktemp log directory, so separate runs no longer overwrite diagnostics."
+          }
+         ]
+        }
+       },
+       {
+        "isResolved": true,
+        "isOutdated": false,
+        "path": "Sources/TelegramKBStore/Store.swift",
+        "resolvedBy": {
+         "login": "devin-ai-integration[bot]"
+        },
+        "comments": {
+         "totalCount": 3,
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "databaseId": 4059830577,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-21T06:48:03Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4059830577",
+           "body": "<!-- devin-review-comment {\"id\": \"BUG_pr-review-job-fe6c9a53c776472ea66d943757ed1e09_0001\", \"file_path\": \"Sources/TelegramKBStore/Store.swift\", \"start_line\": 228, \"end_line\": 228, \"side\": \"RIGHT\", \"based_on_repo_rules\": false, \"kind\": \"bug\"} -->\n\n🔴 **Schema migration blocks store opening**\n\nOpening a pre-`v4` store runs `rebuildWordIndex` before `indexState` exists. `indexForSearch` updates that missing table, so migration aborts.\n\n<details>\n<summary>Learn more</summary>\n\nThe `v4-lemmas-in-their-own-column` migration calls [rebuildWordIndex](https://github.com/laconicman/telegram-kb/blob/cbfd1165764b3f34b8fc00ffc51f86c9c459c5df/Sources/TelegramKBStore/Schema.swift#L154-L170 \"Sources/TelegramKBStore/Schema.swift:154-170\"). Every surviving mapping reaches `indexForSearch`, which now calls `bumpIndexGeneration`; stale mappings also call it directly. The `indexState` table is only created by the following [v5 migration](https://github.com/laconicman/telegram-kb/blob/cbfd1165764b3f34b8fc00ffc51f86c9c459c5df/Sources/TelegramKBStore/Schema.swift#L172-L182 \"Sources/TelegramKBStore/Schema.swift:172-182\"), so both a new database and a database below v4 fail while applying v4.\n\n**Example:** A fresh database applies v1 through v3, enters v4, and rebuilds any mapped rows. Its first generation update raises `no such table: indexState`, so `openForWriting` throws instead of returning a store.\n\n**Recommended fix:** Create and seed `indexState` before any migration can invoke the generation bump. Preserve migration compatibility for databases that may already record the published migration names, and add an upgrade test that starts from a pre-v4 schema rather than only an empty current schema.\n\n</details>\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/2\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+          },
+          {
+           "databaseId": 4064897474,
+           "author": {
+            "login": "laconicman"
+           },
+           "createdAt": "2026-09-21T17:52:42Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4064897474",
+           "body": "Valid, and the most important finding on this PR — reproduced before fixing: a 155-post store built by the v3-era code fails on open with `no such table: indexState` and exit 1. Every populated store from before v4 would have refused to open. v4's rebuild writes through the live indexing code, which now bumps a counter only v5 creates.\n\nFixed in fd1d245 inside the migration history itself: v4 creates the table before rebuilding, and v5 creates it idempotently (`IF NOT EXISTS`, `INSERT OR IGNORE`), so both orders of history work — a v3 store runs both, a v4 store runs only v5. The same real v3 store now upgrades with exit 0, 155 posts intact and a generation of 155. REVIEW.md gains the rule this broke: a migration that calls live code must first create everything that code touches."
+          },
+          {
+           "databaseId": 4064911598,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-21T17:54:36Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4064911598",
+           "body": "✅ **Resolved**: The v4 migration now creates and seeds indexState before rebuildWordIndex, and a populated-v3 upgrade test covers the path."
+          }
+         ]
+        }
+       },
+       {
+        "isResolved": true,
+        "isOutdated": false,
+        "path": "Sources/TelegramKBStore/Search.swift",
+        "resolvedBy": {
+         "login": "devin-ai-integration[bot]"
+        },
+        "comments": {
+         "totalCount": 3,
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "databaseId": 4059830623,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-21T06:48:03Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4059830623",
+           "body": "<!-- devin-review-comment {\"id\": \"BUG_pr-review-job-fe6c9a53c776472ea66d943757ed1e09_0002\", \"file_path\": \"Sources/TelegramKBStore/Search.swift\", \"start_line\": 156, \"end_line\": 156, \"side\": \"RIGHT\", \"based_on_repo_rules\": false, \"kind\": \"bug\"} -->\n\n🔴 **Maximum page limit crashes search**\n\nA `.both` search with `limit == Int.max` traps when `words.count` is positive. The substring bound adds that count to `end` unchecked.\n\n<details>\n<summary>Learn more</summary>\n\nThe first page has `offset == 0`, so `addingReportingOverflow` accepts `limit == Int.max` and sets `end` to `Int.max`. `wordHits` then returns at least one match for a matching query. Computing `end + words.count` overflows before `substringHits` runs, and Swift traps rather than throwing.\n\n**Example:** Search a store containing one `swift` post with `search(\"swift\", mode: .both, limit: Int.max)`. `end` is `Int.max` and `words.count` is at least one, so the process traps while calculating the substring limit.\n\n**Recommended fix:** Use checked or saturating arithmetic for the substring fetch bound. Keep the existing guarantee that the fetch includes `words.count` extra candidates when that sum is representable.\n\n</details>\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/2\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+          },
+          {
+           "databaseId": 4064897947,
+           "author": {
+            "login": "laconicman"
+           },
+           "createdAt": "2026-09-21T17:52:46Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4064897947",
+           "body": "Valid, fixed in fd1d245. The offset was bounded last round, but the page size was not, so `end + words.count` could still overflow with `limit: Int.max`. Page size is now clamped to `maxPageSize` (100,000); with both bounded, no sum in the paging code approaches the edge. Test `hugePageSizeIsClamped`, with a mutant."
+          },
+          {
+           "databaseId": 4064911989,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-21T17:54:39Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4064911989",
+           "body": "✅ **Resolved**: Search clamps page sizes to maxPageSize before computing pagination bounds."
+          }
+         ]
+        }
+       },
+       {
+        "isResolved": true,
+        "isOutdated": true,
+        "path": "Sources/TelegramKBStore/SearchFilter.swift",
+        "resolvedBy": {
+         "login": "devin-ai-integration[bot]"
+        },
+        "comments": {
+         "totalCount": 3,
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "databaseId": 4059830691,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-21T06:48:04Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4059830691",
+           "body": "<!-- devin-review-comment {\"id\": \"BUG_pr-review-job-fe6c9a53c776472ea66d943757ed1e09_0003\", \"file_path\": \"Sources/TelegramKBStore/SearchFilter.swift\", \"start_line\": 100, \"end_line\": 102, \"side\": \"RIGHT\", \"based_on_repo_rules\": false, \"kind\": \"bug\"} -->\n\n🟡 **Distinct searches share cursor fingerprints**\n\nA query or channel containing `U+0001` can shift fingerprint field boundaries. Different searches then share a fingerprint and accept each other's cursors.\n\n<details>\n<summary>Learn more</summary>\n\nThe fingerprint hashes six fields after joining them with `U+0001`, but the public query and channel fields can contain that same character. Since field lengths are not encoded, two different field arrays can produce identical material before hashing. This is deterministic ambiguity, independent of normal hash collisions.\n\n**Example:** The tuples `(query: \"x\", mode: .words, channel: \"substring\")` and `(query: \"x\\u{1}words\", mode: .substring, channel: nil)` serialize to the same sequence when their remaining fields are empty. A cursor created by the first search passes validation in the second and applies its offset to another result set.\n\n**Recommended fix:** Hash an unambiguous serialization, such as length-prefixed UTF-8 fields or a fixed-shape encoded record. Include every field's presence separately from its value.\n\n</details>\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/2\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+          },
+          {
+           "databaseId": 4064898130,
+           "author": {
+            "login": "laconicman"
+           },
+           "createdAt": "2026-09-21T17:52:47Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4064898130",
+           "body": "Valid, fixed in fd1d245 — though I'd call it the most theoretical finding so far: it needs a query containing U+0001. Cheap enough to close properly anyway. The fields are length-prefixed now rather than separator-joined, so no content can move a boundary. Test `fingerprintFieldsAreUnambiguous` uses a pair that joined to the identical string under the old encoding; mutant restores the separator."
+          },
+          {
+           "databaseId": 4064912331,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-21T17:54:42Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4064912331",
+           "body": "✅ **Resolved**: Fingerprint fields are now UTF-8 length-prefixed before hashing."
+          }
+         ]
+        }
+       },
+       {
+        "isResolved": true,
+        "isOutdated": true,
+        "path": "Scripts/mutation-check.sh",
+        "resolvedBy": {
+         "login": "devin-ai-integration[bot]"
+        },
+        "comments": {
+         "totalCount": 3,
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "databaseId": 4064913803,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-21T17:54:52Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4064913803",
+           "body": "<!-- devin-review-comment {\"id\": \"BUG_pr-review-job-57371bd637d14633892c6cc22efb66ca_0001\", \"file_path\": \"Scripts/mutation-check.sh\", \"start_line\": 36, \"end_line\": 36, \"side\": \"RIGHT\", \"based_on_repo_rules\": false, \"kind\": \"bug\"} -->\n\n🟡 **Mutation logs leak after every run**\n\nEvery normal run leaves `LOGS` and its build output behind. Cleanup only handles signals, so repeated checks consume temporary-disk space.\n\n```suggestion\ntrap 'restore; rm -rf \"$LOGS\"' EXIT\ntrap 'exit 130' INT TERM\n```\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/2\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+          },
+          {
+           "databaseId": 4064968321,
+           "author": {
+            "login": "laconicman"
+           },
+           "createdAt": "2026-09-21T18:02:02Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4064968321",
+           "body": "Valid, and a regression from my own round-2 fix — four directories had accumulated from my runs. Taken as suggested in 3165f4a: cleanup on `EXIT`, with the signal trap only converting to status 130. Verified rather than assumed that the `EXIT` trap keeps the script's own status: exit 0, 1 and 3 all pass through, and so does a failing final test. After a normal run no directory is left behind; a failing run still exits 1."
+          },
+          {
+           "databaseId": 4064972945,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-21T18:02:38Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4064972945",
+           "body": "✅ **Resolved**: The EXIT trap now removes the per-run log directory on normal exits and signals."
+          }
+         ]
+        }
+       },
+       {
+        "isResolved": true,
+        "isOutdated": false,
+        "path": "Sources/TelegramKBStore/Store.swift",
+        "resolvedBy": {
+         "login": "devin-ai-integration[bot]"
+        },
+        "comments": {
+         "totalCount": 3,
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "databaseId": 4064913982,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-21T17:54:54Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4064913982",
+           "body": "<!-- devin-review-comment {\"id\": \"ANALYSIS_pr-review-job-57371bd637d14633892c6cc22efb66ca_0001\", \"file_path\": \"Sources/TelegramKBStore/Store.swift\", \"start_line\": 225, \"end_line\": 228, \"side\": \"RIGHT\", \"kind\": \"analysis\"} -->\n\n📝 **Info: Generation counts writes, not revisions**\n\nBatch upserts and migrations increment `generation` per post. Consumers can compare generations for equality, but cannot treat them as revision counts.\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/2\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+          },
+          {
+           "databaseId": 4064968517,
+           "author": {
+            "login": "laconicman"
+           },
+           "createdAt": "2026-09-21T18:02:04Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4064968517",
+           "body": "Agreed, and that is the intended contract — the cursor only ever compares generations for inequality. It was implied rather than written, so 3165f4a states it on `bumpIndexGeneration`: the counter counts writes, not revisions, and a batch of twenty moves it by twenty, so only equality means anything."
+          },
+          {
+           "databaseId": 4064973321,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-21T18:02:41Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4064973321",
+           "body": "✅ **Resolved**: The current documentation explicitly states that generation counts writes and must only be compared for equality."
+          }
+         ]
+        }
+       },
+       {
+        "isResolved": true,
+        "isOutdated": false,
+        "path": "Sources/TelegramKBStore/Search.swift",
+        "resolvedBy": {
+         "login": "devin-ai-integration[bot]"
+        },
+        "comments": {
+         "totalCount": 3,
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "databaseId": 4064914091,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-21T17:54:55Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4064914091",
+           "body": "<!-- devin-review-comment {\"id\": \"ANALYSIS_pr-review-job-57371bd637d14633892c6cc22efb66ca_0002\", \"file_path\": \"Sources/TelegramKBStore/Search.swift\", \"start_line\": 174, \"end_line\": 179, \"side\": \"RIGHT\", \"kind\": \"analysis\"} -->\n\n📝 **Info: Zero-sized searches return no cursor**\n\nWith `limit: 0`, `total` can be positive while `nextCursor` remains nil. Callers need a positive limit to start paging.\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/2\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+          },
+          {
+           "databaseId": 4064968713,
+           "author": {
+            "login": "laconicman"
+           },
+           "createdAt": "2026-09-21T18:02:05Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4064968713",
+           "body": "Agreed, and by design: `limit: 0` is a count-only request, which an MCP client will use to ask how many before asking for any. Nothing was consumed, so a cursor at offset 0 would mean the same as no cursor. 3165f4a says so on `nextCursor`, including that paging starts with a positive limit."
+          },
+          {
+           "databaseId": 4064973786,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-21T18:02:44Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/2#discussion_r4064973786",
+           "body": "✅ **Resolved**: The current documentation explicitly defines limit zero as a count-only request with no next cursor."
+          }
+         ]
+        }
+       }
+      ]
+     }
+    }
+   }
+  }
+ }
+]

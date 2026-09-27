@@ -1,0 +1,148 @@
+[
+ {
+  "data": {
+   "repository": {
+    "pullRequest": {
+     "state": "OPEN",
+     "reviewThreads": {
+      "pageInfo": {
+       "hasNextPage": false,
+       "endCursor": "Y3Vyc29yOnYyOpK0MjAyNi0wOS0yNFQxOTowMjozNlrOpbnk_Q=="
+      },
+      "nodes": [
+       {
+        "isResolved": true,
+        "isOutdated": false,
+        "path": "Sources/TelegramKBIngest/WebPreviewParser.swift",
+        "resolvedBy": {
+         "login": "devin-ai-integration[bot]"
+        },
+        "comments": {
+         "totalCount": 3,
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "databaseId": 4096829788,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T18:03:08Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/4#discussion_r4096829788",
+           "body": "<!-- devin-review-comment {\"id\": \"BUG_pr-review-job-231a11e757e54e0bace8e6ec2eb5e44e_0001\", \"file_path\": \"Sources/TelegramKBIngest/WebPreviewParser.swift\", \"start_line\": 74, \"end_line\": 76, \"side\": \"RIGHT\", \"based_on_repo_rules\": false, \"kind\": \"bug\"} -->\n\n🔴 **Undated pages falsely complete backfills**\n\nWhen every block lacks a readable date, `post(from:)` drops the entire page. [WebPreviewSource.crawl](https://github.com/laconicman/telegram-kb/blob/c737ba898816417f882f25484964aa94d4dd258d/Sources/TelegramKBIngest/WebPreviewSource.swift#L131 \"Sources/TelegramKBIngest/WebPreviewSource.swift:131\") treats empty posts as exhaustion, marking the unfinished backfill complete.\n\n<details>\n<summary>Learn more</summary>\n\nAn unreadable block is counted by `WebPreviewParser.page`, but a page containing only unreadable blocks has no parsed posts. [WebPreviewSource.crawl](https://github.com/laconicman/telegram-kb/blob/c737ba898816417f882f25484964aa94d4dd258d/Sources/TelegramKBIngest/WebPreviewSource.swift#L121-L134 \"Sources/TelegramKBIngest/WebPreviewSource.swift:121-134\") checks only parsed posts to decide whether history ended. It then passes `reachedEnd` to [ChannelSync.sync](https://github.com/laconicman/telegram-kb/blob/c737ba898816417f882f25484964aa94d4dd258d/Sources/TelegramKBSync/ChannelSync.swift#L82-L88 \"Sources/TelegramKBSync/ChannelSync.swift:82-88\"), which records the backfill as complete. Subsequent syncs use that completion state instead of resuming the skipped history.\n\n**Example:** A fresh channel yields a valid first page and then a page of 20 blocks without readable dates. The second page contributes zero posts, so the crawler marks the backfill complete instead of reporting an unreadable page and leaving the backfill open.\n\n**Recommended fix:** In `WebPreviewSource.crawl`, distinguish zero message blocks from zero readable posts using the parser's block count or `skippedBlocks`. Do not set `reachedEnd` when unreadable blocks exist; keep the backfill resumable and surface the warning. Add a crawler test covering an all-undated page after a valid page.\n\n</details>\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/4\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+          },
+          {
+           "databaseId": 4097358734,
+           "author": {
+            "login": "laconicman"
+           },
+           "createdAt": "2026-09-24T19:01:35Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/4#discussion_r4097358734",
+           "body": "Fixed in e7099c2: the exhaustion guard now requires zero *message blocks*, not zero parsed posts — an all-unreadable page stops the walk without claiming the end, so the backfill stays resumable and the skips surface in `unreadableBlocks`. Regression test `allUnreadablePageIsNotExhaustion` plus a mutant restoring the unconditional `reachedEnd = true`, red-verified."
+          },
+          {
+           "databaseId": 4097368091,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T19:02:28Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/4#discussion_r4097368091",
+           "body": "✅ **Resolved**: The crawler now sets reachedEnd only when parsed posts are empty and skippedBlocks is zero, so an all-unreadable page leaves the backfill incomplete."
+          }
+         ]
+        }
+       },
+       {
+        "isResolved": true,
+        "isOutdated": false,
+        "path": "Sources/TelegramKBIngest/WebPreviewParser.swift",
+        "resolvedBy": {
+         "login": "devin-ai-integration[bot]"
+        },
+        "comments": {
+         "totalCount": 3,
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "databaseId": 4096829975,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T18:03:09Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/4#discussion_r4096829975",
+           "body": "<!-- devin-review-comment {\"id\": \"ANALYSIS_pr-review-job-231a11e757e54e0bace8e6ec2eb5e44e_0002\", \"file_path\": \"Sources/TelegramKBIngest/WebPreviewParser.swift\", \"start_line\": 71, \"end_line\": 73, \"side\": \"RIGHT\", \"kind\": \"analysis\"} -->\n\n🔍 **Missing identifiers are not counted**\n\nThe comment says missing `data-post` blocks count as skipped, but [page(html:)](https://github.com/laconicman/telegram-kb/blob/c737ba898816417f882f25484964aa94d4dd258d/Sources/TelegramKBIngest/WebPreviewParser.swift#L36-L38 \"Sources/TelegramKBIngest/WebPreviewParser.swift:36-38\") excludes them before counting. Clarify the warning's scope.\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/4\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+          },
+          {
+           "databaseId": 4097359113,
+           "author": {
+            "login": "laconicman"
+           },
+           "createdAt": "2026-09-24T19:01:38Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/4#discussion_r4097359113",
+           "body": "Fixed in e7099c2: the selector is now class-wide (`div.tgme_widget_message`, no `[data-post]` qualifier), so a message div missing the attribute lands in `skippedBlocks` via `post(from:)` returning nil rather than vanishing before counting. The comment states the scope honestly now. Test `missingDataPostIsCounted` plus a mutant restoring the `[data-post]` selector, red-verified."
+          },
+          {
+           "databaseId": 4097368729,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T19:02:31Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/4#discussion_r4097368729",
+           "body": "✅ **Resolved**: The parser now selects all tgme_widget_message blocks, including those without data-post, so those blocks are counted as skipped. The earlier concern no longer applies."
+          }
+         ]
+        }
+       },
+       {
+        "isResolved": true,
+        "isOutdated": false,
+        "path": "Sources/TelegramKBIngest/WebPreviewParser.swift",
+        "resolvedBy": {
+         "login": "devin-ai-integration[bot]"
+        },
+        "comments": {
+         "totalCount": 3,
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "databaseId": 4097369698,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T19:02:36Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/4#discussion_r4097369698",
+           "body": "<!-- devin-review-comment {\"id\": \"ANALYSIS_pr-review-job-a99d3285c7b748099e19a2f8a738579c_0001\", \"file_path\": \"Sources/TelegramKBIngest/WebPreviewParser.swift\", \"start_line\": 36, \"end_line\": 39, \"side\": \"RIGHT\", \"kind\": \"analysis\"} -->\n\n🔍 **Skipped-block documentation excludes id-less messages**\n\n`Page.skippedBlocks` now includes blocks without `data-post`, but its property comment says it counts only blocks carrying that attribute. Update the comment to match the counter.\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/4\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+          },
+          {
+           "databaseId": 4097381872,
+           "author": {
+            "login": "laconicman"
+           },
+           "createdAt": "2026-09-24T19:03:45Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/4#discussion_r4097381872",
+           "body": "Fixed in 51fbae9 — the property comment now reads \"Message blocks (div.tgme_widget_message) that could not be read as a post — missing or malformed data-post, unreadable date, out-of-range id\", matching the widened selector."
+          },
+          {
+           "databaseId": 4097385161,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T19:04:05Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/4#discussion_r4097385161",
+           "body": "✅ **Resolved**: The property documentation now describes missing or malformed data-post, unreadable dates, and out-of-range ids."
+          }
+         ]
+        }
+       }
+      ]
+     }
+    }
+   }
+  }
+ }
+]

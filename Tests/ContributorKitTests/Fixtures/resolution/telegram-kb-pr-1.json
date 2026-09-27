@@ -1,6 +1,6 @@
 {
   "_fixture": {
-    "source": "laconicman/telegram-kb#1, `scripts/resolution-crosscheck.py --capture`, 2026-09-26 around 14:00 UTC",
+    "source": "laconicman/telegram-kb#1, `scripts/resolution-crosscheck.py --capture`, 2026-09-26 at 18:0x UTC, stamped in the capture's own provenance; the full capture is captures/pr-1.threads.graphql.json",
     "cut": "reviewThreads.nodes copied verbatim for root ids 4025099437, 4024609952; the envelope is ThreadDetail.graphql's, with pullRequestState/closed/merged taken from the capture's `state`",
     "captureShape": "the capture's query carries no viewerDidAuthor, lastEditedAt or pullRequestReview, so authorship is decided by login (--me) and no round id is present"
   },

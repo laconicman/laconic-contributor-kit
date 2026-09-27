@@ -1,0 +1,708 @@
+[
+ {
+  "data": {
+   "repository": {
+    "pullRequest": {
+     "state": "OPEN",
+     "reviewThreads": {
+      "pageInfo": {
+       "hasNextPage": false,
+       "endCursor": "Y3Vyc29yOnYyOpK0MjAyNi0wOS0yNFQyMjo1NjoxOFrOpcyY6g=="
+      },
+      "nodes": [
+       {
+        "isResolved": true,
+        "isOutdated": true,
+        "path": "Sources/TelegramKBMCP/ToolHandler.swift",
+        "resolvedBy": {
+         "login": "devin-ai-integration[bot]"
+        },
+        "comments": {
+         "totalCount": 2,
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "databaseId": 4097237099,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T18:48:02Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4097237099",
+           "body": "<!-- devin-review-comment {\"id\": \"BUG_pr-review-job-96b9db8c88c54eb19c11a2a6703f2c5d_0001\", \"file_path\": \"Sources/TelegramKBMCP/ToolHandler.swift\", \"start_line\": 132, \"end_line\": 133, \"side\": \"RIGHT\", \"based_on_repo_rules\": false, \"kind\": \"bug\"} -->\n\n🔴 **Link matches beyond 100 are unreachable**\n\nWhen a URL has over 100 matches, `find_links` caps every request at 100 without offering pagination. Clients cannot retrieve the remaining posts despite the reported `total`.\n\n<details>\n<summary>Learn more</summary>\n\n`find_links` reads a bounded first page from `Store.links(to:limit:)` and reports the full count, but the tool has no cursor or offset argument. Increasing `limit` cannot advance past the first 100 results because `Args.int` clamps it. This is a permanent retrieval gap, not simply a compact default response.\n\n**Example:** A URL shared by 140 posts returns 100 links and `total: 140`. Calling again with `limit: 140` returns the same 100; the other 40 cannot be requested.\n\n**Recommended fix:** Add stable pagination to `Store.links(to:)` and expose an opaque cursor and `next_cursor` in `find_links`, with ordering that uniquely identifies each link row. Test traversal past 100 matches.\n\n</details>\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/5\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+          },
+          {
+           "databaseId": 4098759414,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T21:39:48Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4098759414",
+           "body": "✅ **Resolved**: Resolved: find_links now accepts and propagates cursors and returns next_cursor, making matches beyond the capped page reachable."
+          }
+         ]
+        }
+       },
+       {
+        "isResolved": true,
+        "isOutdated": true,
+        "path": "Sources/TelegramKBMCP/ToolHandler.swift",
+        "resolvedBy": {
+         "login": "devin-ai-integration[bot]"
+        },
+        "comments": {
+         "totalCount": 2,
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "databaseId": 4097237210,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T18:48:03Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4097237210",
+           "body": "<!-- devin-review-comment {\"id\": \"BUG_pr-review-job-96b9db8c88c54eb19c11a2a6703f2c5d_0002\", \"file_path\": \"Sources/TelegramKBMCP/ToolHandler.swift\", \"start_line\": 115, \"end_line\": 119, \"side\": \"RIGHT\", \"based_on_repo_rules\": false, \"kind\": \"bug\"} -->\n\n🟡 **Search results mix two database snapshots**\n\nWhen sync commits between `store.search` and `store.posts`, `searchPosts` can return updated text that no longer matches the query. `total` and the cursor still describe the earlier snapshot, and a missing post disappears from the page.\n\n<details>\n<summary>Learn more</summary>\n\nSearch hits, count and cursor are computed in [search](https://github.com/laconicman/telegram-kb/blob/3950a115d3c916913e590bd1dc9e3768438e0a45/Sources/TelegramKBStore/Search.swift#L133-L183 \"Sources/TelegramKBStore/Search.swift:133-183\") inside one read snapshot. Hydration takes a second snapshot in [posts(ids:)](https://github.com/laconicman/telegram-kb/blob/3950a115d3c916913e590bd1dc9e3768438e0a45/Sources/TelegramKBStore/Search.swift#L223-L228 \"Sources/TelegramKBStore/Search.swift:223-228\"). A concurrent writer can change a matched post between them, so the result page combines old search metadata and new post content. `find_links` has the same split between `links(to:)` and hydration, yielding inconsistent snippets and dates after a sync.\n\n**Example:** Search for `swift` returns an ID with `total: 1`; sync replaces that post's text with `kotlin` before hydration. The returned search record has a `kotlin` snippet under a `swift` query, with `index_moved_since_cursor: false` on this first page.\n\n**Recommended fix:** Hydrate search and link hits inside the same short `dbPool.read` transaction that selects the hits and computes totals; expose a Store API returning hydrated page data or accept a read-scoped callback. Test a write between the previous two reads.\n\n</details>\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/5\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+          },
+          {
+           "databaseId": 4098759952,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T21:39:52Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4098759952",
+           "body": "✅ **Resolved**: Resolved: searchPosts and linkedPosts now hydrate hit posts inside the same database read snapshot as counts and cursors."
+          }
+         ]
+        }
+       },
+       {
+        "isResolved": true,
+        "isOutdated": true,
+        "path": "Sources/TelegramKBMCP/ToolHandler.swift",
+        "resolvedBy": {
+         "login": "devin-ai-integration[bot]"
+        },
+        "comments": {
+         "totalCount": 2,
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "databaseId": 4097237349,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T18:48:04Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4097237349",
+           "body": "<!-- devin-review-comment {\"id\": \"BUG_pr-review-job-96b9db8c88c54eb19c11a2a6703f2c5d_0003\", \"file_path\": \"Sources/TelegramKBMCP/ToolHandler.swift\", \"start_line\": 279, \"end_line\": 280, \"side\": \"RIGHT\", \"based_on_repo_rules\": false, \"kind\": \"bug\"} -->\n\n🟡 **Date filter drops final-second posts**\n\nWith a date-only `to`, `Args.date` ends the day at `23:59:59Z`. Posts timestamped after that instant but before midnight disappear from `search_posts`.\n\n<details>\n<summary>Learn more</summary>\n\nThe `to` parameter promises an inclusive calendar day. [SearchFilter.sql](https://github.com/laconicman/telegram-kb/blob/3950a115d3c916913e590bd1dc9e3768438e0a45/Sources/TelegramKBStore/SearchFilter.swift#L40-L45 \"Sources/TelegramKBStore/SearchFilter.swift:40-45\") uses `p.date <= ?`, so turning the upper bound into `23:59:59Z` excludes a timestamp with any fraction of the final second. Store dates are `Date` values and can retain fractional seconds, including dates supplied by other ingest sources.\n\n**Example:** `to: \"2026-09-24\"` excludes a post dated `2026-09-24T23:59:59.500Z`; it belongs to the requested day.\n\n**Recommended fix:** Represent date-only upper bounds as the next day's midnight with an exclusive comparison, preserving inclusive comparisons for explicit timestamps; alternatively represent the final instant at the database's actual date precision. Add a fractional-final-second case.\n\n</details>\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/5\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+          },
+          {
+           "databaseId": 4098760396,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T21:39:55Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4098760396",
+           "body": "✅ **Resolved**: Resolved: date-only upper bounds now extend to the final millisecond of the day, including fractional timestamps before midnight."
+          }
+         ]
+        }
+       },
+       {
+        "isResolved": true,
+        "isOutdated": true,
+        "path": "Sources/TelegramKBMCP/ToolHandler.swift",
+        "resolvedBy": {
+         "login": "devin-ai-integration[bot]"
+        },
+        "comments": {
+         "totalCount": 2,
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "databaseId": 4097237506,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T18:48:05Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4097237506",
+           "body": "<!-- devin-review-comment {\"id\": \"BUG_pr-review-job-96b9db8c88c54eb19c11a2a6703f2c5d_0004\", \"file_path\": \"Sources/TelegramKBMCP/ToolHandler.swift\", \"start_line\": 223, \"end_line\": 225, \"side\": \"RIGHT\", \"based_on_repo_rules\": false, \"kind\": \"bug\"} -->\n\n🟡 **Text-only clients see false pagination instructions**\n\nOn a final page, `render` compares the page size with `total` and asks clients to pass a nonexistent `next_cursor`. A zero-limit link count also says no posts exist despite a positive `total`.\n\n<details>\n<summary>Learn more</summary>\n\nThe search and link text renderers use `page.count < total` to decide whether another page exists. That comparison is true on every page when the total exceeds the page size, including the final page; the store instead determines continuation with `nextCursor`. For `find_links` with `limit: 0`, [render](https://github.com/laconicman/telegram-kb/blob/7bfc4aeabcda08cb0a86b5fe1f13cba6879de1b6/Sources/TelegramKBMCP/ToolHandler.swift#L213-L225 \"Sources/TelegramKBMCP/ToolHandler.swift:213-225\") returns `No posts link to that URL.` before even considering the positive total.\n\n**Example:** Two posts match a URL and the client requests one per page. Page two returns its sole post with `next_cursor: nil`, but its text says `1 of 2 post(s) — pass next_cursor for the rest`. With `limit: 0`, it says no posts link to the URL despite `total: 2`.\n\n**Recommended fix:** Pass `nextCursor` into both renderers and base continuation text on its presence. Handle count-only pages separately, stating the total rather than treating an empty page as an empty result set.\n\n</details>\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/5\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+          },
+          {
+           "databaseId": 4098877437,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T21:55:23Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4098877437",
+           "body": "Fixed in a595d78. Both renderers take `nextCursor` and share a `footer` that says \"pass next_cursor for the rest\" only when a cursor exists; a final page smaller than `total` prints `N of M post(s)` and stops. `find_links` with `limit: 0` prints `0 of M post(s)` — \"No posts link to that URL.\" is now gated on `total == 0`. Test `footerFollowsNextCursor` + mutant (footer back on `shown < total`)."
+          }
+         ]
+        }
+       },
+       {
+        "isResolved": true,
+        "isOutdated": false,
+        "path": "Package.swift",
+        "resolvedBy": {
+         "login": "devin-ai-integration[bot]"
+        },
+        "comments": {
+         "totalCount": 2,
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "databaseId": 4097237667,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T18:48:06Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4097237667",
+           "body": "<!-- devin-review-comment {\"id\": \"ANALYSIS_pr-review-job-96b9db8c88c54eb19c11a2a6703f2c5d_0001\", \"file_path\": \"Package.swift\", \"start_line\": 61, \"end_line\": 62, \"side\": \"RIGHT\", \"kind\": \"analysis\"} -->\n\n🔍 **MCP dependency allowlist needs reconciliation**\n\n`TelegramKBMCP` now directly depends on Logging and SystemPackage, beyond the dependencies permitted by [review guidelines](https://github.com/laconicman/telegram-kb/blob/3950a115d3c916913e590bd1dc9e3768438e0a45/REVIEW.md#L25-L26 \"REVIEW.md:25-26\"). The closure check examines only local targets, so it cannot enforce that external-package rule. Reconcile the rule with the new dependencies.\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/5\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+          },
+          {
+           "databaseId": 4098760745,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T21:39:57Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4098760745",
+           "body": "✅ **Resolved**: Resolved: REVIEW.md was amended to explicitly permit swift-log and swift-system as dependencies needed for SDK signatures."
+          }
+         ]
+        }
+       },
+       {
+        "isResolved": true,
+        "isOutdated": true,
+        "path": "Sources/TelegramKBMCP/Records.swift",
+        "resolvedBy": {
+         "login": "devin-ai-integration[bot]"
+        },
+        "comments": {
+         "totalCount": 2,
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "databaseId": 4097237785,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T18:48:07Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4097237785",
+           "body": "<!-- devin-review-comment {\"id\": \"ANALYSIS_pr-review-job-96b9db8c88c54eb19c11a2a6703f2c5d_0002\", \"file_path\": \"Sources/TelegramKBMCP/Records.swift\", \"start_line\": 131, \"end_line\": 133, \"side\": \"RIGHT\", \"kind\": \"analysis\"} -->\n\n🔍 **Format-source documentation omits an emitted value**\n\n`format_source` documents `export`, but [FormatSource](https://github.com/laconicman/telegram-kb/blob/3950a115d3c916913e590bd1dc9e3768438e0a45/Sources/TelegramKBModel/PostKind.swift#L21-L23 \"Sources/TelegramKBModel/PostKind.swift:21-23\") defines `absent` instead. Update the field documentation to match emitted values.\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/5\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+          },
+          {
+           "databaseId": 4098878385,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T21:55:32Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4098878385",
+           "body": "Fixed in 7bfc4ae: the `format_source` doc comment in `Records.swift` now reads `web | tdlib | absent`, matching `FormatSource`."
+          }
+         ]
+        }
+       },
+       {
+        "isResolved": true,
+        "isOutdated": true,
+        "path": "Sources/TelegramKBMCP/ToolHandler.swift",
+        "resolvedBy": {
+         "login": "devin-ai-integration[bot]"
+        },
+        "comments": {
+         "totalCount": 2,
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "databaseId": 4098761481,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T21:40:03Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4098761481",
+           "body": "<!-- devin-review-comment {\"id\": \"BUG_pr-review-job-affabd4512bf403cbce287710f40b344_0001\", \"file_path\": \"Sources/TelegramKBMCP/ToolHandler.swift\", \"start_line\": 276, \"end_line\": 276, \"side\": \"RIGHT\", \"based_on_repo_rules\": false, \"kind\": \"bug\"} -->\n\n🔴 **Oversized limit terminates the server**\n\nA floating-point `limit` above `Int.max` makes `Args.int` trap during conversion, before the page-size clamp runs. The MCP server exits instead of rejecting the argument.\n\n<details>\n<summary>Learn more</summary>\n\n`limit` is a JSON number decoded as an MCP `Value`. A whole-valued double can exceed the range of Swift `Int`; checking whether it equals its rounded value does not make `Int(double)` safe. The conversion traps before the handler can return a result or `MCPError.invalidParams`.\n\n**Example:** `search_posts` with `{\"query\":\"swift\",\"limit\":1e20}` reaches the double branch; `1e20.rounded()` equals `1e20`, but converting it to `Int` terminates the process rather than clamping to 100.\n\n**Recommended fix:** Check that the double is finite, nonnegative, integral, and representable before converting; alternatively clamp values above `max` in the double domain before conversion. Reject other numeric values with `MCPError.invalidParams`, and test a whole-valued number larger than `Int.max`.\n\n</details>\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/5\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+          },
+          {
+           "databaseId": 4098872826,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T21:54:46Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4098872826",
+           "body": "Fixed in a595d78. `Args.int` now uses `Int(exactly:)` and saturates to `Int.max`/`Int.min` for finite whole doubles outside the `Int` range, so the existing `>= 0` check and `min(n, max)` clamp apply instead of a trap. Test `hugeLimitIsClampedNotFatal` (`1e20` → clamped page, `-1e20` → invalidParams, `1.5` → invalidParams) plus a mutant that puts `Int(x)` back."
+          }
+         ]
+        }
+       },
+       {
+        "isResolved": true,
+        "isOutdated": true,
+        "path": "Sources/TelegramKBStore/Search.swift",
+        "resolvedBy": {
+         "login": "devin-ai-integration[bot]"
+        },
+        "comments": {
+         "totalCount": 2,
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "databaseId": 4098761607,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T21:40:04Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4098761607",
+           "body": "<!-- devin-review-comment {\"id\": \"BUG_pr-review-job-affabd4512bf403cbce287710f40b344_0002\", \"file_path\": \"Sources/TelegramKBStore/Search.swift\", \"start_line\": 313, \"end_line\": 314, \"side\": \"RIGHT\", \"based_on_repo_rules\": false, \"kind\": \"bug\"} -->\n\n🟡 **Shortener pagination fails after resolution changes**\n\nWhen a queried shortener gains or changes resolution, `links(to:)` rejects its previous cursor as foreign. Its fingerprint changes with the resolved destination, so the client receives no page or `index_moved_since_cursor` warning.\n\n<details>\n<summary>Learn more</summary>\n\nA link cursor carries a fingerprint of the match key and the index generation. A shortener's match key comes from its `urlResolution` row, which a writer can update between pages. The writer increments the generation in [upsert(resolutions:)](https://github.com/laconicman/telegram-kb/blob/7bfc4aeabcda08cb0a86b5fe1f13cba6879de1b6/Sources/TelegramKBStore/Store.swift#L243-L258 \"Sources/TelegramKBStore/Store.swift:243-258\"), but the changed match key causes `Cursor.resume` to throw before that generation can be compared. This turns ordinary corpus movement into an invalid-argument error instead of the advertised drift signal.\n\n**Example:** A query for `https://clck.ru/x` returns page one while its resolution points to `https://a.example`. An import changes its destination to `https://b.example`; the same URL and cursor now yield `cursorDoesNotMatchQuery`, rather than a page marked as moved.\n\n**Recommended fix:** Bind the cursor to the stable canonical query URL as well as the lookup mode, not its mutable resolved match key; retain the generation check to signal changed membership. Preserve equivalent-spelling cursor sharing where the effective key remains stable, and test a changed resolution of the queried URL between pages.\n\n</details>\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/5\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+          },
+          {
+           "databaseId": 4098874342,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T21:54:58Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4098874342",
+           "body": "Fixed in 807084b. The cursor fingerprint is now `[\"links\", predicate, key]` where `key` is the query's canonical URL (or raw spelling on the fallback path), not the resolved match key. A resolution written mid-walk keeps the cursor valid and surfaces as `index_moved_since_cursor` via the generation bump. Equivalent canonical spellings still share a cursor; a shortener and its destination no longer do, since that sharing was exactly what made the cursor fragile. Test `linkCursorSurvivesReresolution` + mutant (fingerprint over `argument` again); `linksPageThroughACursor` updated for the new sharing rule."
+          }
+         ]
+        }
+       },
+       {
+        "isResolved": true,
+        "isOutdated": false,
+        "path": "Sources/TelegramKBMCP/Tools.swift",
+        "resolvedBy": {
+         "login": "devin-ai-integration[bot]"
+        },
+        "comments": {
+         "totalCount": 2,
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "databaseId": 4098761768,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T21:40:05Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4098761768",
+           "body": "<!-- devin-review-comment {\"id\": \"BUG_pr-review-job-affabd4512bf403cbce287710f40b344_0003\", \"file_path\": \"Sources/TelegramKBMCP/Tools.swift\", \"start_line\": 77, \"end_line\": 77, \"side\": \"RIGHT\", \"based_on_repo_rules\": false, \"kind\": \"bug\"} -->\n\n🟡 **Final pages violate their output schemas**\n\nOn a final page, `next_cursor` encodes as `null`, but both tool schemas declare it as a string. Schema-validating MCP clients reject otherwise successful search and link results.\n\n<details>\n<summary>Learn more</summary>\n\nBoth [SearchPostsOutput](https://github.com/laconicman/telegram-kb/blob/7bfc4aeabcda08cb0a86b5fe1f13cba6879de1b6/Sources/TelegramKBMCP/Records.swift#L56-L64 \"Sources/TelegramKBMCP/Records.swift:56-64\") and [FindLinksOutput](https://github.com/laconicman/telegram-kb/blob/7bfc4aeabcda08cb0a86b5fe1f13cba6879de1b6/Sources/TelegramKBMCP/Records.swift#L81-L89 \"Sources/TelegramKBMCP/Records.swift:81-89\") hold `next_cursor` as `String?`. Swift's synthesized `Encodable` omits optional keys when they are nil, rather than encoding JSON `null`. The declared output schema does not list `next_cursor` as required, so omitted keys are valid under the current schema. No bug here if the SDK encodes via the synthesized `Codable` conformance; verify the exact encoded `structuredContent` on a terminal page before changing the schema.\n\n</details>\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/5\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+          },
+          {
+           "databaseId": 4098875313,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T21:55:06Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4098875313",
+           "body": "Verified, not a bug: the SDK encodes `structuredContent` through the synthesized `Encodable`, which omits a nil optional key. `findLinksPages` now asserts on the final page that `structuredContent[\"next_cursor\"]` is absent (not `.null`), so the schema (`next_cursor` optional string) matches what is actually sent. No schema change."
+          }
+         ]
+        }
+       },
+       {
+        "isResolved": true,
+        "isOutdated": true,
+        "path": "Sources/TelegramKBStore/Search.swift",
+        "resolvedBy": {
+         "login": "devin-ai-integration[bot]"
+        },
+        "comments": {
+         "totalCount": 2,
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "databaseId": 4098761906,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T21:40:06Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4098761906",
+           "body": "<!-- devin-review-comment {\"id\": \"ANALYSIS_pr-review-job-affabd4512bf403cbce287710f40b344_0001\", \"file_path\": \"Sources/TelegramKBStore/Search.swift\", \"start_line\": 293, \"end_line\": 295, \"side\": \"RIGHT\", \"kind\": \"analysis\"} -->\n\n🔍 **Duplicate links repeat full post hydration**\n\nWhen one post contains several matching links, `linkedPosts` loads that post and its relations once per link. The handler then keeps only one copy per post ID. Deduplicating hydration IDs can reduce repeated database reads without changing link-hit order.\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/5\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+          },
+          {
+           "databaseId": 4098876265,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T21:55:14Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4098876265",
+           "body": "Done in 807084b. `linkedPosts` dedupes hit IDs (first-occurrence order preserved) before `loadPosts`, so a post carrying the URL twice is two link hits but one hydration. `Hydrated` docs updated (\"one per distinct post\"); `hydratedPagesMatchTheirHits` covers the two-links-one-post case."
+          }
+         ]
+        }
+       },
+       {
+        "isResolved": true,
+        "isOutdated": true,
+        "path": "Sources/TelegramKBMCP/ToolHandler.swift",
+        "resolvedBy": {
+         "login": "devin-ai-integration[bot]"
+        },
+        "comments": {
+         "totalCount": 3,
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "databaseId": 4098885359,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T21:56:25Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4098885359",
+           "body": "<!-- devin-review-comment {\"id\": \"BUG_pr-review-job-0876cdf572c342ef82609c9dca5b6b68_0001\", \"file_path\": \"Sources/TelegramKBMCP/ToolHandler.swift\", \"start_line\": 239, \"end_line\": 239, \"side\": \"RIGHT\", \"based_on_repo_rules\": false, \"kind\": \"bug\"} -->\n\n🟡 **Text-only pagination points to invalid argument**\n\nWhen more results exist, `footer` tells text-only clients to pass `next_cursor`, but the tool accepts `cursor`. Following that instruction returns `invalidParams` instead of the next page.\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/5\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+          },
+          {
+           "databaseId": 4098960906,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T22:07:06Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4098960906",
+           "body": "Fixed in 34433e3: the footer is now `N of M post(s) — for the rest, pass next_cursor: <token>` whenever a cursor exists, for both `search_posts` and `find_links` (they share `footer`). Final-page and count-only messages are unchanged and carry no cursor. Test `footerCarriesTheCursor` asserts the text ends with the same token `structuredContent.next_cursor` holds; mutant restores the old cursor-less message → red. `footerFollowsNextCursor` re-anchored to the new text."
+          },
+          {
+           "databaseId": 4099213946,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T22:42:07Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4099213946",
+           "body": "Fixed in 0143a74: the footer now reads `N of M post(s) — for the rest, call again with cursor: <token>` — the argument's name, not the output field's. `footerCarriesTheCursor` asserts the suffix `call again with cursor: <token>` and that `next_cursor` does not appear in the text at all; the mutant (`footerCarriesTheCursor.patch`) restores the old field-naming, token-less wording and goes red on both counts."
+          }
+         ]
+        }
+       },
+       {
+        "isResolved": true,
+        "isOutdated": true,
+        "path": "Sources/TelegramKBMCP/ToolHandler.swift",
+        "resolvedBy": {
+         "login": "devin-ai-integration[bot]"
+        },
+        "comments": {
+         "totalCount": 2,
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "databaseId": 4098885529,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T21:56:26Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4098885529",
+           "body": "<!-- devin-review-comment {\"id\": \"BUG_pr-review-job-0876cdf572c342ef82609c9dca5b6b68_0002\", \"file_path\": \"Sources/TelegramKBMCP/ToolHandler.swift\", \"start_line\": 315, \"end_line\": 316, \"side\": \"RIGHT\", \"based_on_repo_rules\": false, \"kind\": \"bug\"} -->\n\n🟡 **Fractional-second search bounds are rejected**\n\nWhen `from` or `to` contains fractional seconds, `date` rejects a valid ISO-8601 timestamp. The default `ISO8601FormatStyle` omits fractional seconds, so clients cannot filter at stored millisecond precision.\n\n<details>\n<summary>Learn more</summary>\n\n`search_posts` accepts ISO-8601 date bounds, and the archive can retain fractional seconds. The default `Date.ISO8601FormatStyle()` used by [iso](https://github.com/laconicman/telegram-kb/blob/a595d78c8d9955b51d4e1b59239d14bb42763d84/Sources/TelegramKBMCP/ToolHandler.swift#L325 \"Sources/TelegramKBMCP/ToolHandler.swift:325\") parses timestamps without fractional seconds. The parser falls through to the date-only branch and rejects a valid fractional timestamp as `invalidParams`.\n\n**Example:** A caller provides `to: \"2023-11-14T23:59:59.500Z\"` to include posts through half a second before midnight. The tool rejects the call instead of applying that bound.\n\n**Recommended fix:** Try a format style with `includingFractionalSeconds: true` alongside the existing nonfractional style, and add an MCP test for a fractional bound.\n\n</details>\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/5\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+          },
+          {
+           "databaseId": 4098958788,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T22:06:48Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4098958788",
+           "body": "Fixed in 34433e3: `Args.date` tries `Date.ISO8601FormatStyle(includingFractionalSeconds: true)` after the plain style, so `2023-11-14T23:59:59.500Z` is an inclusive bound at the store's own precision. Test `fractionalSecondBoundsAreAccepted` (a post at `.500` is in, one at `.750` is out); mutant removes the fractional parse → `invalidParams` → red."
+          }
+         ]
+        }
+       },
+       {
+        "isResolved": true,
+        "isOutdated": true,
+        "path": "Sources/TelegramKBMCP/ToolHandler.swift",
+        "resolvedBy": {
+         "login": "devin-ai-integration[bot]"
+        },
+        "comments": {
+         "totalCount": 2,
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "databaseId": 4098885707,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T21:56:27Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4098885707",
+           "body": "<!-- devin-review-comment {\"id\": \"BUG_pr-review-job-0876cdf572c342ef82609c9dca5b6b68_0003\", \"file_path\": \"Sources/TelegramKBMCP/ToolHandler.swift\", \"start_line\": 319, \"end_line\": 319, \"side\": \"RIGHT\", \"based_on_repo_rules\": false, \"kind\": \"bug\"} -->\n\n🟡 **Final-day posts vanish from date-only searches**\n\nFor a post after 23:59:59.999, `date` ends a date-only `to` one millisecond before midnight. The inclusive filter omits that post even though its date is the requested day.\n\n<details>\n<summary>Learn more</summary>\n\nA date-only `to` represents all posts on that calendar day. This upper bound is the final millisecond, but `Post.date` is a Foundation `Date` and the store does not round its values before persisting them in [write](https://github.com/laconicman/telegram-kb/blob/a595d78c8d9955b51d4e1b59239d14bb42763d84/Sources/TelegramKBStore/Store.swift#L107-L124 \"Sources/TelegramKBStore/Store.swift:107-124\"). An imported post can therefore carry a sub-millisecond timestamp after the chosen upper bound. The inclusive SQL comparison in [SearchFilter.sql](https://github.com/laconicman/telegram-kb/blob/a595d78c8d9955b51d4e1b59239d14bb42763d84/Sources/TelegramKBStore/SearchFilter.swift#L40-L45 \"Sources/TelegramKBStore/SearchFilter.swift:40-45\") excludes it.\n\n**Example:** For `to: \"2023-11-14\"`, a post dated `2023-11-14T23:59:59.9995Z` falls outside the computed bound, although it belongs to November 14.\n\n**Recommended fix:** Represent date-only upper bounds as an exclusive next-day bound (`p.date < nextMidnight`) rather than an inclusive approximation of the previous day. Preserve inclusive comparison for explicit timestamp bounds; add a boundary test with sub-millisecond dates.\n\n</details>\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/5\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+          },
+          {
+           "databaseId": 4098957727,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T22:06:39Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4098957727",
+           "body": "Fixed in 3085285 + 34433e3 as suggested: a date-only `to` is now an exclusive bound. `Store.SearchFilter` gains `before: Date?` (`p.date < ?`, part of the cursor fingerprint), `Args.date` returns `.instant(Date)` or `.day(start:)`, and the handler maps a date-only upper bound to `filter.before = start + 86_400`; explicit timestamps stay the inclusive `to`.\n\nOne precision on the example: the store rounds to the millisecond on write (GRDB's `yyyy-MM-dd HH:mm:ss.SSS`), so a post at `23:59:59.9995` is stored as `2023-11-15 00:00:00.000` and is the 15th at the store's resolution either way. The real hazard was that `start + 86_399.999` is a Double the formatter can land on either side of `.999` — so the bound was an approximation of something that has no exact value. `before: nextMidnight` is exact.\n\nTests: `dateOnlyToCoversTheWholeDay` extended with a post at the day's last stored millisecond; `filterByKindAndDate` covers `before` being exclusive and distinct from `to` to a cursor. Mutants: `filter.to = start + 86_400` (inclusive midnight) and `<` → `<=` both go red."
+          }
+         ]
+        }
+       },
+       {
+        "isResolved": true,
+        "isOutdated": false,
+        "path": "Sources/TelegramKBStore/Search.swift",
+        "resolvedBy": {
+         "login": "devin-ai-integration[bot]"
+        },
+        "comments": {
+         "totalCount": 2,
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "databaseId": 4098885849,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T21:56:29Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4098885849",
+           "body": "<!-- devin-review-comment {\"id\": \"ANALYSIS_pr-review-job-0876cdf572c342ef82609c9dca5b6b68_0001\", \"file_path\": \"Sources/TelegramKBStore/Search.swift\", \"start_line\": 320, \"end_line\": 320, \"side\": \"RIGHT\", \"kind\": \"analysis\"} -->\n\n🔍 **Link cursor summary is out of date**\n\nThe PR summary says shortener and destination queries share a cursor. `links(to:)` fingerprints the query's canonical URL instead, so those queries have distinct cursors. Reconcile the summary with the later review notes.\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/5\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+          },
+          {
+           "databaseId": 4098959900,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T22:06:57Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4098959900",
+           "body": "Correct — the PR description's Store paragraph was stale after round 2's cursor change. The code and `Design.md` are the contract: the cursor is fingerprinted over the query's canonical URL (or raw spelling), so equivalent spellings share one and a shortener and its destination do not — that sharing was what broke a walk when the resolution between them changed mid-page. The description now says exactly that (Store paragraph and the round-2 table row). No code change."
+          }
+         ]
+        }
+       },
+       {
+        "isResolved": true,
+        "isOutdated": true,
+        "path": "Sources/TelegramKBMCP/Tools.swift",
+        "resolvedBy": {
+         "login": "devin-ai-integration[bot]"
+        },
+        "comments": {
+         "totalCount": 2,
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "databaseId": 4099000569,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T22:12:53Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4099000569",
+           "body": "<!-- devin-review-comment {\"id\": \"BUG_pr-review-job-e52d99d067ee45ba8db49f5a0db5aae3_0002\", \"file_path\": \"Sources/TelegramKBMCP/Tools.swift\", \"start_line\": 56, \"end_line\": 59, \"side\": \"RIGHT\", \"based_on_repo_rules\": false, \"kind\": \"bug\"} -->\n\n🟡 **Date-only searches fail client schema validation**\n\nWhen a client validates `from` or `to`, the `date-time` schema rejects `YYYY-MM-DD`. The [date decoder](https://github.com/laconicman/telegram-kb/blob/34433e31a235de95b598cc538eea06389c7ed600/Sources/TelegramKBMCP/ToolHandler.swift#L329-L334 \"Sources/TelegramKBMCP/ToolHandler.swift:329-334\") accepts that spelling, so clients cannot send supported whole-day bounds.\n\n```suggestion\n                \"from\": .object([\"type\": \"string\",\n                                 \"description\": \"Oldest post date, inclusive; ISO-8601 or YYYY-MM-DD.\"]),\n                \"to\": .object([\"type\": \"string\",\n                               \"description\": \"Newest post date, inclusive; ISO-8601 or YYYY-MM-DD.\"]),\n```\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/5\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+          },
+          {
+           "databaseId": 4099215945,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T22:42:27Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4099215945",
+           "body": "Fixed in 0143a74 as suggested: `from`/`to` are plain `\"type\": \"string\"` with the description still naming both spellings. New test `dateBoundsSchemaAdmitsDateOnly` reads the schema back through `tools/list` and asserts neither bound carries a `format` key (and that the description advertises `YYYY-MM-DD`); its mutant re-adds `\"format\": \"date-time\"`. Design.md notes why the format is deliberately absent."
+          }
+         ]
+        }
+       },
+       {
+        "isResolved": true,
+        "isOutdated": true,
+        "path": "Sources/TelegramKBMCP/Records.swift",
+        "resolvedBy": {
+         "login": "devin-ai-integration[bot]"
+        },
+        "comments": {
+         "totalCount": 2,
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "databaseId": 4099000684,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T22:12:54Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4099000684",
+           "body": "<!-- devin-review-comment {\"id\": \"BUG_pr-review-job-e52d99d067ee45ba8db49f5a0db5aae3_0003\", \"file_path\": \"Sources/TelegramKBMCP/Records.swift\", \"start_line\": 40, \"end_line\": 40, \"side\": \"RIGHT\", \"based_on_repo_rules\": false, \"kind\": \"bug\"} -->\n\n🟡 **Search dates lose fractional timestamps**\n\nFor posts stamped between whole seconds, `PostSummary.date` drops the fraction. Reusing that displayed date as an inclusive `to` excludes the post itself.\n\n<details>\n<summary>Learn more</summary>\n\nSearch records expose the post's date, and the search tool accepts inclusive timestamp bounds with fractional seconds. The default ISO-8601 rendering omits the fraction from stored dates with millisecond precision. Other MCP date renderings use the same format at [the full post](https://github.com/laconicman/telegram-kb/blob/34433e31a235de95b598cc538eea06389c7ed600/Sources/TelegramKBMCP/Records.swift#L154 \"Sources/TelegramKBMCP/Records.swift:154\") and [link hits](https://github.com/laconicman/telegram-kb/blob/34433e31a235de95b598cc538eea06389c7ed600/Sources/TelegramKBMCP/ToolHandler.swift#L147 \"Sources/TelegramKBMCP/ToolHandler.swift:147\"), so the problem also affects those returned timestamps.\n\n**Example:** A post dated `2023-11-14T23:59:59.500Z` is shown as `2023-11-14T23:59:59Z`. Searching with `to` set to that displayed date excludes it, although the caller chose the post's own date.\n\n**Recommended fix:** Render all returned post dates using an ISO-8601 style that includes fractional seconds. Add a round-trip test using a stored post with a `.500` timestamp and reuse the returned date as an inclusive bound.\n\n</details>\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/5\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+          },
+          {
+           "databaseId": 4099217090,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T22:42:37Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4099217090",
+           "body": "Fixed in 0143a74: every date the tools emit — `PostSummary.date`, `LinkHitRecord.date`, `PostDetail.date`, preview `observed_at`, and the `get_post` text header — goes through one `Date.tgkbISO8601` (`ISO8601FormatStyle(includingFractionalSeconds: true)`), so a `.500` post renders as `2023-11-14T23:59:59.500Z`, the precision the store keeps. Round-trip test `returnedDatesRoundTripAsBounds`: seed `.500` and `.750` posts, take the `.500` post's returned `date`, pass it back as `to`, and expect exactly that post (and `get_post` agreeing on the spelling). Mutant reverts the helper to `.iso8601` and is red. The text renderings' `date.prefix(10)` day column is unaffected."
+          }
+         ]
+        }
+       },
+       {
+        "isResolved": true,
+        "isOutdated": true,
+        "path": "Scripts/mutants/equivalentSpellingsShareACursor.patch",
+        "resolvedBy": {
+         "login": "devin-ai-integration[bot]"
+        },
+        "comments": {
+         "totalCount": 2,
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "databaseId": 4099000812,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T22:12:55Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4099000812",
+           "body": "<!-- devin-review-comment {\"id\": \"ANALYSIS_pr-review-job-e52d99d067ee45ba8db49f5a0db5aae3_0001\", \"file_path\": \"Scripts/mutants/equivalentSpellingsShareACursor.patch\", \"start_line\": 13, \"end_line\": 13, \"side\": \"RIGHT\", \"kind\": \"analysis\"} -->\n\n🔍 **Cursor mutation has stale context**\n\nThe patch still expects `filter.to` to end the fingerprint fields, but `filter.before` now follows it. `git apply --check` fails, so this mutant cannot verify its regression test.\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/5\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+          },
+          {
+           "databaseId": 4099214972,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T22:42:17Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4099214972",
+           "body": "Re-anchored in 0143a74 — the patch now carries the `filter.before` line in its context and `git apply --check` passes; run against the tree it is red again (`equivalentSpellingsShareACursor` fails on the un-normalised fingerprint). While I was at it I checked every patch under `Scripts/mutants/` with `git apply --check`: `footerFollowsNextCursor` and `pollRendersAsText` had also drifted with this round's `ToolHandler` edits and are regenerated too; the rest apply cleanly. All six touched/new mutants were verified red on Linux."
+          }
+         ]
+        }
+       },
+       {
+        "isResolved": true,
+        "isOutdated": true,
+        "path": "Sources/TelegramKBStore/Search.swift",
+        "resolvedBy": {
+         "login": "devin-ai-integration[bot]"
+        },
+        "comments": {
+         "totalCount": 2,
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "databaseId": 4099230621,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T22:44:49Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4099230621",
+           "body": "<!-- devin-review-comment {\"id\": \"BUG_pr-review-job-3760ac3e67794ce984b6f905a7332b5f_0001\", \"file_path\": \"Sources/TelegramKBStore/Search.swift\", \"start_line\": 329, \"end_line\": 330, \"side\": \"RIGHT\", \"based_on_repo_rules\": false, \"kind\": \"bug\"} -->\n\n🟡 **Link pages can skip tied matches**\n\nWhen a post has multiple matching links, `links(to:)` gives those links identical sort keys. Separate offset queries can order the ties differently, repeating one link and skipping another without reporting drift.\n\n```suggestion\n            ORDER BY l.channelUsername, l.messageID, l.id LIMIT ? OFFSET ?\n            \"\"\", arguments: [argument, cap, offset])\n```\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/5\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+          },
+          {
+           "databaseId": 4099292291,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T22:54:56Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4099292291",
+           "body": "Fixed in a273204 as suggested: `ORDER BY l.channelUsername, l.messageID, l.id`, so every key is total and ties come in the order the post carried its links (`l.id` is insertion order — `upsert` deletes and re-inserts a post's links in post order). Documented on `links(to:)`.\n\nTest `tiedLinkHitsPageInATotalOrder`: a post carrying the destination five ways among two single-link posts, walked at `limit: 1` — 7 pages, each spelling exactly once, in the post's order, and equal to the single unpaged read. One honest note on the mutant: simply dropping `, l.id` stays green on SQLite, because for this query plan the untied rows happen to come back in rowid order anyway — the finding is about what the SQL *guarantees*, not a reproducible mis-page. So the committed mutant inverts the tiebreak (`l.id DESC`) and is red; that pins the order the docs now promise. `linkTotalCountsEveryMatch` / `linksPageThroughACursor` mutants re-anchored on the new line; every patch under `Scripts/mutants/` still applies."
+          }
+         ]
+        }
+       },
+       {
+        "isResolved": true,
+        "isOutdated": false,
+        "path": "Sources/TelegramKBMCP/ToolHandler.swift",
+        "resolvedBy": {
+         "login": "devin-ai-integration[bot]"
+        },
+        "comments": {
+         "totalCount": 2,
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "databaseId": 4099230746,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T22:44:50Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4099230746",
+           "body": "<!-- devin-review-comment {\"id\": \"BUG_pr-review-job-3760ac3e67794ce984b6f905a7332b5f_0002\", \"file_path\": \"Sources/TelegramKBMCP/ToolHandler.swift\", \"start_line\": 211, \"end_line\": 215, \"side\": \"RIGHT\", \"based_on_repo_rules\": false, \"kind\": \"bug\"} -->\n\n🟡 **Text-only search omits channel and author**\n\nWhen a client displays only `content`, `search_posts` renders links and snippets but omits the channel and author fields. Users cannot identify signed authors from search results without inspecting structured data.\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/5\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+          },
+          {
+           "databaseId": 4099293305,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T22:55:07Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4099293305",
+           "body": "Author added in a273204. A hit now renders as\n\n```\n2023-11-14  https://t.me/iosgr/6  by Иван Петров  ♥5\n    snippet…\n```\n\nwith the byline only when the post is signed, mirroring `get_post`'s `by <author>` line. I left the channel implicit: the permalink `https://t.me/<channel>/<id>` on every hit already spells it, and a separate `@channel` column would only repeat it in a context-window-sized rendering. Test `searchTextNamesTheAuthor` asserts the signed hit's line contains `https://t.me/iosgr/6  by Иван Петров` and the unsigned hit has no ` by ` at all; the mutant drops the byline and is red."
+          }
+         ]
+        }
+       },
+       {
+        "isResolved": true,
+        "isOutdated": false,
+        "path": "Scripts/mutants/tiedLinkHitsPageInATotalOrder.patch",
+        "resolvedBy": {
+         "login": "devin-ai-integration[bot]"
+        },
+        "comments": {
+         "totalCount": 2,
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "databaseId": 4099299933,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T22:56:18Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4099299933",
+           "body": "<!-- devin-review-comment {\"id\": \"ANALYSIS_pr-review-job-1091c08fb625480a8fe37b7865fa054e_0001\", \"file_path\": \"Scripts/mutants/tiedLinkHitsPageInATotalOrder.patch\", \"start_line\": 9, \"end_line\": 9, \"side\": \"RIGHT\", \"kind\": \"analysis\"} -->\n\n🔍 **Pagination mutant preserves the total order**\n\nChanging `l.id` to descending still gives tied links a total order. The test fails on insertion order, not skipped or repeated links; this mutant does not verify the original pagination failure.\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/5\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+          },
+          {
+           "databaseId": 4099321534,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T22:59:36Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4099321534",
+           "body": "Fair — `DESC` is still a total order, so that mutant only pinned insertion order. Reworked in 481f86e: the mutant now orders ties by `random()`, the adversarial instance of what SQL permits when the key is not total (dropping `l.id` outright stays green here because SQLite's plan happens to return ties in rowid order — the bug is the missing guarantee, and `random()` is that guarantee's absence made observable). The test walks the seven pages 25 times and asserts on every walk that no `(post, spelling)` is repeated or skipped — the pagination failure itself — before the order assertions. Against the mutant it fails on that assertion on every run (74 recorded issues in one run); baseline green."
+          }
+         ]
+        }
+       }
+      ]
+     }
+    }
+   }
+  }
+ }
+]

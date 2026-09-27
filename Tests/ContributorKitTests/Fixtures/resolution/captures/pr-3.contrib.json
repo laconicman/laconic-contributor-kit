@@ -1,0 +1,514 @@
+{
+ "items": [
+  {
+   "changed": null,
+   "id": "discussion_r4066817129",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/3#discussion_r4066817129",
+   "question": "None. You re-read your reply against the ask and recorded that it answers it.",
+   "state": "answered-checked",
+   "text": {
+    "ask": "🔴 **Expired leases permit concurrent writes**\n\nWhen another process steals an expired lease, `touchChannelLease` silently updates zero rows and the original writer continues. Its later batches interleave with the new holder, mixing channel posts and crawl state.\n\nLearn more\n\n\n\nA lease can be stolen when its heartbeat is older than 120 seconds, even if the original process remains alive. A suspended writer can therefore resume after a second writer has claimed the row. The current heartbeat update has no ownership assertion because SQLite accepts an `UPDATE` affecting zero rows. It also runs after `commitPage`, so one batch is already written before lease loss could be detected.\n\n**Example:** Process A acquires `@group`, then sleeps for three minutes. Process B steals the stale lease and starts importing. Process A resumes, commits a batch, updates zero lease rows, and continues through every remaining batch alongside B.\n\n**Recommended fix:** Assert lease ownership inside every transaction that writes channel identity, posts, or crawl state. Renew the heartbeat before those writes and throw when no row matches `(channelUsername, pid)`. `commitPage` needs to perform this assertion in its existing transaction rather than relying on the separate `touchChannelLease` call.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Fixed in `efd0025` — ownership is now asserted **inside** each channel-scoped write transaction, exactly as recommended: `Store.assertChannelLease` runs `UPDATE channelLease SET heartbeat=? WHERE channelUsername=? AND pid=?` as the first statement in `commitPage`, `claimChannelIdentity`, `ensureChannel`, `updateIdentity` and `recordCrawlState`, and a zero-row match throws `channelLeaseLost` — the posts and crawl-state writes roll back with it. `touchChannelLease` is deleted (subsumed); `upsert` stays the unleased seeding primitive, which the doc comments now say.\n\n`stolenLeaseAbortsWrites` covers the scenario: after the row is stolen to a foreign pid, both `commitPage` and `recordCrawlState` refuse and write nothing; the displaced writer's `releaseChannelLease` does not delete the stealer's row; re-acquiring after the steal ends resumes cleanly. New mutant `stolenLeaseAbortsWrites.patch` verified red; full run: 166 tests, 59/59 mutants."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4066817199",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/3#discussion_r4066817199",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🔴 **Reordered text passes chat verification**\n\n`sameText` accepts reordered unique words and up to ten percent different words. A matching id and timestamp can verify the wrong chat.\n\nLearn more\n\n\n\nThe exact token-array comparison already tolerates punctuation, whitespace, case, links, and emoji because tokenization discards non-alphanumeric characters. The fallback converts both messages to sets, which discards order and repetition. Its inclusive 0.9 threshold also accepts one different unique token out of ten. This check is the only link between the export's contents and the requested username; `data-peer` identifies the requested embed, not the export.\n\n**Example:** The export contains `Alice paid Bob today`, while another chat has message text `Bob paid Alice today` at the same message id and second. Their token arrays differ, but their sets are equal, so `sameText` returns true and the wrong chat passes verification.\n\n**Recommended fix:** Preserve token order and multiplicity. Compare normalized token sequences, allowing only specifically observed rendering differences through a bounded sequence-diff rule. Add negative tests for reordered words and for the 90%-overlap boundary.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Fixed in 984ad35.\n\nThe comparison now runs over ordered token sequences instead of sets: `wb.difference(from: wa)` counts the shared tokens in order, so \"Bob paid Alice today\" no longer verifies as \"Alice paid Bob today\", and a recounted repeat (\"a a b\" vs \"a b b\") fails too. The ≥0.9 bound is kept but now applies to the ordered count, and `sameText` covers the reorder, the multiplicity, and the 90%% boundary.\n\nWhether any tolerance is needed at all is unverified — the reference corpus matched export-to-embed token-for-token — so the code now states the bound's purpose (a message edited between export and import) as an open question rather than assumed coverage. `sameText.patch` mutates the ordered diff back to the set overlap and goes red on the reorder case."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4066817314",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/3#discussion_r4066817314",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🟡 **Missing peer identity bypasses uniqueness checks**\n\nA valid embed without readable `data-peer` returns a nil raw id. The verified import then skips uniqueness checks and stores identity zero.\n\nLearn more\n\n\n\nText and date verification can succeed independently of `MessageEmbed.rawChannelID`. Returning its optional result treats an absent or changed `data-peer` format like an offline import, even though the caller records the message as verified. The subsequent conflict checks only run when the raw id is non-nil, so a renamed chat can acquire a second row.\n\n**Example:** Telegram keeps the message markup but removes `data-peer`. The message text and date match, `verifiedMessageID` is set, and the import creates `@newname` with raw id 0 even if the same chat already exists under `@oldname`.\n\n**Recommended fix:** When verification is enabled, require `MessageEmbed.rawChannelID` to return a positive id and throw a dedicated malformed-embed error otherwise. Reserve nil raw identity for imports explicitly run without a fetcher.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Fixed in 984ad35.\n\n`verify` now requires `MessageEmbed.rawChannelID` to yield a positive id: an embed that verifies the message and date but names no chat throws `malformedEmbed` instead of passing nil through. Nil is now reachable only with a nil fetcher (`--no-verify`), so `verifiedMessageID` set + identity 0 can no longer co-occur — a verified channel always gets its real `data-peer` id into `claimChannelIdentity`, where the duplicate-id check runs in-transaction.\n\nTests: `embedWithoutPeer` pins the refusal; `embedWithoutPeer.patch` restores the nil passthrough and goes red."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4094547318",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/3#discussion_r4094547318",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🔴 **Partial export silently loses early messages**\n\nIf `messages.html` is absent but `messages2.html` remains, `pageFiles` accepts the folder as complete. `ChatImport.run` imports only later pages without counting the missing first page, leaving early posts absent.\n\nLearn more\n\n\n\nA Telegram HTML chat export splits history across `messages.html`, `messages2.html`, and higher-numbered pages. This selector sorts whichever page files exist; the caller only tests for a nonempty array. It cannot distinguish a complete export from one with a missing first or middle page.\n\n**Example:** Copy `messages2.html` and `messages3.html` but forget `messages.html`. Import succeeds with posts from pages 2 and 3, reporting no unreadable rows, while all posts from page 1 vanish.\n\n**Recommended fix:** Require `messages.html` and a contiguous sequence of numbered pages before parsing. Throw an explicit incomplete-export error when a page is missing.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Fixed in f00f349.\n\n`pageFiles` now requires the sequence to start at `messages.html` and have no holes, throwing `IncompleteExport` naming the first missing page. The premise is upstream's: tdesktop's `HtmlWriter` numbers pages contiguously (`messagesFile(index)` — DeepWiki on telegramdesktop/tdesktop), so a gap is always a lost file, never a page the exporter skipped.\n\nTests: `pageSequenceGapIsRefused` (messages.html + messages3.html) and `pageSequenceFirstPageIsRefused` (messages2.html alone); the `pageOrder` fixture now writes a genuinely contiguous run. `pageSequence.patch` removes the check and both go red."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4094547498",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/3#discussion_r4094547498",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🟡 **Media-only group cannot be verified**\n\nFor an export containing only uncaptained media, `verify` selects no candidates and always throws `notFound`. `ChatImport.run` refuses the group despite readable posts and an accessible public embed.\n\nLearn more\n\n\n\nThe parser retains photo, video, voice and document messages without captions as posts with empty text. Verification filters all of those out before choosing candidates. An otherwise valid public-group export containing only those messages therefore fails the default import without making a network request.\n\n**Example:** An export contains three photos with no captions. `posts` has three entries, but `newest` is empty and the importer raises `notFound` with an empty `tried` list.\n\n**Recommended fix:** Provide a fallback verification path for media-only exports, comparing ID, date and available media metadata while keeping the existing text and identity checks for text-bearing posts.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Fixed in bf30236.\n\n`verify` now tries text-bearing candidates first (`sameText` stays the strong check), then falls back to textless posts when the export has none. A media-only embed still carries `<time datetime>` and `data-peer` — verified live on `t.me/beautifulpictures/3?embed=1` — so id + date-to-the-second + the chat's bare id still bind the export to the named chat.\n\nThe trade-off is documented in `verify`'s doc comment: for a media-only candidate the text comparison is two empty strings and contributes nothing, which is accepted because the alternative is refusing a valid export. Recorded in `Research.md`'s verified ledger.\n\nTest: `mediaOnlyExportVerifies` — a photo-only export verified against a media embed. `mediaOnly.patch` restores the text-only filter and goes red."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4094547667",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/3#discussion_r4094547667",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🔍 **Test the populated v5 upgrade**\n\nThe existing populated-v3 test crosses v6, but no test starts from a populated v5 store. [REVIEW.md](https://github.com/laconicman/telegram-kb/blob/615fdc65df9a73880d2396b6097734446408129c/REVIEW.md \"REVIEW.md\") requires testing upgrades from the previous populated schema; add that case for this migration.\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Added in f18a566: `populatedV5StoreUpgrades` migrates a populated store at `v5-index-generation` — a channel row and a post written in v5-era shape — then opens it, letting v6 run over real rows. It asserts the post survives and that `acquireChannelLease` works on the migrated file, which is the part an empty v5 store cannot exercise."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4094547866",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/3#discussion_r4094547866",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🟨 **Unvalidated channel name changes the verification destination**\n\nA channel name containing URL delimiters passes validation and enters `MessageEmbed.url` unchanged. The request can target a different URL from the username stored with the imported posts.\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Fixed in ae415f6 + bf30236.\n\n`Channel.isUsername` now bounds the name to ASCII letters, digits and `_` before it can reach a URL, and a failure throws `Channel.InvalidUsername`. Both interpolation sites are guarded: `ChannelClassifier.classify` (which covers `sync` and `doctor`) and `ChatImport.run` (which covers `MessageEmbed.url`). A delimiter in the name can no longer change the verification destination — and names like `a b` no longer crash the `URL(string:)` force-unwrap.\n\nTests: `invalidUsernameIsRefused` proves classify refuses before the first fetch; `invalidUsernameImportRefused` pins the import path. `invalidUsername.patch` removes both guards and goes red. The convention is recorded in `REVIEW.md`."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4095299083",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/3#discussion_r4095299083",
+   "question": "None. You re-read your reply against the ask and recorded that it answers it.",
+   "state": "answered-checked",
+   "text": {
+    "ask": "🔍 **Description omits media-only verification**\n\nThe description presents word comparison as required, but `verify` accepts media-only messages by id, date and peer. It also understates the added mutation tests. Align the summary with the final implementation.\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Updated — the description now documents the media-only path (id + date-to-the-second + `data-peer`, with the weaker evidence called out) and the current counts: 166 tests, 59 mutants, 12 added by this PR. A \"What review rounds added\" section now lists the lease, page contiguity, username validation and the v5 migration test so the description matches what the branch actually does."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4095575834",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/3#discussion_r4095575834",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🔴 **Reassigned username mixes two chat histories**\n\nWhen an imported group's username becomes previewable for another chat, `ChannelSync` writes that chat's posts into the group's row. `ensureChannel` retains the existing row, and `updateIdentity` replaces its raw ID without checking it. Search then mixes posts from two chats.\n\nLearn more\n\n\n\nAn imported group is stored under its username with its verified bare chat ID. [ensureChannel](https://github.com/laconicman/telegram-kb/blob/42805cc960f9b3c374e14e89a05cac2d809307b9/Sources/TelegramKBStore/Store.swift#L393-L401 \"Sources/TelegramKBStore/Store.swift:393-401\") does not change an existing row, and [updateIdentity](https://github.com/laconicman/telegram-kb/blob/42805cc960f9b3c374e14e89a05cac2d809307b9/Sources/TelegramKBStore/Store.swift#L407-L415 \"Sources/TelegramKBStore/Store.swift:407-415\") replaces its ID without checking it. If the username is later reassigned to a broadcast channel, the classifier now calls that username previewable; the new lease prevents concurrent writes but does not prevent writes for a different chat. The pages are committed before the discovered raw ID is written, so the group's older posts and the new channel's posts share one key.\n\n**Example:** An import stores group `@example` with raw ID 101. Telegram later assigns `@example` to channel 202; `tgkb sync example` writes channel 202's posts into group 101's row and changes its stored ID to 202.\n\n**Recommended fix:** Validate the raw ID and reachability against the existing row before the first `commitPage`, while holding the lease. Refuse a conflicting identity rather than rewriting it after posts commit; arrange for the crawler to expose the page's identity before its callback persists posts.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Fixed. `commitPage` now takes the page's `rawChannelID` — `crawl`'s `onPage` surfaces the id from the page's `data-view` (known before the first page commits), and `ChatImport` passes the id its verify learned. The stored row is re-checked inside the page write transaction itself: a reassigned username refuses before a post lands, on every page, not once at the end. `reassignedUsernameRefused` covers it; `reassignedUsernameRefused.patch` is the mutant."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4095576009",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/3#discussion_r4095576009",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🔴 **Seasonal timezone mismatch corrupts older posts**\n\nWhen two zones share the verified message's offset but differ earlier, `verify` accepts the wrong zone. `ChatExportParser` converts every post with that zone, so earlier posts receive incorrect dates.\n\nLearn more\n\n\n\nAn HTML export stores wall-clock times without a zone. [ChatExportParser.parse](https://github.com/laconicman/telegram-kb/blob/42805cc960f9b3c374e14e89a05cac2d809307b9/Sources/TelegramKBIngest/ChatExportParser.swift#L79-L105 \"Sources/TelegramKBIngest/ChatExportParser.swift:79-105\") converts every timestamp using the supplied zone, but `verify` compares just one post with its UTC embed. Matching UTC offsets on that one date do not imply that the zones shared an offset for the rest of the export, so older posts can be stored with shifted dates despite a successful verification.\n\n**Example:** A group contains a July post and a January post. A New York export is imported with `--timezone America/Bogota`: both zones use UTC−5 in January, so the January embed verifies, but the July New York post is stored one hour late.\n\n**Recommended fix:** Check an embed on each side of every offset transition present in the exported date range, or explicitly report that a single-message verification cannot establish the zone for the entire history. Refuse a claimed fully verified import if any sampled UTC moment differs.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Fixed. One verified instant pins the zone only at that instant, so after the candidate verifies, `verify` now probes the rest of the range: one post per distinct offset the claimed zone assigns, plus the oldest and midpoint posts. A probe deleted from t.me is skipped like any deletion; a live one that disagrees throws `wrongZone` the same way the primary candidate does. `seasonalZoneIsCaught` covers a claimed-fixed-`-5` vs true-New-York divergence the newest message hides; `seasonalZoneIsCaught.patch` is the mutant. The residual is documented in `verify`'s doc and <doc:Design>: a wrong zone whose divergence windows contain no probed post still verifies — the check bounds the risk, not closes it."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4095576157",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/3#discussion_r4095576157",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🟡 **Deleted text posts block media verification**\n\nWhen the newest text posts were deleted but media remains public, `verify` tries only three text posts and rejects the import. The candidate limit excludes every media post despite the supported media-only verification path.\n\nLearn more\n\n\n\nThe verification candidates put every text-bearing exported post before every media-only exported post, then take only the first three. Missing online messages are skipped in [verify](https://github.com/laconicman/telegram-kb/blob/42805cc960f9b3c374e14e89a05cac2d809307b9/Sources/TelegramKBSync/ChatImport.swift#L179-L186 \"Sources/TelegramKBSync/ChatImport.swift:179-186\"), but once all three candidates are missing, the import stops. Media-only verification already uses ID, date and peer when the export has no text, yet this fallback is unreachable when its text posts are all gone.\n\n**Example:** An export has three recent text posts and an older photo. The recent text posts are deleted from Telegram, while the photo still embeds. The importer tries only the three deleted posts and refuses the valid export.\n\n**Recommended fix:** Prioritize text-bearing posts, but after exhausting the text candidates, attempt a bounded set of media-only candidates before returning `notFound`.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Fixed. The candidate budget is now per kind: `prefix(Self.candidates)` over the newest text-bearing posts and a separate `prefix(Self.candidates)` over the newest media-only ones. Three deleted text posts can no longer spend the media posts' chances — `deletedTextPostsFallThroughToMedia` covers it, `deletedTextPostsFallThroughToMedia.patch` is the mutant."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4095576334",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/3#discussion_r4095576334",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🟡 **Shared file names vanish from search**\n\nFor an uncaptioned document, `post` stores empty text and discards the file name in the media markup. [indexForSearch](https://github.com/laconicman/telegram-kb/blob/42805cc960f9b3c374e14e89a05cac2d809307b9/Sources/TelegramKBStore/Store.swift#L232-L249 \"Sources/TelegramKBStore/Store.swift:232-249\") cannot index it, so searches for that document's name return no post.\n\nLearn more\n\n\n\nThe export's document markup includes its filename inside an element such as `a.media_file div.title`. [ChatExportParser.kind](https://github.com/laconicman/telegram-kb/blob/42805cc960f9b3c374e14e89a05cac2d809307b9/Sources/TelegramKBIngest/ChatExportParser.swift#L143-L156 \"Sources/TelegramKBIngest/ChatExportParser.swift:143-156\") recognizes that element as a document, but an uncaptioned document has no `div.text`. The parsed post therefore has empty text, and [indexForSearch](https://github.com/laconicman/telegram-kb/blob/42805cc960f9b3c374e14e89a05cac2d809307b9/Sources/TelegramKBStore/Store.swift#L232-L249 \"Sources/TelegramKBStore/Store.swift:232-249\") indexes no filename. An imported document can only be found by unrelated author metadata rather than its own descriptive name.\n\n**Example:** A group shares `static-analysis-guide.pdf` without a caption. The import records a `.document` post with empty text; querying `static-analysis-guide` misses it.\n\n**Recommended fix:** Extract the media file's visible title into indexed content, either as post text when there is no caption or through an explicit filename field added to the model and store index. Keep the document kind unchanged.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Fixed. When a message has no `text` div, the parser now reads `.media_file .title` / `.media_audio_file .title` — the file's name — into `post.text`, so an uncaptioned document is searchable under the only text the export carried. A captioned document keeps its caption; voice-message titles stay unread (they are generic). `documentFilenameIsText` covers it on the real fixture's `manual.pdf`; `documentFilenameIsText.patch` is the mutant. Verification was already adjusted to skip `sameText` for textless embeds — comparing the recorded file name against nothing would refuse every such message."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4095576473",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/3#discussion_r4095576473",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🟡 **Copied exports misdate link previews**\n\nWhen an export is copied with a new file modification time, `ChatImport` dates its link previews to the copy. Old preview metadata then appears newly observed in the store.\n\nLearn more\n\n\n\nThe parser's `observedAt` is persisted as `previewObservedAt` on each link. The modification date of `messages.html` describes the local copy of a file, not necessarily when Telegram produced its previews. File transfers and archive extraction can reset this date, and a failed metadata lookup silently substitutes the current time. Downstream readers cannot tell that old preview text has an unreliable timestamp.\n\n**Example:** Alice exports a chat in January and sends the export folder to Bob in September. Bob's copied `messages.html` gets a September modification time; the January link previews are recorded as September observations.\n\n**Recommended fix:** Use a reliable export timestamp if one is available; otherwise leave `observedAt` nullable for export previews or explicitly record that the timestamp reflects file modification rather than Telegram's observation.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Fixed. `observedAt` is now the post's own date — the snapshot Telegram rendered rode with the message, while the file's modification time is rewritten by any copy. `ChatExportParser.parse` no longer takes the parameter and `ChatImport` no longer reads the mtime at all. `linkPreview` asserts `observedAt == post.date`; `linkPreview.patch` is the mutant."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4095576610",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/3#discussion_r4095576610",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🔍 **Lease identity is process-wide**\n\n`assertChannelLease` recognizes a PID, not an individual run. The CLI runs channels sequentially today; concurrent library callers in one process need an explicit serialization or lease-token contract.\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Fixed. `channelLease` gains a `nonce` column (v6 was unmerged, so the schema changed in place); each `Store` value mints a UUID at acquire, and `assertChannelLease`/`releaseChannelLease` now bind `(channel, pid, nonce)` — a second `Store` in the same process can neither write under nor release the first's lease. `leaseTokenBindsTheHolder` covers it; `leaseTokenBindsTheHolder.patch` is the mutant."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4096073943",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/3#discussion_r4096073943",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🟡 **Concurrent reacquisition loses channel lease**\n\nWhen another task reacquires a channel as `releaseChannelLease` returns, the old release can remove its new token. Its next write fails `channelLeaseLost` despite holding the lease.\n\nLearn more\n\n\n\nA `Store` keeps a channel's lease nonce in a shared, locked map. Releasing a lease deletes its database row inside `dbPool.write`, but removes its map entry only when the surrounding function exits. A second task sharing this `Store` can acquire a new database lease after the delete commits and store a new nonce before the first task's deferred removal runs. The first task then deletes the new nonce; the second task's [assertChannelLease](https://github.com/laconicman/telegram-kb/blob/bf4bc6b925b4a44d469ead72e24f147464379559/Sources/TelegramKBStore/Store.swift#L572-L579 \"Sources/TelegramKBStore/Store.swift:572-579\") rejects every subsequent write.\n\n**Example:** Task A releases `news`; task B immediately acquires `news` and records nonce B. A's deferred cleanup removes B, so B's `commitPage` fails despite its valid lease row.\n\n**Recommended fix:** Remove only the token matching the nonce captured by the releasing task, with a compare-and-remove operation on `LeaseTokens`. Ensure a new acquisition cannot be erased by an older release, and test overlapping release/acquire calls on one `Store`.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Fixed. `releaseChannelLease` now captures the nonce before the row delete and removes the map entry only if it still equals it (`remove(_:onlyIf:)`) — an acquire landing between the two holds a different nonce and survives. `releaseKeepsAReacquiredToken` covers the conditional semantics directly (the interleave itself is a scheduling fact; the fix's guarantee is the compare-and-remove); `releaseKeepsAReacquiredToken.patch` is the mutant."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4096074194",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/3#discussion_r4096074194",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🟡 **Offline imports retain stale channel classification**\n\nAn offline import into an existing `previewDisabled` or `unresolvable` row leaves that reachability unchanged. `claimChannelIdentity` updates existing rows only when the embed supplied an id, so doctor misreports the imported group.\n\nLearn more\n\n\n\nThe offline `--no-verify` path calls [ChatImport.run](https://github.com/laconicman/telegram-kb/blob/bf4bc6b925b4a44d469ead72e24f147464379559/Sources/TelegramKBSync/ChatImport.swift#L139-L141 \"Sources/TelegramKBSync/ChatImport.swift:139-141\") with no `rawChannelID`. If a row with the requested username already exists and is not `webPreview`, the `INSERT ... ON CONFLICT DO NOTHING` here leaves its old reachability intact and the guarded `UPDATE` never executes. The posts are written, but [Doctor.reportIntegrity](https://github.com/laconicman/telegram-kb/blob/bf4bc6b925b4a44d469ead72e24f147464379559/Sources/tgkb/Doctor.swift#L75-L94 \"Sources/tgkb/Doctor.swift:75-94\") only recognizes imports when reachability is `.group`.\n\n**Example:** A row for `research` has reachability `previewDisabled`. An offline export import writes 500 posts to it, but doctor shows crawl coverage and warns that a backfill never completed instead of describing an imported group.\n\n**Recommended fix:** Update the existing row's reachability to `.group` even when `rawChannelID` is nil, while leaving its existing id untouched. Keep the existing `webPreview` refusal inside the same transaction.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Fixed. `claimChannelIdentity`'s upsert is now `ON CONFLICT(username) DO UPDATE SET reachability = excluded.reachability` — an offline import into a `previewDisabled`/`unresolvable` row reclassifies it as the group its posts make it, while the stored `rawChannelID` is left alone when the caller could not learn one (the follow-up UPDATE only runs for a non-nil id). `offlineImportReclassifies` covers it, `offlineImportReclassifies.patch` is the mutant."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4096074396",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/3#discussion_r4096074396",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🔍 **Unchecked concurrency in lease token map**\n\n`LeaseTokens` uses `@unchecked Sendable` despite the repository rule to use an actor. Review whether its synchronization can satisfy that convention without losing the synchronous write-transaction checks.\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Done, with one deliberate deviation: `LeaseTokens` is now `OSAllocatedUnfairLock`-backed with a checked `Sendable` conformance — not an actor. `assertChannelLease` runs *inside* `dbPool.write`, which is synchronous: an actor's isolation cannot be entered from there, and making the whole write async would invert GRDB's transaction scoping. The lock box is the honest shape; the unchecked marker is gone."
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5272298918",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/3#pullrequestreview-5272298918",
+   "question": "None. Acknowledged, and the body has not moved since.",
+   "state": "obligation-acknowledged",
+   "text": {
+    "ask": "> [!NOTE]\n> **Newer findings are available below.** Devin Review posted a newer report on this PR, in addition to the findings presented here.\n\n**Devin Review** found 3 potential issues.",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5305564317",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/3#pullrequestreview-5305564317",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5305565080",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/3#pullrequestreview-5305565080",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5305565955",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/3#pullrequestreview-5305565955",
+   "question": "None. Acknowledged, and the body has not moved since.",
+   "state": "obligation-acknowledged",
+   "text": {
+    "ask": "> [!NOTE]\n> **Newer findings are available below.** Devin Review posted a newer report on this PR, in addition to the findings presented here.\n\n**Devin Review** found 4 new potential issues.",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5306453278",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/3#pullrequestreview-5306453278",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5306453906",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/3#pullrequestreview-5306453906",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5306454486",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/3#pullrequestreview-5306454486",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5306455270",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/3#pullrequestreview-5306455270",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5306456651",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/3#pullrequestreview-5306456651",
+   "question": "None. Acknowledged, and the body has not moved since.",
+   "state": "obligation-acknowledged",
+   "text": {
+    "ask": "> [!NOTE]\n> **Newer findings are available below.** Devin Review posted a newer report on this PR, in addition to the findings presented here.\n\n**Devin Review** found 1 new potential issue.",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5306778354",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/3#pullrequestreview-5306778354",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5306778960",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/3#pullrequestreview-5306778960",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5306779846",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/3#pullrequestreview-5306779846",
+   "question": "None. Acknowledged, and the body has not moved since.",
+   "state": "obligation-acknowledged",
+   "text": {
+    "ask": "> [!NOTE]\n> **Newer findings are available below.** Devin Review posted a newer report on this PR, in addition to the findings presented here.\n\n**Devin Review** found 6 new potential issues.",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5307356642",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/3#pullrequestreview-5307356642",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5307357150",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/3#pullrequestreview-5307357150",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5307357804",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/3#pullrequestreview-5307357804",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5307361757",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/3#pullrequestreview-5307361757",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5307362254",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/3#pullrequestreview-5307362254",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5307363159",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/3#pullrequestreview-5307363159",
+   "question": "None. Acknowledged, and the body has not moved since.",
+   "state": "obligation-acknowledged",
+   "text": {
+    "ask": "**Devin Review** found 3 new potential issues.",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5307507691",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/3#pullrequestreview-5307507691",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5307508163",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/3#pullrequestreview-5307508163",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5307508735",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/3#pullrequestreview-5307508735",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5310131650",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/3#pullrequestreview-5310131650",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  }
+ ],
+ "provenance": {
+  "anomalies": [],
+  "command": "contrib in laconicman/telegram-kb --pr 3",
+  "counters": [
+   {
+    "label": "inline threads",
+    "value": 17
+   },
+   {
+    "label": "review bodies",
+    "value": 40
+   },
+   {
+    "label": "issue comments",
+    "value": 1
+   },
+   {
+    "label": "owed",
+    "value": 0
+   },
+   {
+    "label": "to re-read",
+    "value": 0
+   },
+   {
+    "label": "pages fetched",
+    "value": 1
+   }
+  ],
+  "finishedAt": "2026-09-26T18:01:54Z",
+  "notes": [
+   "18 of those review bodies are mine — not obligations",
+   "1 of those issue comments are mine — not obligations",
+   "as of 2026-09-26T18:01:54Z",
+   "17 item(s) no-prose — counted, not owed",
+   "snapshot: 257 item(s) known for this repository, age 4h; 0 new this run",
+   "bodies: full text, not excerpts",
+   "--no-snapshot: this run cannot inform the next one"
+  ],
+  "startedAt": "2026-09-26T18:01:53Z",
+  "subprocessCalls": 1
+ }
+}
