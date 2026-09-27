@@ -24,6 +24,9 @@ from a failure on a real upstream pull request. Generic Swift advice is not want
   their `init(from:)` still compiles, and loads as `nil` forever.
 - Require a matching fixture in `Tests/ContributorKitTests/Fixtures/snapshots/` whenever
   the snapshot schema gains a field.
+- Reject any change that renames, moves or retypes `Snapshot.schemaVersion`. It must stay
+  a top-level integer: `SnapshotStore` reads it alone, before the rest, and it is the only
+  key through which an older build can refuse a newer file cleanly.
 - Require a new `Sources/ContributorKit/Inbound/ItemState.swift` case to add a row to
   `plugin/skills/contributions/SKILL.md`. A state outside that table has no defined
   response. Reject any PR that disables the test enforcing it.
@@ -84,6 +87,10 @@ from a failure on a real upstream pull request. Generic Swift advice is not want
 - Both pipes in `SystemCommandRunner` must be drained concurrently. Reading them serially
   deadlocks against the wait for exit once output exceeds the 64 KB pipe buffer, which
   `cloc --by-file` does on a large range.
+- Flag any `Process.waitUntilExit()` reachable from `async` code. It spins a run loop on
+  whichever thread calls it, and on a Swift-concurrency thread it hung a test run for more
+  than ten minutes after the child had exited. Await the process's `terminationHandler`,
+  set before `run()`, as `SystemCommandRunner` does.
 
 ## Ignore
 
