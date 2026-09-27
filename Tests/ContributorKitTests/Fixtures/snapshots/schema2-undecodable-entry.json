@@ -1,0 +1,17 @@
+{
+  "authored": [],
+  "entries": {
+    "discussion_r1": {
+      "author": "devin-ai-integration",
+      "bodySha256": "0000000000000000000000000000000000000000000000000000000000000001",
+      "createdAt": "2026-09-10T08:00:00Z",
+      "firstSeen": "2026-09-13T10:00:00Z",
+      "kind": { "channel": "inline-thread", "outdated": true },
+      "subject": "o/r#1",
+      "url": "https://github.com/o/r/pull/1#discussion_r1"
+    }
+  },
+  "repository": "o/r",
+  "schemaVersion": 2,
+  "updatedAt": "2026-09-13T10:30:00Z"
+}

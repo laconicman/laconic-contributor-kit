@@ -168,20 +168,27 @@ the next run re-classifies it. The stored state feeds only the `was → now` lin
 line, on one run.
 
 Before, one such entry failed the whole snapshot with a `DecodingError` that read like a
-corrupt file. The schema-version guard never ran: it checks a snapshot that has already
+corrupt file. The schema-version guard never ran: it checked a snapshot that had already
 decoded. Builds from before this change still fail that way on `asker-replied`; nothing
 can reach back and fix them.
 
-**The alternative was a schema bump per new state.** It gives a clean refusal, but only to
-a build that decodes far enough to reach the guard, and it costs history. The guard is
-`==`, so the upgraded build would refuse every existing snapshot too, unless it grew a
-migration. The refusal's remedy is deleting the file, acknowledgements included, and no
-run can re-derive those. For an additive change, which a new state is, keeping history
-wins.
+**The alternative was a schema bump per new state.** It gives a clean refusal, and it
+costs history. The guard is `==`, so the upgraded build would refuse every existing
+snapshot too, unless it grew a migration. The refusal's remedy is deleting the file,
+acknowledgements included, and no run can re-derive those. For an additive change, which a
+new state is, keeping history wins.
 
 A bump is still right when a stored value changes meaning — a raw value reused for
 something else. `nil` is only safe for a value that is unknown; an old build would read a
 reused one wrongly, not fail to read it.
+
+**The guard reads the version before anything else**, since 2026-09-27. Checked on a
+decoded snapshot, it refused only a file this build could already read, so a bump reached
+older builds as a `DecodingError` whenever the new shape did not decode. `SnapshotStore`
+now decodes `schemaVersion` alone, refuses on a mismatch, and only then decodes the rest.
+That holds while every schema keeps `schemaVersion` a top-level integer: it is the one key
+an older build reads of a newer file. Builds from before this change still refuse cleanly
+only a file they can decode.
 
 ### Guards
 

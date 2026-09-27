@@ -619,6 +619,42 @@ struct SnapshotCompatibilityTests {
         let actual = try JSONSerialization.jsonObject(with: try encoder.encode(snapshot))
         #expect(actual as? NSDictionary == expected as NSDictionary)
     }
+
+    /// Written by a newer schema, in a shape this build cannot decode: one entry's `kind`
+    /// is an object. The version guard used to check an already-decoded snapshot, so this
+    /// threw a `DecodingError` that read like a corrupt file. The version is now read
+    /// first, and the refusal names the schema.
+    @Test("a newer schema this build cannot decode is refused as a schema mismatch")
+    func newerSchemaUndecodable() throws {
+        let fixture = try Fixtures.data("snapshots/schema2-undecodable-entry.json")
+        let json = try #require(
+            try JSONSerialization.jsonObject(with: fixture) as? [String: Any])
+        let version = try #require(json["schemaVersion"] as? Int)
+        try #require(
+            version > Snapshot.currentSchemaVersion, "the fixture must come from a newer schema")
+        #expect(throws: DecodingError.self, "the fixture must be a shape this build cannot read") {
+            _ = try decode("schema2-undecodable-entry")
+        }
+
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appending(path: "ck-newer-schema-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = SnapshotStore(directory: directory)
+        try FileManager.default.createDirectory(
+            at: store.url(for: "o/r").deletingLastPathComponent(),
+            withIntermediateDirectories: true)
+        try fixture.write(to: store.url(for: "o/r"))
+
+        let error = try #require(throws: SnapshotError.self) {
+            _ = try store.load(repository: "o/r")
+        }
+        guard case .schemaMismatch(let found, let expected) = error else {
+            Issue.record("expected schemaMismatch, got \(error)")
+            return
+        }
+        #expect(found == version)
+        #expect(expected == Snapshot.currentSchemaVersion)
+    }
 }
 
 /// Round 2 of this repository's own review. Each test fails against the old behaviour.

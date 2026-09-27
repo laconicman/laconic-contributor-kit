@@ -90,20 +90,32 @@ public struct SnapshotStore: Sendable {
         }
     }
 
+    /// The version is read **alone, before the rest**. Checked on a decoded snapshot, the
+    /// guard ran only for a file this build could already decode, so a newer schema with
+    /// a shape it could not read threw a `DecodingError` that read like a corrupt file,
+    /// and a schema bump could not give an older build a clean refusal.
     private func decode(_ url: URL, expecting repository: String) throws -> Snapshot? {
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        let data = try Data(contentsOf: url)
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        let snapshot = try decoder.decode(Snapshot.self, from: try Data(contentsOf: url))
-        guard snapshot.schemaVersion == Snapshot.currentSchemaVersion else {
+        let version = try decoder.decode(SchemaVersion.self, from: data).schemaVersion
+        guard version == Snapshot.currentSchemaVersion else {
             throw SnapshotError.schemaMismatch(
-                found: snapshot.schemaVersion, expected: Snapshot.currentSchemaVersion)
+                found: version, expected: Snapshot.currentSchemaVersion)
         }
+        let snapshot = try decoder.decode(Snapshot.self, from: data)
         guard snapshot.repository == repository else {
             throw SnapshotError.repositoryMismatch(
                 found: snapshot.repository, expected: repository, path: url.path)
         }
         return snapshot
+    }
+
+    /// The one key every schema must keep, at the top level and as an integer: it is all
+    /// an older build can read of a newer file.
+    private struct SchemaVersion: Decodable {
+        let schemaVersion: Int
     }
 
     public func save(_ snapshot: Snapshot) throws {
