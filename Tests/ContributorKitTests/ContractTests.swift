@@ -437,8 +437,11 @@ struct ContractTests {
         var future = result.updatedSnapshot
         future.schemaVersion = Snapshot.currentSchemaVersion + 1
         try store.save(future)
-        #expect(throws: SnapshotError.self) {
+        let refusal = try #require(throws: SnapshotError.self) {
             _ = try store.load(repository: "pjsip/pjproject")
+        }
+        if case .schemaMismatch = refusal {} else {
+            Issue.record("expected schemaMismatch, got \(refusal)")
         }
     }
 
@@ -869,8 +872,11 @@ struct SecondRoundTests {
         encoder.dateEncodingStrategy = .iso8601
         try encoder.encode(future).write(to: store.legacyURL(for: "o/r"))
 
-        #expect(throws: SnapshotError.self) {
+        let refusal = try #require(throws: SnapshotError.self) {
             _ = try store.load(repository: "o/r")
+        }
+        if case .schemaMismatch = refusal {} else {
+            Issue.record("expected schemaMismatch, got \(refusal)")
         }
 
         // Malformed JSON is likewise not an empty history.
