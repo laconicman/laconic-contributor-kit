@@ -51,9 +51,16 @@ with Devin's `✅ **Resolved**:`) now confirms my reply, before or after it.
   supersession paid for, when a mid-sentence mention retracted a live ask.
 - **It needs my reply.** A verdict upgrades my claim to confirmed. It never manufactures a
   reply I did not write, so a verdict-only thread stays `open-ask` until one line clears it.
-- **An edit after my reply outranks an earlier verdict.** That verdict judged the ask as it
-  stood then, so `edited-after-my-answer` wins and stays owed. A DeepWiki pre-review caught
-  this ordering.
+- **A confirmation speaks to the ask as it stood when it was posted.** An asker reply
+  older than the ask's last edit confirms nothing about the ask as it stands. That covers
+  a verdict and a person's plain reply alike, because the rule belongs to the family and
+  not to the phrase. If the edit also came after my reply, the thread is
+  `edited-after-my-answer` and owed. If it came before my reply, my reply is only claimed
+  until a newer confirmation arrives. A DeepWiki pre-review caught one order of this and
+  Devin's review of #8 two more.
+  Before this, a person's reply after mine confirmed even when the ask was edited later.
+  That was the one behaviour here changed for human askers. On the 111 real threads no ask
+  was edited after its verdict, so nothing live moved.
 - **Seeded for one reviewer.** 92 of 92 verdicts carried the phrase, and 0 of 19
   fix-session replies under the same login did. That is one reviewer on one repository;
   see *Reading a reviewer's declared metadata — withdrawn* for what an unverified reading

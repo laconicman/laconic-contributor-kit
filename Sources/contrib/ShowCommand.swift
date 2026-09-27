@@ -11,7 +11,7 @@ struct ShowCommand: AsyncParsableCommand {
             hand-rolled fetches. `show` prints one item whole: the stripped ask as the
             audit sees it, your last reply and the asker's replies for an inline
             thread — each labelled by author, time, whether it is the asker's verdict,
-            and whether it came after yours —
+            whether it came after yours, and whether it predates the ask's last edit —
             the recorded acknowledgement, and a line diff against the last recorded
             read — or the acknowledged text, when the record kept its prose.
 
@@ -160,6 +160,7 @@ struct ShowCommand: AsyncParsableCommand {
                     (reply.isVerdict ? ["verdict"] : [])
                     + (item.text.reply == nil
                         ? [] : [reply.isAfterMyLastReply ? "after your last reply" : "before your last reply"])
+                    + (reply.predatesLastEdit ? ["before the ask was last edited"] : [])
                 print(
                     "\(reply.comment.author), \(GitHubTime.string(reply.comment.createdAt))"
                         + (labels.isEmpty ? "" : " — " + labels.joined(separator: ", ")))

@@ -101,6 +101,9 @@ public struct InboundAudit: Sendable {
         public var isVerdict: Bool
         /// Posted after my last reply. `false` when I have not replied at all.
         public var isAfterMyLastReply: Bool
+        /// Posted before the ask was last edited, so it spoke to an ask that has since
+        /// changed. Such a reply confirms nothing about the ask as it stands.
+        public var predatesLastEdit: Bool
     }
 
     /// The replies in `thread` from the root's login that are not mine, oldest first.
@@ -117,7 +120,8 @@ public struct InboundAudit: Sendable {
                 AskerReply(
                     comment: reply,
                     isVerdict: verdicts.isVerdict(stripper.prose(of: reply.body)),
-                    isAfterMyLastReply: lastMine.map { reply.createdAt > $0.createdAt } ?? false)
+                    isAfterMyLastReply: lastMine.map { reply.createdAt > $0.createdAt } ?? false,
+                    predatesLastEdit: root.lastEditedAt.map { reply.createdAt < $0 } ?? false)
             }
     }
 
@@ -157,23 +161,28 @@ public struct InboundAudit: Sendable {
             // suppressing one on a marker can only ever hide a real ask, and did.
             let state: ItemState
             if let lastMine = mine.last {
+                // Only the asker's replies to the ask as it stands count. One posted
+                // before the ask's last edit — a plain reply or a verdict — spoke to
+                // text that has since changed, and confirms nothing about it.
+                let current = askerReplies.filter { !$0.predatesLastEdit }
+
                 // The asker's latest reply after mine decides. From a person any reply
                 // confirms, as it always has — the verdict phrase changes nothing there.
                 // Only a bot asker's non-verdict is a question, because the same login
                 // carries the bot's fix sessions, whose replies are news about my fix
                 // and not a confirmation of it.
                 //
-                // With nothing from the asker after mine, a verdict posted earlier still
-                // confirms — a reviewer that re-reviews on push can confirm a fix before
-                // I reply — unless the ask was edited after my reply: that edit is newer
-                // than the verdict, which then says nothing about the ask as it stands.
-                // A verdict never manufactures a reply of mine.
-                if let latest = askerReplies.last(where: \.isAfterMyLastReply) {
+                // With nothing current from the asker after mine, an edit after my reply
+                // is the newest word on the thread, and it is owed. Failing that, a
+                // verdict posted earlier still confirms — a reviewer that re-reviews on
+                // push can confirm a fix before I reply. A verdict never manufactures a
+                // reply of mine.
+                if let latest = current.last(where: \.isAfterMyLastReply) {
                     state =
                         isBot(root.author) && !latest.isVerdict ? .askerReplied : .answeredConfirmed
                 } else if let edited = root.lastEditedAt, edited > lastMine.createdAt {
                     state = .editedAfterMyAnswer
-                } else if askerReplies.contains(where: \.isVerdict) {
+                } else if current.contains(where: \.isVerdict) {
                     state = .answeredConfirmed
                 } else if let check = previous?.entries[root.id]?.acknowledged,
                     check.bodySha256AtAck == root.bodySHA256,

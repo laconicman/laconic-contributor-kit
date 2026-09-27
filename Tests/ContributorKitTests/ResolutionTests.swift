@@ -244,6 +244,52 @@ struct ResolutionTests {
                 == .answeredConfirmed)
     }
 
+    /// **A confirmation speaks to the ask as it stood when it was posted.** Devin's
+    /// review of #8 found two orders where a verdict older than the ask's last edit
+    /// still confirmed the changed ask, leaving it neither owed nor listed. The rule is
+    /// the family's, not the phrase's: a person's plain reply before the edit is just as
+    /// stale. No capture holds any of these shapes — on the 111 real threads no ask was
+    /// edited after its verdict — so all are constructed.
+    @Test("an asker reply older than the ask's last edit confirms nothing")
+    func staleConfirmationConfirmsNothing() throws {
+        let bot = "devin-ai-integration"
+        let verdict = "✅ **Resolved**: the redirect is refused."
+        func state(_ asker: String, _ events: [(String, String, TimeInterval)], editedAt: TimeInterval)
+            throws -> ItemState?
+        {
+            var root = comment("discussion_r1", asker, at: 0, "🔴 **A finding**")
+            root.lastEditedAt = Date(timeIntervalSince1970: editedAt)
+            let replies = events.enumerated().map { index, event in
+                comment("discussion_r\(index + 2)", event.0, at: event.2, event.1)
+            }
+            let thread = RemoteThread(comments: [root] + replies)
+            return try Fixtures.audit().run(pullRequest(threads: [thread]), against: nil)
+                .items.first?.state
+        }
+
+        // Devin's first order: my reply, the verdict, then the edit. The edit is owed.
+        #expect(
+            try state(bot, [("laconicman", "Fixed.", 10), (bot, verdict, 20)], editedAt: 30)
+                == .editedAfterMyAnswer)
+        // Its second: the verdict, the edit, then my reply. Nothing confirms the new ask.
+        #expect(
+            try state(bot, [(bot, verdict, 10), ("laconicman", "Fixed.", 30)], editedAt: 20)
+                == .answeredClaimed)
+        // The same family from a person: "LGTM" before an edit confirms nothing after it.
+        #expect(
+            try state(
+                "sauwming", [("laconicman", "Fixed.", 10), ("sauwming", "LGTM, thanks.", 20)],
+                editedAt: 30) == .editedAfterMyAnswer)
+        // The controls: a confirmation after the edit still confirms, from either.
+        #expect(
+            try state(bot, [("laconicman", "Fixed.", 10), (bot, verdict, 30)], editedAt: 20)
+                == .answeredConfirmed)
+        #expect(
+            try state(
+                "sauwming", [("laconicman", "Fixed.", 10), ("sauwming", "LGTM, thanks.", 30)],
+                editedAt: 20) == .answeredConfirmed)
+    }
+
     /// The shape that always worked — my reply, then the verdict — still does.
     @Test("a verdict after my reply still confirms it")
     func verdictAfterMyReplyConfirms() async throws {

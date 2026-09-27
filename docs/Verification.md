@@ -151,6 +151,7 @@ Each rule was also checked against a mutant, each of which the suite killed:
 | Any non-verdict after mine lists, whatever came later | *the bot asker's latest reply after mine decides* |
 | Closure quiets an unresolved thread too | *a merged PR keeps an unresolved answered-claimed thread listed, and only that* |
 | An earlier verdict outranks an edit after my reply | *an edit after my reply outranks an earlier verdict; an interleaved verdict confirms* |
+| An asker reply older than the ask's last edit still confirms (Devin, #8) | *an asker reply older than the ask's last edit confirms nothing* |
 
 **The oracle's own failure modes were exercised.** Empty output exits 1, and so does
 `false` in place of `contrib`. A forged thread count exits 2, and so does a forged
