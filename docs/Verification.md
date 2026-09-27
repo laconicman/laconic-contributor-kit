@@ -57,9 +57,9 @@ established, beyond the author's own runs:
 | Not verified | Why |
 |---|---|
 | **A PR with more than one reviewer.** | Both ground-truth PRs were reviewed only by `sauwming`; **both live trials also had exactly one reviewer** (the Devin bot), every other participant being the contributor. Three independent attempts, still untested. A root comment from a third party is the gap. |
-| **Supersession against a real retraction.** | The phrase list is matched by unit test against a constructed body. No captured GitHub review body in this workspace contains a retraction. |
-| **`answered-confirmed` against real data.** | No fixture and neither live PR contains a thread where the asker replied after our reply. Tested against a constructed thread only. |
-| **Pagination past one page.** | Every live subject fitted in one page of 100 — the largest across both trials carried 88 items on one page. The cursor loop, the `hasNextPage` ceiling and the `truncatedFetch` anomaly are exercised by unit test and by construction, never by a real oversized PR. |
+| ~~Supersession against a real retraction~~ | **Now verified** — the issue #7 capture holds 17 live `superseded` review bodies across telegram-kb #1 and #2, and every one opens with Devin's *"This report is out of date."* notice. |
+| ~~`answered-confirmed` against real data~~ | **Now verified** — 74 live threads confirmed by the asker's verdict after my reply, in the issue #7 capture. The *human* asker's reply after mine is still constructed only. |
+| ~~Pagination past one page~~ | **Now verified** — telegram-kb#1 carries 125 review bodies and took two pages live. Its 53 threads matched an independent GraphQL walk, and its 121 items reconcile exactly: 53 threads plus 68 review bodies from others, with nothing truncated (the issue #7 cross-check). The `hasNextPage` *ceiling* and `truncatedFetch` are still exercised by construction only. |
 | ~~`lastEditedAt` on a real edited comment~~ | **Now verified** — six live instances in the second trial, plus an edited *review body* in the first. Moved to the executed table. |
 | ~~Issues, as opposed to pull requests~~ | **Now verified** — a third session ran `contrib in` over five authored issues on `anthropics/claude-code`; the query serves both through `issueOrPullRequest` and needed no change. It found a maintainer's conditional close that a hand-applied reading of the same model had missed. |
 | **`commenter:` missing an inline-only PR.** | Requires `Candidates.graphql` and the enumeration union, which belong to `contrib out`. Not built. |
@@ -82,6 +82,136 @@ review day. What it established:
 
 **Two defects and one wart it found, all now fixed** — see below. One gap was left open
 by decision rather than by oversight: see `Decisions.md` on era acknowledgement.
+
+## From a resolution cross-check, 2026-09-26
+
+A session asked a narrow question of `laconicman/telegram-kb` — *which threads did the
+reviewer say are resolved but are still open?* — and answered it twice: with
+`contrib in --all --json` on PRs #1–#7, and with an independent GraphQL walk that reads
+`isResolved` and `resolvedBy`, which the kit did not read then.
+`scripts/resolution-crosscheck.py` is that walk, kept as an oracle. It needs no kit code,
+and it exits 2 when its thread count disagrees with the kit's own counter, or when the
+kit's reported `resolution` disagrees with GitHub's.
+
+| Claim | Evidence |
+|---|---|
+| Accounting is exact across seven PRs | inline threads 53/13/17/3/20/5/0 by both paths; every PR's item count = threads + others' review bodies and issue comments; no anomalies |
+| Pagination past one page, live | PR #1 took two pages; nothing was truncated |
+| `answered-confirmed` now has real data at volume | 74 threads confirmed by the asker's `✅ **Resolved**:` after my reply |
+
+What the walk found that the kit gets wrong is issue #7. There are four cases:
+
+| Case | Threads |
+|---|---|
+| The asker's verdict **before** my reply | 12 |
+| One app login for both the reviewer and its fix session | 20 |
+| An asker reply after mine that **corrected** my fix | 2 |
+| The only unresolved thread, quieted on a merged PR | 1 |
+
+The raw capture is committed, because the live state moves on: the case-4 thread is due to
+be answered and resolved. It holds every thread page, the kit's JSON for each PR, and the
+oracle's before and after reports, in
+`Tests/ContributorKitTests/Fixtures/resolution/captures/`. It was stamped 2026-09-26 at
+18:01–18:02 UTC. One real thread per case is cut verbatim from it into a fixture the live
+client decodes:
+
+| Case | Thread | Shape |
+|---|---|---|
+| 1 | telegram-kb#1 `discussion_r4025099437` | verdict, then my reply |
+| 2, session | telegram-kb#5 `discussion_r4098761481` | a fix-session reply from the asker's login, none of mine |
+| 2, verdict only | telegram-kb#5 `discussion_r4097237099` | a verdict and no reply of mine; stays `open-ask` |
+| 3 | telegram-kb#3 `discussion_r4095575834`, #6 `discussion_r4097650348` | my "Fixed", then a correction from the asker's login |
+| 4 | telegram-kb#1 `discussion_r4024609952` | unresolved, merged PR, three replies of mine |
+| control | telegram-kb#2 `discussion_r4058500969` | my reply, then a verdict |
+
+A human asker's plain reply after mine appears nowhere in the data, so that test is
+constructed, and says so.
+
+**After the fix, same day, live.** The oracle was re-run against the fixed build while the
+case-4 thread was still unresolved:
+
+| Case | Before | After | How |
+|---|---|---|---|
+| Verdict before my reply | 12 | 0 | all 12 now `answered-confirmed` |
+| One login, two roles | 20 | 20 | the documented limit; the 4 verdict-only threads stay `open-ask` by design |
+| Correction read as confirmation | 2 | 0 | both now `asker-replied`, and both listed by a default run |
+| Unresolved, quieted after merge | 1 | 1 | still unresolved on GitHub, and a default `contrib in --pr 1` now lists it (`to re-read 1`) |
+
+The oracle observes "listed" from a second `contrib in --json` run without `--all`; it
+does not infer it from a state. The kit's `resolution` agreed with GitHub's on 111 of 111
+threads. A build without that key reports 0 compared, so a skipped check cannot pass for
+agreement. A forged disagreement exits 2.
+
+Each rule was also checked against a mutant, each of which the suite killed:
+
+| Mutant | Test that failed |
+|---|---|
+| The verdict phrase matched anywhere, not at the opening | *the verdict phrase mid-reply, or quoted, is not a verdict* |
+| No bot gate: any non-verdict after mine lists | *a human asker's plain reply after mine still confirms* |
+| Any non-verdict after mine lists, whatever came later | *the bot asker's latest reply after mine decides* |
+| Closure quiets an unresolved thread too | *a merged PR keeps an unresolved answered-claimed thread listed, and only that* |
+| An earlier verdict outranks an edit after my reply | *an edit after my reply outranks an earlier verdict; an interleaved verdict confirms* |
+| An asker reply older than the ask's last edit still confirms (Devin, #8) | *an asker reply older than the ask's last edit confirms nothing* |
+
+**The oracle's own failure modes were exercised.** Empty output exits 1, and so does
+`false` in place of `contrib`. A forged thread count exits 2, and so does a forged
+`resolution`. Re-run on 2026-09-27 against the consolidated PR #8 build, it gave the same
+state table, the same cases and 111 of 111 compared.
+
+**Consulted before review.** DeepWiki, in one conversation of three turns: the rule as it
+stood, the proposal, and the planned diff
+([link](https://deepwiki.com/search/how-does-contrib-in-decide-an_0f43d2a2-6e4d-4b59-9803-56406875c13a)).
+The third turn found two defects, both fixed before review: REST's made-up
+`isResolved: false`, and an earlier verdict outranking a later edit. The one claim it could
+not check was how `me` reaches the audit. It was checked in the code: `--me` passes
+straight through, and on the live path authorship is `viewerDidAuthor`, so `--me` matters
+only where the source does not report it.
+
+**Not verified by this cross-check:**
+
+- Any reviewer other than Devin Review, or any Devin phrasing other than `✅ **Resolved**:`.
+  The 92-of-92 figure is one reviewer on one repository.
+- A human asker replying after me, on real data. The constructed test is the only evidence.
+- Whether the reviewer itself ever resolves without a verdict. Both case-3 threads were
+  resolved under the bot's login with no verdict posted. The shared login cannot say
+  whether the reviewer did it or its fix session did.
+- Pagination of `comments` *inside* one thread. The most seen was 5 of 100.
+
+## A subprocess that had exited, still awaited, 2026-09-26
+
+A full `swift test` run hung for more than ten minutes in `countingRunner`. `sample` showed
+the thread inside `Process.waitUntilExit()` with no child process left.
+`SystemCommandRunner` now awaits the process's `terminationHandler`, set before `run()`,
+through a checked continuation. Launch, the two concurrent drains, the separate streams
+and `runExpectingOutput` are unchanged.
+
+| Claim | Evidence |
+|---|---|
+| The old runner hangs, reproducibly | A standalone copy hung on every attempt, within 9 to 1,000 runs, with 1 or 64 runs in flight |
+| The exit had already happened | In every hung process Foundation had recorded the exit: `isRunning` false, the right status, the pid reaped. The waiter was looping in `CFRunLoopRunInMode` |
+| The fix holds under load | `concurrentRunsAllReturn` (400 subprocesses, 8 at a time, each checked for its own output and status) hung 6 of 6 times on the old runner and passed 20 of 20 on the new one, in about 0.4 s. The full suite, looped, passed 10 of 10 |
+| Streams still separate at size | Checked once with a throwaway test: 900 KB across the two streams came back complete and unmerged, and a missing `cwd` still throws `launchFailed` at once |
+
+**Not verified: the cause.** All 13 hung waits had resumed on a different thread from the
+one that called `run()`. Many waits that switched threads still finished, so the switch
+looks necessary but not sufficient. That it *causes* the hang is inferred from that
+correlation, not shown. The test's one-minute time limit names the test if the hang
+returns, but it cannot end the run.
+
+## Snapshots across builds, 2026-09-26 and -27
+
+Two fixes to how a snapshot written by one build loads in another. The reasoning is in
+`docs/Decisions.md` under *A state from a newer build*.
+
+| Claim | Evidence |
+|---|---|
+| An entry with a state this build does not know loads as no recorded state | `schema1-unknown-state.json`. Without the fix the test fails with the reported error, `DecodingError.dataCorrupted` at `entries.discussion_r1.state`. With it, the snapshot saved back equals the original file minus that one `state` key, so every other entry survived |
+| A newer schema is refused as a schema mismatch, even when this build cannot decode it | `schema2-undecodable-entry.json`, whose `kind` is an object. Without the fix, `DecodingError.typeMismatch` at `entries.discussion_r1.kind`; with it, `schemaMismatch` naming both versions |
+| The refusal tests pin the case, not just the type | The two older tests now require `schemaMismatch`. A guard that throws `unknownItem` instead fails both, and fails the new test |
+
+**Not fixable from here:** builds from before these changes still fail with a
+`DecodingError` on `asker-replied`, and on any newer-shaped file. The clean refusal holds
+only while `schemaVersion` stays a top-level integer, which `REVIEW.md` now requires.
 
 ## Three defects the live trial found
 

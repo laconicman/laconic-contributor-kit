@@ -1,0 +1,1500 @@
+{
+ "items": [
+  {
+   "changed": null,
+   "id": "discussion_r3970609954",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r3970609954",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🟡 **Failed syncs erase channel identity**\n\nEvery resync replaces an existing channel’s `rawChannelID` with zero before crawling starts. Any crawl failure leaves the false identity stored. TDLib reconciliation then targets a nonexistent chat until a successful sync repairs it.\n\n\n[collapsed: \"Prompt for agents\" ·66177371]\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Confirmed and fixed in 2c4ca14.\n\nYou're right about the mechanism: `upsert(channel:)` does `ON CONFLICT DO UPDATE SET rawChannelID = excluded.rawChannelID`, so the placeholder overwrote a known id on *every* resync, not only a failing one — the failure just made it persist.\n\nFixed with insert-if-absent (`Store.ensureChannel`) rather than by preserving the id in the upsert, so the placeholder path has no way to write identity at all. The later upsert that stores the parsed id is kept, as you suggested.\n\nVerified: `iosgr` retains `1076035790` across a full resync."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r3970610071",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r3970610071",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🟡 **Negative result limits crash queries**\n\n`--limit -1` reaches `hits.prefix(limit)` after SQLite treats the value as unlimited. Swift traps on a negative prefix length instead of returning a validation error.\n\n\n[collapsed: \"Prompt for agents\" ·67ffc705]\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Confirmed and fixed in 2c4ca14 — `validate()` now rejects a negative limit before the store is opened.\n\nOne detail worth recording for anyone reproducing it: `--limit -1` does *not* reach the check, because ArgumentParser reads `-1` as the next flag and reports a missing value. `--limit=-1` is the form that reaches `Array.prefix` and traps. Zero stays valid, as you suggested."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r3970610210",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r3970610210",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🔍 **Page progress spans two transactions**\n\nPosts and their watermark commit separately. An interruption between commits causes extra recrawling, despite documentation claiming one transaction scope.\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Confirmed and fixed in 2c4ca14.\n\nThe documentation was the worse half of this: the comment claimed \"the same transaction scope\" and that was simply untrue — `upsert(posts:)` and `recordCrawlState` were separate writes.\n\nFixed by making the claim true rather than by softening it. `Store.commitPage` writes the posts and the watermark in one transaction, so an interruption can no longer leave a mark describing posts that were never committed."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r3970610340",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r3970610340",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🔍 **Eval failures become zero hits**\n\nSuppressed diagnostics and disabled `errexit` convert command failures into empty output. G10 can report PASS when no query actually ran.\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Confirmed and fixed in 2c4ca14. This was the most valuable of the four, because the failure was silent *and* self-flattering: G10 passes on zero hits, so a broken binary or a missing store reported `G10: 0 — PASS`, the eval passing precisely because nothing ran.\n\nEvery query's exit status is now checked, a failure prints `ERR` rather than a count, and any `ERR` exits non-zero.\n\nWorth adding, since it strengthens the finding: my first fix reintroduced the same bug. It incremented a counter inside the helper, which runs in a subshell via `h=$(q …)`, so the count was always zero and the script still exited 0 after printing `ERR` on every row. Now counted in the parent. Verified both directions — a corrupt store exits 1, a healthy one exits 0."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r3971085554",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r3971085554",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🟡 **Successful diagnostics corrupt hit counts**\n\nWhen a successful query writes to stderr, `run` can return that diagnostic instead of the hit count. `row` counts only `ERR`, so the script exits successfully with invalid evaluation results.\n\n\n[collapsed: \"Prompt for agents\" ·d38902bc]\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Confirmed and fixed in a60202a, and you found the second bug in a fix for the first — `2>&1` was my own doing in the round-1 patch.\n\nstdout and stderr are now captured separately, and a successful command whose first stdout line is not a number is treated as an error rather than printed as a count. Verified with a stub that exits 0 while writing a warning to stderr and `not-a-number` to stdout: every row reports `ERR`, the run exits non-zero, and the diagnostic surfaces as `non-numeric result: 'not-a-number'`."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r3971122032",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r3971122032",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🔍 **Per-page sync still retains every post**\n\n`crawl` keeps all posts in `seen` after committing each page. Sync then rewrites the complete array, preserving whole-channel memory use and duplicate work.\n\n*(Refers to [this code](https://github.com/laconicman/telegram-kb/blob/685cebb767d41702d944391ac1d5ffb13c9ab7f9/Sources/TelegramKBIngest/WebPreviewSource.swift#L48))*\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Confirmed and fixed in a60202a. You are right that it undercut the change it accompanied — committing per page is pointless if the whole channel is held anyway to be rewritten at the end.\n\n`crawl` no longer retains posts when a callback is given, `Sync`'s final `upsert` is gone, and `postCount` carries the tally that `posts.count` used to. `streamingDoesNotRetain` asserts all three: 34 posts delivered, 34 counted, zero retained."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r3971122202",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r3971122202",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🔍 **Malformed resolution rows disappear silently**\n\nThe importer skips every undecodable JSONL row without reporting it. A successful import can therefore omit resolutions after interrupted or incompatible output.\n\n*(Refers to [this code](https://github.com/laconicman/telegram-kb/blob/685cebb767d41702d944391ac1d5ffb13c9ab7f9/Sources/TelegramKBStore/Store.swift#L230))*\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Confirmed and fixed in a60202a. Same class as the eval-script finding — a silent skip turns a truncated or version-skewed file into a successful-looking import missing rows nobody counted.\n\n`importResolutions` now returns `ImportReport(imported:skipped:)` and `tgkb sync` warns on stderr when anything was skipped. `importReportsSkippedRows` feeds it a file with a truncated middle line and asserts 2 imported, 1 skipped."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r3971122320",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r3971122320",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🔴 **Transient responses permanently truncate backfills**\n\nWhen pagination returns an HTTP error, [`crawl`](https://github.com/laconicman/telegram-kb/blob/685cebb767d41702d944391ac1d5ffb13c9ab7f9/Sources/TelegramKBIngest/WebPreviewSource.swift#L57-L61 \"Sources/TelegramKBIngest/WebPreviewSource.swift:57-61\") treats its empty body as normal history exhaustion. The completed state prevents later incremental syncs from retrieving the omitted history.\n\n\n[collapsed: \"Prompt for agents\" ·b4174288]\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Confirmed and fixed in a60202a. This was the most serious of the six, and the mechanism is exactly as you describe.\n\nA 429 or 5xx returns a body that parses to **zero posts** — byte-for-byte the same signal as reaching the end of a channel's history. `crawl` recorded `backfillComplete`, and because a finished backfill is never re-walked, the truncated history would have stayed missing through every later sync with nothing ever reporting it. Silent and permanent.\n\n`crawl` now throws `CrawlError.http` on any non-2xx, and completion requires a walk that actually reached the end. Test `httpErrorIsNotExhaustion` gives page two a 429 with an empty body — the shape of a finished history — and asserts it throws rather than completing."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r3971122528",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r3971122528",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🔴 **Capped backfills never advance**\n\nWhen [`crawl`](https://github.com/laconicman/telegram-kb/blob/685cebb767d41702d944391ac1d5ffb13c9ab7f9/Sources/TelegramKBIngest/WebPreviewSource.swift#L54-L89 \"Sources/TelegramKBIngest/WebPreviewSource.swift:54-89\") reaches its 500-page cap, `backfillComplete` remains false. The next sync ignores saved progress, so every run repeats the newest 500 pages.\n\n\n[collapsed: \"Prompt for agents\" ·2cc23e60]\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Confirmed and fixed in a60202a.\n\n`crawl` now takes `resumeFrom`, and `Sync` passes the saved `lowestMessageID` whenever a backfill is unfinished, so backward pagination continues where it stopped instead of restarting at the newest page. Completion also requires `pages < maxPages`, so a capped walk no longer claims to have seen the history.\n\nTwo tests: `pageCapIsNotCompletion` and `resumeFromCursor` — the latter asserting the first request is the cursor URL, not the channel root.\n\nWorth noting the current corpus hid this: the largest channel takes 225 pages against a cap of 500, so nothing here would ever have reached it."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r3971122642",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r3971122642",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🟡 **Final albums corrupt integrity totals**\n\nWhen the highest post is an album, `covered` includes trailing IDs while `highest` remains its first ID. `unexplained` becomes negative, and Doctor can report coverage above 100 percent.\n\n\n[collapsed: \"Prompt for agents\" ·225a5277]\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Confirmed and fixed in a60202a — and this one was in code written the day before, in response to a request for exactly this integrity check.\n\nThe bound came from the last row's own `messageID` while `covered` included that album's whole span, so `covered` could exceed the range: `unexplained` went negative and coverage above 100%. The upper bound is now the highest **covered** id.\n\n`trailingAlbumIntegrity` puts a 6-media album at the end and asserts `highest == 10` rather than 5, `unexplained >= 0`, and that the three genuine gaps are still counted."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r3997226679",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r3997226679",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🔴 **Resumed backfills lose newest watermark**\n\nA resumed backfill makes `recordCrawlState` replace `state.highest` with an older page's maximum, or zero after immediate exhaustion. Later incremental syncs re-crawl most or all history instead of stopping at the newest stored post.\n\nLearn more\n\n\n\nA resumed crawl starts from the saved low-water mark, so `CrawlResult.watermark` only covers pages fetched during that invocation. It does not include the newer pages committed by earlier invocations. The final update nevertheless replaces both database bounds with that partial result. If `before=<lowest>` returns no posts, both returned bounds are zero and the channel is marked complete with `highestMessageID = 0`.\n\n**Example:** A capped first run stores ids 500–1000 and state `(lowest: 500, highest: 1000, complete: false)`. The resumed run fetches ids 1–499 and returns `highest = 499`; the final update stores 499. Every later incremental run uses `since = 499`, so it walks through ids 1000 down to 499 again. If the resume request is already empty, it stores zero and later runs walk the entire channel.\n\n**Recommended fix:** Merge resumed progress with the pre-run state. Preserve `state.highest` with `max`, preserve existing bounds when the result fetched no posts, and update per-page state with merged bounds. A deliberate `--full` crawl can replace both bounds because it starts at the newest page.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Confirmed and fixed in 1da04eb — and this one I introduced in round 2 with `resumeFrom`.\n\nYour example is precisely the failure: a resumed walk visits only older pages, so its maximum (499) sits below the stored mark (1000), and replacing one with the other made every later incremental sync re-walk history it had. An empty resume reported zeros and erased both bounds.\n\nThe merge now lives on `CrawlState.merged`: never replace, take `max`/`min` against the pre-run state, keep existing bounds when nothing was fetched — except under `--full`, which starts at the newest page. Both call sites use it; the inline logic had been duplicated across them, which is how it was easy to get only half right. Three tests cover the resume, the empty resume, and `--full`."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r3997226729",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r3997226729",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🔴 **Repeated pages complete truncated backfills**\n\nA repeated pagination page makes `isBackfillComplete` true through the no-progress `exhausted` state. Later syncs trust completion and never fetch older history.\n\nLearn more\n\n\n\nThe crawler uses `exhausted` for two different outcomes: proven history exhaustion and failure to advance the pagination cursor. Only the first proves that all older posts were visited. The final watermark cannot distinguish them, so a transient repeated page permanently seals a partial backfill once `Sync` persists it.\n\n**Example:** The first page has a lowest id of 500. Telegram returns that same page for `?before=500`; the guard stops the loop, and this calculation marks the backfill complete. Posts below 500 remain absent, while later syncs run incrementally from the newest high-water mark.\n\n**Recommended fix:** Track completion separately from loop termination. Set completion only for an empty successful page or `lowest <= 1`; stop on no progress with an incomplete watermark or throw a crawl error.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Confirmed and fixed in 1da04eb. You named it exactly: one flag, `exhausted`, for two outcomes — proven end of history, and failure to advance. Only the first proves older posts were visited.\n\n`reachedEnd` is now set only for an empty successful page or arriving at id 1. Stopping for no progress proves nothing and leaves the backfill open to resume.\n\nWorth being candid about the test that should have caught this. `noProgressStops` asserted only that the walk *stopped* — and it passed while this bug existed. Stopping was never the claim at risk; completion was. `repeatedPageIsNotCompletion` now asserts completion is false, and a negative test confirms it bites: reintroducing the conflation fails with `isBackfillComplete: true`."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r3997226765",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r3997226765",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🟡 **Username casing aborts valid syncs**\n\nA differently cased channel argument makes `ensureChannel` store a key that can differ from parsed `data-post` identifiers. The first page then fails its foreign-key constraint, although Telegram resolves the username.\n\nLearn more\n\n\n\nTelegram resolves usernames case-insensitively, while the SQLite channel key and post foreign key compare text identifiers exactly. `ensureChannel` uses the argument spelling, but `WebPreviewParser` takes each post's channel identifier from Telegram's HTML. The two values can therefore identify the same Telegram channel but fail database equality.\n\n**Example:** `tgkb sync IOSGR` inserts channel key `IOSGR`. If Telegram emits `data-post=\"iosgr/4762\"`, `commitPage` inserts a post for `iosgr`, and SQLite rejects it because no matching channel row exists.\n\n**Recommended fix:** Define one normalized username representation and apply it at CLI input, parser output, model identifiers, and all store lookups. Lowercasing is sufficient for Telegram's ASCII username alphabet; preserve display casing separately if needed.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Confirmed and fixed in 1da04eb. Lowercased at both boundaries — the CLI arguments in `sync` and `doctor`, and the parser's `data-post` channel — since Telegram's username alphabet is ASCII.\n\nVerified on the real binary: `tgkb sync PREFIRE_IOS` now syncs into the existing `prefire_ios` row instead of failing its foreign key. `channelIsLowercased` feeds the parser a `SwiftUI_Dev` data-post and asserts the stored key is `swiftui_dev`."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r3997226788",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r3997226788",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🔍 **Partial resolution imports exit successfully**\n\n`sync --import-resolutions` warns about unreadable rows but exits zero. Automation can accept an incomplete import unless it parses stderr.\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Confirmed and fixed in 1da04eb — and this was my own round-2 fix being incomplete. I made the skip *visible* and left the exit status saying success.\n\nA partial import now exits `3`. You are right that automation reads status, not stderr prose; a zero exit on a partial import is a check reporting success because it did not fully run. Verified: a two-line file with one truncated row imports 1 and exits 3."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r3997226816",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r3997226816",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🔍 **Sync delay lacks validation**\n\nNegative or non-finite `--delay` values reach `Duration.seconds` and timing arithmetic. Add CLI validation if only finite, nonnegative delays are supported.\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Confirmed and fixed in 1da04eb. `validate()` rejects negative and non-finite delays before anything runs, matching the `--limit` validation from round 1. Zero stays valid. Verified: `--delay=-1` reports `--delay must be a finite number of seconds, zero or greater (got -1.0).`"
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r3997226909",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r3997226909",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🔍 **Integrity check failures disappear**\n\nThe integrity pass suppresses its database-open error with `try?`. A failed second open silently skips every channel integrity check.\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Confirmed and fixed in 1da04eb. The `try?` meant a failed open silently skipped every channel's integrity check — and a doctor that reports nothing looks exactly like a doctor that found nothing wrong.\n\nThe failure is now printed as `integrity: SKIPPED — could not open the store read-only: …` and exits 1. Verified against a file that is not a database."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r3999470294",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r3999470294",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🔴 **Interrupted sync skips new pages**\n\nAfter one incremental page, `commitPage` clears `backfillComplete`. An interruption then resumes at the historical low-water mark, permanently skipping remaining new pages.\n\nLearn more\n\n\n\nA completed backfill means all history below the stored low-water mark is already present. Incremental pages do not invalidate that fact. The callback currently writes `false` after every page, while the code restoring the prior value runs only after the whole crawl returns. If the process exits or a later fetch throws, the database therefore looks like an unfinished historical backfill. The next invocation selects `resumeFrom = state.lowest` in [Sync.run](https://github.com/laconicman/telegram-kb/blob/1da04eb9ec23b717b19fa9bcf9607547ffe5adaf/Sources/tgkb/Sync.swift#L98-L106 \"Sources/tgkb/Sync.swift:98-106\"), bypassing any uncommitted pages between the new high-water mark and older history.\n\n**Example:** A store is complete through message 1000. Messages 1001–1050 arrive. The first page commits 1031–1050 and clears completion, then page two fails. The retry starts before the historical low-water mark, marks the backfill complete, and never stores 1001–1030.\n\n**Recommended fix:** Preserve `state.backfillComplete` in each incremental page commit. Clear it only for `--full` or an already unfinished backfill.\n\n\n\n```suggestion\n                                  highest: bounds.highest,\n                                  backfillComplete: state.backfillComplete && !full,\n```\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Valid, and fixed in ca33e29. The suggested change on its own isn't enough, though. Keeping `backfillComplete` still commits the page's maximum as the new mark, so after an interruption the next run's `since` is 160 instead of 100, and 101–140 are skipped all the same. A mutation test in the commit applies exactly the suggestion and fails that way.\n\nThe fix: an incremental walk records no crawl state until it reaches the old mark. Posts are still written page by page, so an interruption costs repeat requests, not data. The decision now lives in `Store.CrawlState` (`since`, `resumeFrom`, `afterPage`, `afterWalk`) as pure functions with tests (`interruptedIncrementalKeepsGapOpen`, `incrementalWalkAdvancesOnlyOnArrival`, `backfillRecordsProgress`). Until now it sat in the executable's sync loop, where no test could reach it. `CrawlResult` now reports `reachedEnd` and `reachedSince`.\n\nOne remaining case is recorded as TD-18: an incremental gap wider than the 500-page cap never closes, because the walk never reaches the mark. Closing it needs a second cursor, and I'd rather not add state to this machine inside this PR."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r3999470331",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r3999470331",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🟡 **HTTP failures silently skip channels**\n\nA transient 429 or 5xx can make `ChannelClassifier.classify` return an inaccessible classification. `sync` skips that channel and can exit successfully with stale data.\n\nLearn more\n\n\n\nClassification distinguishes Telegram's expected redirect from a reachable preview. [ChannelClassifier.classify](https://github.com/laconicman/telegram-kb/blob/1da04eb9ec23b717b19fa9bcf9607547ffe5adaf/Sources/TelegramKBIngest/ChannelClassifier.swift#L13-L23 \"Sources/TelegramKBIngest/ChannelClassifier.swift:13-23\") accepts only a preview 200, but treats every other status as a reason to inspect the plain page. It never validates the plain response status either. Rate limits and server failures can therefore become `.previewDisabled`, `.group`, or `.unresolvable` instead of errors, and this switch continues to the next channel.\n\n**Example:** Telegram returns 429 for both `/s/iosgr` and `/iosgr`. The empty plain response becomes `.unresolvable`; sync prints “not publicly resolvable,” exits zero, and leaves `iosgr` stale.\n\n**Recommended fix:** Make `ChannelClassifier.classify` throw on unexpected HTTP statuses for both requests. Only classify the documented successful or redirect response shapes, and let `sync` return non-zero when classification fails.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Valid, fixed in ca33e29. `ChannelClassifier.classify` now throws `CrawlError.http` on a non-2xx response from either request, the same rule the crawler already follows. Before this fix a 429 page had no `tgme_page_extra` marker, so it came back as `.unresolvable`.\n\nI checked that this can't misfire. t.me answers 200 for a name that doesn't exist (`/s/zz_no_such_channel_q8x7` redirects to a 200 plain page), so a genuinely unresolvable channel is still classified, not raised as an error. Test: `classifierThrowsOnHTTPError` covers 429, 502 and 503, both on the preview request and on the plain page after a redirect."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r3999470366",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r3999470366",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🔍 **Full refresh excludes deletion reconciliation**\n\n`--full` replaces returned posts but retains stored posts absent from Telegram. Clarify whether “refresh” promises content updates only or complete reconciliation.\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Content updates only, by design. Deleted posts are kept on purpose: a citation should keep resolving to what was indexed, and a full walk can't tell a deleted post from one it failed to reach. In ca33e29 the `--full` help now says it refreshes and does not reconcile, and Design.md (*Edits are not refreshed; deletions are kept*) records the question and the answer."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r3999470384",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r3999470384",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🔍 **Combined search excludes substring-only hits**\n\nWhen word search fills `limit`, truncation removes every substring-only hit. Define a cross-index ranking policy before reusing this behavior in MCP.\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Valid, addressed in ca33e29. I measured before choosing a policy, because the obvious one (reciprocal rank fusion) turns out wrong for this corpus. For Latin text, word hits are almost exactly a subset of substring hits (`swift`: 2932 word hits, 3740 substring hits, 0 found by words alone). Fusion gives double score to everything both indexes find. That pushes Russian lemma-only matches (`архитектура`: 144 found by words alone) below exact-form hits, and `SwiftUI` posts still sit under `swift`.\n\nThe policy, now in `Store.search(_:mode:limit:)` so `tgkb-mcp` reuses it rather than copying the CLI: word hits by bm25, then substring-only hits by bm25, with `total` counting every match. A cut list now says it was cut (`3 of 3741 result(s)`), and the MCP tool will return `total` next to a cursor, so the rest can still be fetched. Design.md has the measurements and the two rejected alternatives. Test: `combinedSearchReportsTruncatedTail`."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4016442489",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r4016442489",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🟡 **Large incremental gaps never close**\n\nAfter more than 500 pages arrive between syncs, `state.resumeFrom` remains nil and every run restarts from the newest page. `afterWalk` preserves the old high-water mark when the cap stops the walk. The gap below the newest 500 pages never enters the store.\n\nLearn more\n\n\n\nA completed backfill uses its high-water mark for incremental sync and has no resume cursor. If an incremental walk reaches the 500-page cap first, [afterWalk](https://github.com/laconicman/telegram-kb/blob/ca33e2986ab99c402abdec8f8055abf543618005/Sources/TelegramKBStore/Store.swift#L470-L480 \"Sources/TelegramKBStore/Store.swift:470-480\") correctly keeps the old mark to avoid skipping the unfinished gap. However, the next invocation again starts at the newest page, so it repeats the same range indefinitely. The newly added posts do not solve this because the crawl state cannot record where the interrupted incremental walk stopped.\n\n**Example:** A channel has stored posts through id 10,000, then receives over 10,000 posts before its next sync. Each run stores the newest 500 pages but stops above id 10,000. Every later run fetches those same pages, so the older part of the new range remains absent.\n\n**Recommended fix:** Persist a separate incremental-resume cursor when a capped walk stops above `since`. Resume from that cursor while retaining the original high-water mark as the completion target, then clear the cursor only after `reachedSince`.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Valid, fixed in 6e3aff7. This was TD-18, which I had deferred because I thought it needed a second cursor. It turned out not to. What a capped incremental walk actually covered is contiguous from the newest page down to its lowest id, which is exactly an unfinished backfill. So `afterWalk` now records it as one: `lowest` = the lowest id reached, `highest` = the newest, `backfillComplete` = false. The next run resumes below `lowest`, through the gap, until the walk proves exhaustion. The cost is re-walking already-stored history below the gap: extra requests, never lost posts. There's no new column or state. Test: `cappedIncrementalResumesThroughTheGap`, which fails against the old keep-the-mark behaviour."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4016521635",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r4016521635",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🟡 **Combined search mixes database snapshots**\n\nDuring concurrent sync, `search` reads each index in a separate snapshot. A commit between reads can misorder results or return newly stale matches.\n\nLearn more\n\n\n\nA GRDB `dbPool.read` closure defines one SQLite snapshot. `searchWords` and `searchSubstring` each open their own closure, while sync updates both FTS tables in one concurrent transaction. If that transaction commits between the two calls, the combined list joins word results from the old database state with substring results from the new state. A replaced post can therefore remain as a word hit even though the body loaded afterward no longer matches, while a newly inserted exact-word hit can appear only in the substring tail.\n\n**Example:** Word search reads before sync changes post 42 from “swift” to “kotlin”. Sync commits, then substring search reads afterward. Post 42 remains in the combined word list, but `post(42)` returns “kotlin”.\n\n**Recommended fix:** Execute both FTS queries and the merge inside one `dbPool.read` closure. Refactor the index-specific helpers to accept the same `Database` so both lists share one snapshot.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Valid, fixed in 6e3aff7. `Store.search` now runs both queries inside one `dbPool.read`. The per-index queries became static helpers that take a `Database` rather than the pool, so they can't open a snapshot of their own. Only the caller decides how many snapshots there are.\n\nI haven't added a behavioural test for this one. Showing the race deterministically would need a hook between the two reads in production code, just so a test can commit there. I preferred to make the second snapshot impossible to open through the types. If you think that's the wrong trade, say so."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4016521822",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r4016521822",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🟡 **Sync erases channel metadata**\n\nAfter crawling, `Sync` upserts a channel containing only its username and raw ID. Existing titles and subscriber counts become `NULL` on every successful sync.\n\nLearn more\n\n\n\nThe post-crawl write exists only to replace the placeholder `rawChannelID`. However, [upsert(channel:)](https://github.com/laconicman/telegram-kb/blob/47e3761ff35fdf2b9f90a4df9bc97fac1cdf27fa/Sources/TelegramKBStore/Store.swift#L65-L75 \"Sources/TelegramKBStore/Store.swift:65-75\") updates every channel field from the supplied value on conflict. The constructed value leaves `title` and `subscriberCount` nil, so any metadata already stored by an import or another ingestion source is discarded.\n\n**Example:** A channel row contains title “iOS Developers” and 12,000 subscribers. Web sync decodes its raw ID and performs this upsert. The row keeps the raw ID but loses both metadata values.\n\n**Recommended fix:** Add a focused store operation that updates only `rawChannelID` and reachability, or change conflict updates to preserve existing optional metadata when the incoming value is nil.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Valid (latent today, since nothing writes `title` yet), fixed in 6e3aff7. Sync now calls `Store.updateIdentity(channel:rawChannelID:reachability:)`, which updates only those two columns. Test: `identityUpdateKeepsMetadata` seeds a title and subscriber count, then records an identity; it fails if the full-row upsert comes back."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4016521989",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r4016521989",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🟡 **Malformed timestamps become fresh observations**\n\nA resolution with invalid `resolved_at` bypasses the unreadable-row count because decoding succeeds. Import assigns the current time, making malformed observations appear fresh.\n\nLearn more\n\n\n\nThe importer counts only JSON decoding failures as skipped rows. `resolved_at` decodes as an arbitrary string, and the later date parse falls back to `Date()`. A truncated or version-skewed timestamp therefore produces neither a skipped count nor a non-zero CLI exit, despite the import report promising to expose unreadable rows.\n\n**Example:** A row contains `\"resolved_at\":\"not-a-date\"`. It increments `imported`, leaves `skipped` unchanged, and stores the import instant as the observation time.\n\n**Recommended fix:** Parse and validate `resolved_at` inside the per-line validation path. Count the row as skipped when parsing fails; do not synthesize an observation timestamp.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Valid, fixed in 6e3aff7. An unparseable `resolved_at` now counts the row as unreadable, so it adds to `skipped` (which makes the import exit 3) and is not imported. Before tightening I checked the real resolver output: all 9,770 rows use the `2026-09-05T22:50:59.691197+00:00` form, and it still parses. Test: `malformedTimestampIsSkipped`."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4016522142",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r4016522142",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🔍 **Full-refresh test misses new-page gaps**\n\nThe interruption test overlaps the old range, so it cannot exercise multiple unfetched pages above the prior watermark.\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Added in 6e3aff7: `interruptedResumedBackfill`, `interruptedFullOverFinishedChannel` and `interruptedFullOverUnfinishedChannel`. Each commits one page through the store and asserts the `CrawlState` read back.\n\nThe `--full` case turned up a real flaw. An interrupted refresh over a finished channel cleared `backfillComplete`, so the next plain sync would re-walk the channel's entire history for no gain: a refresh removes nothing, so every older post is still stored. `afterPage` now leaves completion unchanged for non-incremental walks. Reverting that makes `interruptedFullOverFinishedChannel` fail."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4016522420",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r4016522420",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🔍 **Doctor health failure can exit zero**\n\nThe initial health check prints `FAILED` without setting a failing exit status. A missing follow-up path can leave automation reading success.\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Valid, fixed in 6e3aff7. Every FAILED check now sets a flag, and `doctor` exits 1 on both exit paths (with and without channel arguments). `doctor` is an executable, so I checked it by running the binary on a store copy with `postFTS` dropped. The open succeeds and the query fails. Before: `read-only open: FAILED`, exit 0. After: exit 1. Removing the flag brings back exit 0."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4016522597",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r4016522597",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🔍 **Channel identity trusts first view token**\n\n`rawChannelID` accepts the first decodable `data-view.c` without matching its `data-post` channel. Verify listing pages cannot contain foreign message blocks.\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Verified, and guarded in 6e3aff7. I checked every block on 8 committed fixtures and on live `/s/iosgr` and `/s/ios_broadcast` listings. Each block's `data-view.c` matches its own `data-post` channel, including `post-forward.html`, where the block carries the host channel's id, not the origin's. So no foreign blocks were observed. `rawChannelID(html:channel:)` still trusts only blocks whose `data-post` names the requested channel, in case Telegram ever renders one first. Test: `rawChannelIDIgnoresForeignBlocks` puts a foreign block first; without the guard it returns the foreign id."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4020061899",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r4020061899",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🟡 **Malformed statuses erase valid resolutions**\n\nA non-string, non-integer `http_status` becomes `\"\"` instead of making `JSONValue` fail. Import then overwrites any valid resolution with a fresh failed observation.\n\n*(Refers to [this code](https://github.com/laconicman/telegram-kb/blob/814367e42a5dcef5329b336f31ec1838178bfcd4/Sources/TelegramKBStore/Store.swift#L225-L226))*\n\nLearn more\n\n\n\nThe JSONL resolver emits `http_status` as an integer HTTP code or a string transport error. Any other JSON type indicates a malformed or version-skewed row. The fallback currently accepts that row with an empty status, so `succeeded` becomes false and `upsert(resolutions:)` replaces the stored observation.\n\n**Example:** A later file contains `{\"url_canonical\":\"https://a.example\",\"http_status\":true,...}` after a valid 200 resolution was imported. The row reports as imported and replaces the destination with `NULL`; it must increment `skipped` and preserve the valid destination.\n\n**Recommended fix:** Let decoding throw when the value is neither `Int` nor `String`. The outer row decoder then rejects it through the existing skipped-row path.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Valid, fixed in 8e7b845. `JSONValue` now throws on anything that is neither a number nor a string, so the row counts as unreadable (and `--import-resolutions` exits 3). The `\"\"` fallback was worse than losing the row: an empty status is not a 2xx, so the row imported as a *failed* observation and overwrote a good resolution. Test `malformedStatusIsSkipped` imports a valid resolution, then a malformed row for the same URL, and asserts the first one survives."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4020062052",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r4020062052",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🟡 **Required eval failures exit successfully**\n\nWhen G1 or G10 misses its required threshold, `verdict` prints FAIL without changing `errors`. The eval run then exits zero despite failing acceptance criteria.\n\nLearn more\n\n\n\nG1 and G10 are acceptance checks, while the other rows only collect measurements. `verdict` runs inside command substitution, so incrementing a shell variable there would happen in a subshell and remain invisible. The parent shell must evaluate these two required outcomes separately.\n\n**Example:** If `навигация` returns 0 hits and every query executes successfully, G1 prints `FAIL — TD-4 regression`. `errors` remains zero, and the script exits successfully.\n\n**Recommended fix:** Track failed required expectations in the parent shell after capturing each hit count. Exit non-zero when either required expectation fails, while retaining the existing `ERR` accounting for command failures.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Valid, fixed in 8e7b845. `run-evals.sh` now counts a verdict beginning `FAIL` — the required thresholds, G1, G3 and G10 — separately from queries that failed to run, and exits 1 for either, with different messages so the two are not confused. Checked against an emptied copy of the corpus: 4 required queries missed, exit 1; removing the counting line brings back exit 0."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4020062160",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r4020062160",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🟡 **Missing store passes health check**\n\nWhen the database is absent, `Doctor` prints `exists: false` without setting `failed`. A store-only health check then exits successfully.\n\n```suggestion\n        if !FileManager.default.fileExists(atPath: path) { failed = true }\n        if FileManager.default.fileExists(atPath: path) {\n```\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Valid, fixed in 8e7b845, though with `guard` rather than the suggested `if`. The maintainer's standing preference is that the happy path stays unindented and every early return is a failure, so the store checks moved into `reportStore(at:) -> Bool`, where a missing file, a failed open and a failed query each `guard`/return false, and reaching the end means everything passed. `run()` ends with `guard healthy else { throw ExitCode(1) }`.\n\nTwo things came out of the restructure. The store is opened once now, not twice. And channel classification still runs when the store is missing, because it is the one check that works before the first sync — it just cannot make the exit status succeed. Verified with the binary: missing store exits 1, healthy store 0, a store with `postFTS` dropped 1."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4020062334",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r4020062334",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🔍 **Completion uses a separate transaction**\n\nPages use `commitPage`, but completion uses `recordCrawlState` afterward. A crash only causes re-crawling, yet REVIEW.md grants no completion-update exception.\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Correct on the fact, and the rule was wrong rather than the code, so I changed REVIEW.md in 8e7b845. Completion is knowable only once the walk stops, so it cannot join the last page's transaction: the page that turns out to be last looks like any other while it is being written. A crash between the two costs a re-crawl and can never produce a false completion, since `backfillComplete` only ever moves on proven exhaustion. The rule now names that single exception instead of being silently contradicted by the code."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4020062446",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r4020062446",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🔍 **Integrity cost follows ID span**\n\n`integrity` materializes album spans and scans every ID between bounds. Sparse, high-ID channels make doctor’s cost track ID range, not posts.\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Valid, fixed in 8e7b845. `integrity` now makes one ordered pass over the posts, tracking the highest covered id, so the cost follows the number of posts rather than the width of the id range. The overlap handling that album spans need is kept, and the existing album tests still pass.\n\nThis one is worth more than it looks: TDLib message ids are `post_seq << 20`, so Phase 2 ids are spaced by about a million. The old version would have tried to materialise that many entries per channel. Test `integrityDoesNotScanTheIDSpan` puts three posts across a billion ids and asserts the result plus a one-second bound."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4020062583",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r4020062583",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🔍 **Exact totals require unbounded reads**\n\n`search` fetches every hit from both indexes before applying `limit`. Common queries make small result pages hold larger snapshots and allocations.\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Valid, fixed in 8e7b845. Page reads are bounded by `limit` now, and `total` comes from `COUNT` queries (for `both`, word + substring − their `INTERSECT`). Substring hits are only read when the word page did not fill, which is exactly when the word set is complete and \"not in it\" is a sound test for substring-only.\n\nMeasured on the 7,444-post corpus, 20 hits of `swift`: 0.99s before, 0.12s after, and it no longer materialises 6,672 rows to return 20. The exact total is kept because it is what makes a truncated page honest, and S6's cursor will page through the rest. Test `searchPageIsBounded`."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4024609537",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r4024609537",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🟡 **Informational eval misses fail runs**\n\nWhen G2, G3, or G4 misses its target, `row` counts its `FAIL` verdict as required. The eval exits nonzero although only G1 and G10 are mandatory.\n\nLearn more\n\n\n\nThe script describes G2–G9 as measurements, while G1 and G10 are acceptance checks. `row` currently identifies required checks solely from the word `FAIL`, but the informational verdicts use that word too. The final aggregate check therefore converts informational targets into mandatory thresholds.\n\n**Example:** If substring query G2 returns zero while G1 and G10 pass, `row` increments `failures` for G2 and the script exits 1. The expected run records G2's value and exits successfully.\n\n**Recommended fix:** Tie failure counting to the required query IDs, or pass an explicit required flag into `row`. Keep informational `FAIL` text from controlling the process exit status.\n\n\n\n```suggestion\n  case \"$1:$4\" in G1:FAIL*|G10:FAIL*) failures=$((failures + 1)) ;; esac\n```\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Valid, fixed in 57201eb, though not quite with the suggested line. Hard-coding `G1|G10` would leave G3 silent, and G3 is TD-10's regression test (ё folding) — a discharged debt with a golden query guarding it. So the required set is named once, `REQUIRED=\"G1 G3 G10\"`, with a comment saying what each one guards: G1 for TD-4's lemma path, G3 for TD-10, G10 for the confabulation bar. Everything else is a measurement: a miss prints `note: N measured quer(y|ies) missed their target` and exits 0.\n\nChecked both directions. A store with `postTrigram` emptied makes G2 miss while the required three pass: exit 0 with the note. Counting every FAIL as required (the old behaviour) makes the same run exit 1."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4024609701",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r4024609701",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🟡 **Unwritable store directory passes doctor**\n\nWhen an existing store opens from an unwritable directory, `reportStore` still returns true. `doctor` exits successfully despite the failed directory check.\n\nLearn more\n\n\n\nA WAL-mode SQLite reader can need to create or update shared-memory files in the database directory. Existing sidecar files can let the current read-only probe succeed even when the directory itself is unwritable. The command prints the failed check but returns success, so automation cannot detect the unsupported state.\n\n**Example:** A store already has usable `-wal` and `-shm` files, then its directory becomes read-only. `openForReading` succeeds during this run, `directory writable: false` is printed, and `doctor` exits 0 instead of 1.\n\n**Recommended fix:** Include `writable` in `reportStore`'s final result while retaining the remaining diagnostics.\n\n\n\n```suggestion\n        try reportIntegrity(db)\n        return writable\n```\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Valid, fixed in 57201eb — `reportStore` returns the directory check instead of discarding it.\n\nWorth recording how it has to be reproduced, because my first attempt proved nothing: if you simply drop the store into a read-only directory, the read-only OPEN fails (SQLite cannot create `-shm`), so doctor already exits 1 and the mutant passes too. The real case needs `-wal`/`-shm` already present — which is exactly what `SQLITE_FCNTL_PERSIST_WAL` arranges (TD-6). Then the open succeeds, `read-only open: ok (queryable)`, and only the returned writability makes the difference: 1 with the fix, 0 without."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4024609822",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r4024609822",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🔍 **Final crawl-state write lacks integration coverage**\n\nPage-interruption tests cover all four required walks. No test exercises `Sync` persisting completion or capped-incremental conversion through the separate final state write.\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Valid, and it was the right thing to push on — fixed in 57201eb by moving the loop rather than by testing around it. `ChannelSync` now lives in a new `TelegramKBSync` library target, driven by a stub fetcher against a real store; `tgkb sync` is left with argument parsing and printing.\n\nSix tests cover what only the sequence shows: a first backfill walking to an empty page and recording completion; an unchanged channel costing one page and leaving the state byte-identical; a capped incremental walk left resumable rather than up to date (TD-18, end to end); an HTTP failure mid-walk keeping its committed page while claiming nothing; a preview-disabled channel leaving no row behind; and a mixed-case argument reaching the store folded. Each was checked by mutation — claiming the walk arrived, crawling an uncrawlable channel, and dropping the `lowercased()` each turn one red."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4024609952",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r4024609952",
+   "question": "Is my reply actually responsive to the ask, or only adjacent to it?",
+   "state": "answered-claimed",
+   "text": {
+    "ask": "🔍 **Same-channel syncs remain concurrent**\n\nThe busy timeout serializes commits, not crawls. Two processes can snapshot one channel's state and later overwrite newer progress with stale final state.\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Edited again, and again only the badge markup moved — the finding's two sentences are unchanged. The answer stands: TD-21 holds this, with the implementation notes added since (check-and-claim in one `dbPool.write`, staleness threshold above the 10s busy timeout)."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4024909889",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r4024909889",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🟡 **Combined search returns short pages**\n\nWhen word hits use part of `limit`, `substringHits` fetches only `limit` candidates before deduplication. Overlapping candidates consume that window, returning fewer hits despite additional substring-only matches.\n\nLearn more\n\n\n\nCombined search places all word hits first, then fills the remaining capacity with substring-only hits. The substring query is currently limited before duplicates are removed. Therefore its result can contain too few unique candidates even when the database has enough matches to fill the page.\n\n**Example:** With `limit = 5`, suppose four word hits are also the top four substring hits. If the fifth substring hit overlaps too, the loop appends nothing and returns four results. A sixth substring hit exists and is unique, but the SQL limit prevents the loop from seeing it.\n\n**Recommended fix:** Fetch substring-only rows in SQL by excluding the complete word-hit set, or continue fetching substring candidates until the page fills or substring results are exhausted. Add a test where the first `limit` substring candidates all overlap word hits and the next candidate is substring-only.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "I don't think this one reproduces, and I'd rather show the argument than assert it.\n\nSubstring candidates are fetched **only when the word page did not fill** — `if mode != .words, hits.count < cap`. That condition is exactly when `searchWords` returned fewer rows than it was asked for, which means the word set is complete at `w = words.count`. Only a word hit can be a duplicate, so at most `w` of the `cap` substring candidates dedupe away, leaving at least `cap - w` unique ones — precisely what the page still needs to reach `cap`. When the word page *did* fill, no substring fetch happens, and the substring-only tail is below the cut anyway (it is counted in `total`).\n\nTested rather than argued, in ffb09e1: `combinedPageIsNeverShort` builds the worst case for this — 30 posts matching both indexes and 5 matching only the trigram one — and asserts `hits.count == min(limit, total)` with no duplicates, across limits 1, 2, 3, 5, 9, 10, 11, 20, 31, 40, 50. All pass. I've kept it as a regression test, since the property is easy to break by moving the fetch out of that branch.\n\nIf you have a concrete (corpus, limit) where a page comes back short, I'll take it — that would beat my reasoning."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4024910016",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r4024910016",
+   "question": "Is my reply actually responsive to the ask, or only adjacent to it?",
+   "state": "answered-claimed",
+   "text": {
+    "ask": "🔍 **Two mutation proofs are malformed**\n\nThe `foreignBlockDoesNotAbortTheSync` and `httpErrorIsNotExhaustion` patches contain nested self-editing diffs. Neither applies, so the required silent-failure proofs cannot run.\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Already fixed, in the commit before this round landed. Both patches had picked up edits to the *other* patch files, because `git diff` without a path includes them — `Scripts/mutants/*.patch` is tracked. They are regenerated with `git diff -- <source file>`, so each mutant now touches exactly one source file.\n\nThe harness caught this itself rather than passing it over: `ERROR — patch does not apply; the code moved under it`, counted as a problem and a non-zero exit, not as a pass. Current run: 22 mutants red, 0 problems, against a baseline of 92 passing tests."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4024982928",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r4024982928",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🟡 **Foreign message blocks abort sync**\n\nWhen a page includes a foreign message block, `commitPage` writes it under that block's channel. Only the requested channel exists, so the foreign key aborts the entire sync.\n\nLearn more\n\n\n\n[`WebPreviewParser.parse`](https://github.com/laconicman/telegram-kb/blob/ffb09e182d1c1123165dce9e5d0667ea0556e9cf/Sources/TelegramKBIngest/WebPreviewParser.swift#L19-L25 \"Sources/TelegramKBIngest/WebPreviewParser.swift:19-25\") returns every `data-post` block without checking its owner. The sync creates only the requested channel row, then passes every parsed post to `commitPage`. A foreign block therefore references a channel row that does not exist, and SQLite rolls back the page. The raw-channel-ID path already treats foreign blocks as possible and filters them in [`rawChannelID`](https://github.com/laconicman/telegram-kb/blob/ffb09e182d1c1123165dce9e5d0667ea0556e9cf/Sources/TelegramKBIngest/WebPreviewParser.swift#L92-L106 \"Sources/TelegramKBIngest/WebPreviewParser.swift:92-106\"), but the post path does not.\n\n**Example:** A page for `iosgr` contains 19 `iosgr/*` blocks and one `other/1` block. Sync ensures `iosgr`, then the `other/1` insert fails its foreign key. None of the 19 valid posts commit.\n\n**Recommended fix:** Filter parsed posts by the requested lowercased channel before invoking `onPage` or computing crawl bounds. If a nonempty Telegram page contains no matching blocks, throw instead of treating it as proven history exhaustion.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Valid, fixed in a55c9d7 — and it is the other half of the identity guard from round 6, which stopped a foreign block supplying the channel's id but left its posts being written under it.\n\n`crawl` now keeps only blocks whose `data-post` names the channel being crawled, and counts the rest as `foreignBlocks` rather than discarding them quietly: `tgkb sync` warns on stderr when the count is non-zero, because none have ever been observed and a non-zero value means the page layout changed. Dropping beats aborting — one stray block should not make an otherwise good page unreadable.\n\nTest `foreignBlockDoesNotAbortTheSync` injects a foreign block ahead of a real page and asserts the sync completes, the foreign post is absent, and only the requested channel exists. Mutant: `Scripts/mutants/foreignBlockDoesNotAbortTheSync.patch` removes the filter.\n\nWorth reporting: the filter broke five existing crawler tests that served `@swiftui_dev` fixtures while crawling channels named `x`, `y` and `z` — every post was correctly dropped as foreign. Those tests now name the channel their fixtures belong to, so they exercise the filter instead of bypassing it."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4025099437",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r4025099437",
+   "question": "Is my reply actually responsive to the ask, or only adjacent to it?",
+   "state": "answered-claimed",
+   "text": {
+    "ask": "🔴 **Redirected crawl falsely completes backfill**\n\nWhen preview access disappears mid-crawl, `fetch` returns a redirected 200 page and `crawl` records exhaustion. The truncated backfill then blocks later syncs.\n\nLearn more\n\n\n\n`URLSessionPageFetcher` follows redirects and exposes the destination as `FetchResult.finalURL`. The classifier uses that destination to distinguish a real `/s/` preview from Telegram's plain channel page, but the crawler checks only the final status. If preview access is disabled after classification or during pagination, Telegram can redirect the request to the plain page with status 200. Parsing that page yields no posts, so this guard sets `reachedEnd`; [afterWalk](https://github.com/laconicman/telegram-kb/blob/a55c9d7370a2c009531e972128e438fc26563744/Sources/TelegramKBStore/Store.swift#L512-L530 \"Sources/TelegramKBStore/Store.swift:512-530\") then makes `backfillComplete` true. Later ordinary syncs trust that state and never revisit the missing history.\n\n**Example:** A backfill commits messages 500–1000. Before the next page request, the owner disables the web preview. The request redirects to `t.me/channel`, returns 200, and the crawler marks the 1–499 gap complete instead of failing.\n\n**Recommended fix:** Before parsing, verify that `result.finalURL` still identifies the requested `/s/<channel>` listing. Throw a non-exhaustion crawl error on redirects away from that listing, and add an end-to-end test where a later page redirects to the plain channel URL.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Valid and the sharpest one yet — fixed in fea078a. It is the same false-completion trap as an error page, wearing a 200: `t.me/s/<ch>` 302s to the plain channel page, which answers 200 and parses as zero message blocks, so the walk recorded exhaustion and sealed a truncated backfill. `crawl` now checks `finalURL.path` has the `/s/` prefix, exactly as `ChannelClassifier` already did for the same reason, and throws `CrawlError.previewUnavailable`.\n\nFixing it turned up a second path of the same kind, which round 9's foreign-block filter had opened: a page whose blocks all belong to *another* channel also produced zero posts and claimed the end. Only a page with no message blocks at all proves exhaustion now; an all-foreign page stops the walk and claims nothing. Tests `redirectMidWalkIsNotExhaustion` and `allForeignPageIsNotExhaustion`, both with mutants."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4025099583",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r4025099583",
+   "question": "Is my reply actually responsive to the ask, or only adjacent to it?",
+   "state": "answered-claimed",
+   "text": {
+    "ask": "🟡 **Empty full refresh erases crawl bounds**\n\nWhen `--full` fetches no posts, `afterWalk` receives nil bounds and clears the existing crawl range. Every later sync starts another backfill.\n\nLearn more\n\n\n\nA full walk replaces bounds instead of merging them. That is correct when the walk observes posts, but an empty successful page provides no replacement bounds. Stored posts remain because full refreshes never delete, so their previous range remains the only known range.\n\n**Example:** A completed channel has bounds 1–100. Its posts disappear from Telegram, and `tgkb sync --full` receives an empty listing. The posts remain locally, but both bounds become NULL; each later plain sync has no `highest` mark and repeats a backfill.\n\n**Recommended fix:** Pass the existing bounds when the walk fetched no posts. This preserves the known range while still allowing `reachedEnd` to retain completion.\n\n\n\n```suggestion\n        let fetched = result.postCount > 0\n        let final = state.afterWalk(lowest: fetched ? result.watermark.lowestMessageID : state.lowest,\n                                    highest: fetched ? result.watermark.highestMessageID : state.highest,\n                                    full: full, reachedEnd: result.reachedEnd,\n                                    reachedSince: result.reachedSince)\n```\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Valid, fixed in fea078a, though one level down from the suggested patch. The suggestion is right about the behaviour; I put it inside `CrawlState.merged` instead of at the call site, so every caller gets it: `if full { return (lowest ?? self.lowest, highest ?? self.highest) }`. A walk that fetched nothing has nothing to replace the bounds with, whether or not `--full` was passed, and leaving that decision in `ChannelSync` would mean the next caller has to remember it.\n\nTest `emptyFullWalkKeepsBounds` asserts both halves: an empty `--full` leaves the range and the completion flag alone, and a `--full` that did fetch still replaces the bounds, which is the point of the flag. Mutant: `Scripts/mutants/emptyFullWalkKeepsBounds.patch`."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4025270939",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r4025270939",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🟡 **Golden checks accept retrieval regressions**\n\n`verdict` accepts G1 with three hits and G3 with any hit. The [golden criteria](https://github.com/laconicman/telegram-kb/blob/2e4dfe39e01bef9c6968697eccadece54682354f/evals/golden-queries.md#L42-L45 \"evals/golden-queries.md:42-45\") require 36 G1 hits and the `iosgr/2081` G3 match. Severe morphology and ё-folding regressions still pass the required evaluation.\n\nLearn more\n\n\n\nThe script labels G1 and G3 as required acceptance checks. G1 currently passes at three hits, although its corpus baseline defines fewer than 36 as a regression. G3 only checks that one result exists, so an exact `верстка` hit passes even if ё-folding and the preview-description index both break. The quiet query output includes result IDs after the count, but `run` discards every line after the first.\n\n**Example:** A broken index returns three literal `навигация` posts and one literal `верстка` post, omitting all inflections and `iosgr/2081`. Both required rows print PASS and the script exits zero.\n\n**Recommended fix:** Raise G1 to the documented threshold. Preserve and inspect quiet result IDs so G3 requires `iosgr/2081`, or add a dedicated CLI assertion that verifies that post.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Valid, fixed in 4510c02 — and asserting the criteria properly turned up something bigger than the thresholds.\n\nThe checks now match `evals/golden-queries.md`: G1 ≥ 36 (was ≥ 3), G4 ≥ 150 (was > 22) against an uncapped limit, G9 ≥ 4. G4 is worth a note of its own: at `--limit 500` its count came back as exactly `500`, a capped number masquerading as a measurement. The true figure is 1,282.\n\nG3 names a post rather than a count, so it now asserts one — but not `iosgr/2081`. **That post is not returned at all**, and the reason is a real recall gap rather than a threshold: its only match is `вёрстку` in the link-preview description, and `NLTagger` emits **no lemma** for that word, even in the clean sentence *«Сегодня я хотел бы рассказать про верстку в нашем приложении»* with the language forced to Russian. Ten of 43 tagged words in that post got no lemma. The word index therefore holds only the exact form, and the trigram index cannot help, because `верстка` is not a substring of `верстку`. Measured across the corpus: of **8 posts written with `вёрст…`, an е-spelled query returns 1**.\n\nSo G3 asserts `iosdev/530`, which is a genuine ё-written post that does come back; `golden-queries.md` is corrected where it called `iosgr/2081` canonical; TD-4's discharge is narrowed to \"the words Apple's lexicon knows\"; and TD-23 records the measurement with the two candidate fixes worth measuring (a prefix term per Cyrillic query token, or a stemmer indexed as a third field). Both trade precision for recall, which is what these golden queries exist to arbitrate — so it is a slice, not a patch inside this PR."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4025333915",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r4025333915",
+   "question": "Is my reply actually responsive to the ask, or only adjacent to it?",
+   "state": "answered-claimed",
+   "text": {
+    "ask": "🟡 **Cross-channel hits mask G1 regressions**\n\nWhen other channels supply hits, `G1` passes with fewer than 36 iosgr posts. The query searches the entire store, while the criterion covers only `@iosgr`.\n\nLearn more\n\n\n\nThe golden criterion measures Russian-inflection recall within `@iosgr`, but `q` returns one corpus-wide count. The required threshold therefore compares different populations. Since the synced store contains four channels, unrelated matches can hide missing iosgr results.\n\n**Example:** If iosgr falls from 36 matching posts to 20 while the other channels contribute 20, `G1` sees 40 and passes. The expected result is a failure because iosgr no longer meets 36.\n\n**Recommended fix:** Add channel filtering to the query surface or count only `iosgr/` IDs from `qids`. Use that channel-specific count for `G1`, while preserving query-error detection and diagnostics.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Valid, fixed in 09d11d2 — and the numbers show it was masking a real gap. The criterion has always said *in @iosgr*, while the query searches the whole store: 109 hits store-wide, **exactly 36** in @iosgr. The runner now counts per channel with `qin iosgr`, so the threshold sits right where the criterion put it, and the other three channels can no longer cover for a regression in that one."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4025334139",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r4025334139",
+   "question": "Is my reply actually responsive to the ask, or only adjacent to it?",
+   "state": "answered-claimed",
+   "text": {
+    "ask": "🟡 **Extra sparse-term hits still pass**\n\n`G9` passes when `корутин` returns more than four posts, despite defining four as the complete corpus set. Padded results remain undetected.\n\n```suggestion\nrow G9 \"корутин (sparse term)\" \"$h\" \"$(verdict \"$h\" \"-eq 4\" \"all 4 corpus-wide, no padding\" \"FAIL — expected exactly 4 corpus-wide\")\"\n```\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Taken as suggested, in 09d11d2: `-eq 4`, since the criterion defines four as the complete corpus set and padding fails as surely as a miss. `golden-queries.md` now says to re-baseline that number when the corpus grows, so the next person meets a deliberate choice rather than a mystery failure."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4025422269",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r4025422269",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🔴 **Malformed blocks advance crawl state**\n\nWhen `WebPreviewParser.parse` skips a malformed block, `crawl` still records the remaining posts' highest ID. Later incremental runs stop there, so the skipped post never enters the store.\n\nLearn more\n\n\n\n[`WebPreviewParser.parse`](https://github.com/laconicman/telegram-kb/blob/4f5f8e60b89d5bf9d7d49de2f92ff410834bac34/Sources/TelegramKBIngest/WebPreviewParser.swift#L19-L25 \"Sources/TelegramKBIngest/WebPreviewParser.swift:19-25\") uses `compactMap`, so a matching message element with an invalid `data-post` disappears without an error. The crawl then calculates its bounds from the posts that survived parsing. If a skipped block has an ID below another parsed block, the final state can advance beyond it. A later parser fix does not recover that post because incremental sync stops at the stored high-water mark.\n\n**Example:** A page contains posts 101 and 102. A transient markup variant makes post 101 fail `post(from:)`, while post 102 parses. The sync stores post 102 and records 102 as its high-water mark. Future runs stop when they reach 102, leaving post 101 absent.\n\n**Recommended fix:** Make parsing distinguish an empty page from rejected message elements. Throw when any selected message block cannot be parsed, or return rejected-block metadata and prevent `ChannelSync` from advancing crawl state until every block is accounted for. Add a mutation-backed end-to-end test with one malformed block below a valid higher ID.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Valid, fixed in 09d11d2. `WebPreviewParser.page(html:)` returns the posts **and** the number of blocks it could not read, `crawl` accumulates it, and `tgkb sync` prints a loud stderr line naming `--full` as the repair. The wording says the posts are missing from the index rather than just noting a skip, because that is what it means: the walk records the highest id it *could* read, so a skipped block below that mark is never revisited.\n\nI did not make it abort the walk. One unreadable block should not cost a whole page, and `doctor`'s integrity report already shows the id as unexplained. Tests `unreadableBlocksAreCounted` and `syncReportsUnreadableBlocks`, with a mutant that zeroes the count."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4025422383",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r4025422383",
+   "question": "Is my reply actually responsive to the ask, or only adjacent to it?",
+   "state": "answered-claimed",
+   "text": {
+    "ask": "🟡 **Phrases cross the lemma boundary**\n\nA quoted phrase can span the surface text and appended lemma line. `indexContent` therefore returns posts lacking that phrase in either representation.\n\nLearn more\n\n\n\nFTS5 treats the newline in [`indexContent`](https://github.com/laconicman/telegram-kb/blob/4f5f8e60b89d5bf9d7d49de2f92ff410834bac34/Sources/TelegramKBStore/TextNormalizer.swift#L54-L58 \"Sources/TelegramKBStore/TextNormalizer.swift:54-58\") as a token separator, not a positional boundary. Surface tokens and lemma tokens therefore remain adjacent in one indexed column. The new phrase expression can match across that artificial adjacency even though neither representation contains the phrase.\n\n**Example:** A post containing only `foo bar` is indexed as `foo bar\\nfoo bar` when its lemmas are unchanged. The quoted query `\"bar foo\"` matches positions 2 and 3 across the newline. The original post contains only the opposite order.\n\n**Recommended fix:** Store surface text and lemmas in separate FTS5 columns and scope each side of the phrase OR to one column. Add a regression test where a reversed phrase can match only across the current surface-to-lemma boundary.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Valid, confirmed before fixing, and it was the sharpest of this batch. Reproduced directly in SQLite: with `кошка сидела на окне\\nкошка сидеть на окно` in one column, the phrase `\"окне кошка\"` matches — the last word of the text beside the first lemma, in a post containing that phrase in neither form.\n\nFixed structurally rather than by escaping: migration `v4` gives the lemmas their own FTS column and rebuilds every indexed post through the same code path that writes new ones (36s for 7,444 posts). Columns cannot be straddled. Phrases whose lemmatised form differs are matched column-qualified, `(content:\"…\" OR lemmas:\"…\")`; a phrase the lemmatiser leaves alone stays unqualified on purpose, so a dictionary-form query still reaches an inflected post.\n\nWorth recording: my first mutant for this only dropped the qualification, and the harness reported STILL GREEN — correctly, because with separate columns nothing can straddle regardless. The mutant now reverts the column split itself."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4025422490",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r4025422490",
+   "question": "Is my reply actually responsive to the ask, or only adjacent to it?",
+   "state": "answered-claimed",
+   "text": {
+    "ask": "🟡 **Phrases disable loose-token lemmatisation**\n\nWhen a query contains a phrase, `patterns` lemmatises only phrases. Inflected loose tokens then miss posts that the same unquoted search finds.\n\nLearn more\n\n\n\nThe no-phrase path lemmatises the entire query before creating its all-token pattern. The phrase path passes lemma alternatives only for `parsed.phrases`; [`QueryParser.expression`](https://github.com/laconicman/telegram-kb/blob/4f5f8e60b89d5bf9d7d49de2f92ff410834bac34/Sources/TelegramKBStore/QueryParser.swift#L75-L85 \"Sources/TelegramKBStore/QueryParser.swift:75-85\") quotes `parsed.tokens` unchanged. Merely adding a phrase therefore changes the morphology behavior of every loose term.\n\n**Example:** A post contains `адаптивная вёрстка навигация`. The query `навигацией` can match through its `навигация` lemma. The query `\"адаптивная вёрстка\" навигацией` searches the loose token literally and misses the same post.\n\n**Recommended fix:** Build surface-or-lemma alternatives for loose tokens as well as phrases. Preserve implicit AND between query components, and add a test combining a matching phrase with an inflected loose token whose surface form is absent from the post.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Valid, fixed in 09d11d2 — both phrases and loose terms are widened with their lemmas now.\n\nThe test I first wrote for it did not guard it, and the mutation harness said so. A bare term already matches the lemmas column, so a dictionary-form query finds an inflected post either way; the direction that needs term lemmatisation is the opposite one. The test now asks `\"в swiftui\" навигацией` of a post carrying *навигацию*, which is red without the fix."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4025422613",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r4025422613",
+   "question": "Is my reply actually responsive to the ask, or only adjacent to it?",
+   "state": "answered-claimed",
+   "text": {
+    "ask": "🟡 **Mixed substring terms are reordered**\n\nA substring query mixing phrases and tokens moves every phrase first. `patterns` searches a different sequence, so valid literal matches disappear.\n\nLearn more\n\n\n\n`QueryParser.Parsed` stores phrases and loose tokens in separate arrays, so their relative positions are lost. Rebuilding the substring text as `phrases + tokens` works only when all phrases precede all loose tokens. Substring mode uses one literal phrase pattern, where order is significant.\n\n**Example:** The query `foo \"bar baz\" qux` is intended to search for `foo bar baz qux`. The current reconstruction searches for `bar baz foo qux`, which misses a post containing the typed sequence.\n\n**Recommended fix:** Preserve an ordered list of parsed query segments, including whether each segment was quoted. Build the substring literal from that ordered representation while continuing to build the word expression from phrase and token semantics.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Valid, fixed in 09d11d2. `QueryParser.Parsed` now carries `pieces` — every phrase and term in the order typed — and the substring path joins those instead of phrases-then-terms. `swift \"чистая архитектура\"` searches that literal sequence rather than a reordering nobody asked for. Test `substringKeepsTypedOrder`, with a mutant restoring the grouping."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4025422727",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r4025422727",
+   "question": "Is my reply actually responsive to the ask, or only adjacent to it?",
+   "state": "answered-claimed",
+   "text": {
+    "ask": "🔍 **New silent failures need mutants**\n\nRepository rules require mutation checks for silent failures. Add regression tests and mutants for skipped parser blocks and silent search omissions.\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Done in 09d11d2: five new mutants — `phraseDoesNotCrossTheLemmaBoundary`, `looseTermsKeepTheirLemmasBesideAPhrase`, `substringKeepsTypedOrder`, `negativeLimitIsNotUnlimited`, `unreadableBlocksAreCounted` — bringing the suite to 28, all red against a green baseline of 103 tests.\n\nTwo of them came back STILL GREEN on the first run and were wrong in different ways: one mutated something that was no longer load-bearing, the other paired with a test that had its inflection backwards. Both are fixed, and I would not have noticed either by reading."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4025422828",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r4025422828",
+   "question": "Is my reply actually responsive to the ask, or only adjacent to it?",
+   "state": "answered-claimed",
+   "text": {
+    "ask": "🔍 **Negative library limits remain unlimited**\n\n`searchWords` and `searchSubstring` accept negative limits as unlimited SQLite reads. Current callers are safe, but the public contract needs clarification or validation.\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Valid, fixed in 09d11d2. Both take `Int?`, where `nil` means every match; a negative value is now clamped to zero rather than handed to SQLite, which reads a negative `LIMIT` as unlimited. The doc comments say so on both methods, since that is the surprising half. Test `negativeLimitIsNotUnlimited` pins all three cases — negative, nil, and an ordinary limit."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4057750605",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r4057750605",
+   "question": "Is my reply actually responsive to the ask, or only adjacent to it?",
+   "state": "answered-claimed",
+   "text": {
+    "ask": "🟡 **Stale trigram rows survive rebuilding**\n\nWhen `rebuildWordIndex` finds a missing post, it leaves that row in `postTrigram`. [matchCount](https://github.com/laconicman/telegram-kb/blob/d79c33fbf5afb09a1cee367b3627ded3276ef44c/Sources/TelegramKBStore/Search.swift#L133-L153 \"Sources/TelegramKBStore/Search.swift:133-153\") counts it, so substring totals include deleted posts and disagree with returned hits.\n\nLearn more\n\n\n\nThe mapping table connects both FTS indexes to stored posts. Removing only that mapping hides the stale trigram row from hit queries, but aggregate counts query the FTS table directly. The stale row can also block a later post when `indexForSearch` reuses its unmapped row ID.\n\n**Example:** A deleted post at row ID 2 contains “concurrency.” Rebuilding removes its mapping, but substring search still reports it in `total` while returning no corresponding hit.\n\n**Recommended fix:** Delete the same row ID from `postFTS`, `postTrigram`, and `ftsMap` inside the existing transaction before counting the stale mapping as removed.\n\n\n\n```suggestion\n            guard let post = try loadPost(id, from: db) else {\n                let rowid: Int64 = row[\"rowid\"]\n                try db.execute(sql: \"DELETE FROM postFTS WHERE rowid = ?\", arguments: [rowid])\n                try db.execute(sql: \"DELETE FROM postTrigram WHERE rowid = ?\", arguments: [rowid])\n                try db.execute(sql: \"DELETE FROM ftsMap WHERE rowid = ?\", arguments: [rowid])\n                stale += 1\n                continue\n            }\n```\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Valid, fixed in 01d6a47 — and a good catch on a fix that was itself a day old.\n\nThe migration recreates `postFTS` and not `postTrigram`, which I had not carried through to the cleanup path: deleting the mapping left the trigram row alive, so `matchCount` counted a post that the page join through `ftsMap` could no longer return. A total that disagrees with the page it summarises is precisely the failure `total` was added to prevent, so the finding is worse than cosmetic. All three rows now go together — `postFTS`, `postTrigram`, `ftsMap`.\n\nThe test asserted only that the mapping table had shrunk, which is why it passed over this. It now searches for text unique to the deleted post in `both` mode and asserts the page is empty **and** `total` is 0."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4057750634",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#discussion_r4057750634",
+   "question": "Is my reply actually responsive to the ask, or only adjacent to it?",
+   "state": "answered-claimed",
+   "text": {
+    "ask": "🔍 **Silent cleanup lacks required mutant**\n\nThe stale-mapping fix has no matching patch in `Scripts/mutants/`. Repository rules require mutation coverage for silent stale-identity fixes.\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "The mutant exists — `Scripts/mutants/rebuildDropsStaleMappings.patch`, added in d74d1ab, which went up in the same batch as the fix you reviewed at d79c33f. I think you were looking at the earlier commit.\n\nIt is worth more now than it was then: I regenerated it in 01d6a47 so it reverts the whole cleanup, both index tables included, rather than only the mapping delete. `Scripts/mutation-check.sh rebuildDropsStaleMappings` reports RED against a green baseline of 104 tests, and the full suite stands at 30 mutants."
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5156969832",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5156969832",
+   "question": "None. The reviewer withdrew it. Confirm the replacement is in the list.",
+   "state": "superseded",
+   "text": {
+    "ask": "> [!NOTE]\n> **This report is out of date.** Scroll down for Devin Review's latest report on this PR.\n\n**Devin Review** found 4 potential issues.",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5157527023",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5157527023",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5157527446",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5157527446",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5157528021",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5157528021",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5157528504",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5157528504",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5157529290",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5157529290",
+   "question": "None. The reviewer withdrew it. Confirm the replacement is in the list.",
+   "state": "superseded",
+   "text": {
+    "ask": "> [!NOTE]\n> **This report is out of date.** Scroll down for Devin Review's latest report on this PR.\n\n**Devin Review** found 1 new potential issue.",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5157577006",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5157577006",
+   "question": "None. The reviewer withdrew it. Confirm the replacement is in the list.",
+   "state": "superseded",
+   "text": {
+    "ask": "> [!NOTE]\n> **This report is out of date.** Scroll down for Devin Review's latest report on this PR.\n\n**Devin Review** found 5 new potential issues.",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5187661427",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5187661427",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5187661704",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5187661704",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5187661816",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5187661816",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5187661891",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5187661891",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5187662125",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5187662125",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5187662369",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5187662369",
+   "question": "None. The reviewer withdrew it. Confirm the replacement is in the list.",
+   "state": "superseded",
+   "text": {
+    "ask": "> [!NOTE]\n> **This report is out of date.** Scroll down for Devin Review's latest report on this PR.\n\n**Devin Review** found 6 new potential issues.",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5190501374",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5190501374",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5190501445",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5190501445",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5190501547",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5190501547",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5190501612",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5190501612",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5190501674",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5190501674",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5190501732",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5190501732",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5190501791",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5190501791",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5190501909",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5190501909",
+   "question": "None. The reviewer withdrew it. Confirm the replacement is in the list.",
+   "state": "superseded",
+   "text": {
+    "ask": "> [!NOTE]\n> **This report is out of date.** Scroll down for Devin Review's latest report on this PR.\n\n**Devin Review** found 4 new potential issues.",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5210999364",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5210999364",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5211000173",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5211000173",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5211000828",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5211000828",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5211001624",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5211001624",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5211003176",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5211003176",
+   "question": "None. The reviewer withdrew it. Confirm the replacement is in the list.",
+   "state": "superseded",
+   "text": {
+    "ask": "> [!NOTE]\n> **This report is out of date.** Scroll down for Devin Review's latest report on this PR.\n\n**Devin Review** found 1 new potential issue.",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5211110764",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5211110764",
+   "question": "None. The reviewer withdrew it. Confirm the replacement is in the list.",
+   "state": "superseded",
+   "text": {
+    "ask": "> [!NOTE]\n> **This report is out of date.** Scroll down for Devin Review's latest report on this PR.\n\n**Devin Review** found 6 new potential issues.",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5215497370",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5215497370",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5215497809",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5215497809",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5215498322",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5215498322",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5215498787",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5215498787",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5215499265",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5215499265",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5215499724",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5215499724",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5215573880",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5215573880",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5215574622",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5215574622",
+   "question": "None. The reviewer withdrew it. Confirm the replacement is in the list.",
+   "state": "superseded",
+   "text": {
+    "ask": "> [!NOTE]\n> **This report is out of date.** Scroll down for Devin Review's latest report on this PR.\n\n**Devin Review** found 6 new potential issues.",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5221027146",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5221027146",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5221027605",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5221027605",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5221028193",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5221028193",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5221028711",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5221028711",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5221029196",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5221029196",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5221029554",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5221029554",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5221030422",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5221030422",
+   "question": "None. The reviewer withdrew it. Confirm the replacement is in the list.",
+   "state": "superseded",
+   "text": {
+    "ask": "> [!NOTE]\n> **This report is out of date.** Scroll down for Devin Review's latest report on this PR.\n\n**Devin Review** found 4 new potential issues.",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5221382949",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5221382949",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5221383307",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5221383307",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5221384156",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5221384156",
+   "question": "None. The reviewer withdrew it. Confirm the replacement is in the list.",
+   "state": "superseded",
+   "text": {
+    "ask": "> [!NOTE]\n> **This report is out of date.** Scroll down for Devin Review's latest report on this PR.\n\n**Devin Review** found 2 new potential issues.",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5221471885",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5221471885",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5221472223",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5221472223",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5221473080",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5221473080",
+   "question": "None. The reviewer withdrew it. Confirm the replacement is in the list.",
+   "state": "superseded",
+   "text": {
+    "ask": "> [!NOTE]\n> **This report is out of date.** Scroll down for Devin Review's latest report on this PR.\n\n**Devin Review** found 1 new potential issue.",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5221605070",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5221605070",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5221605736",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5221605736",
+   "question": "None. The reviewer withdrew it. Confirm the replacement is in the list.",
+   "state": "superseded",
+   "text": {
+    "ask": "> [!NOTE]\n> **This report is out of date.** Scroll down for Devin Review's latest report on this PR.\n\n**Devin Review** found 2 new potential issues.",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5221796539",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5221796539",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5221797044",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5221797044",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5221798012",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5221798012",
+   "question": "None. The reviewer withdrew it. Confirm the replacement is in the list.",
+   "state": "superseded",
+   "text": {
+    "ask": "> [!NOTE]\n> **This report is out of date.** Scroll down for Devin Review's latest report on this PR.\n\n**Devin Review** found 1 new potential issue.",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5221816773",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5221816773",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5221869786",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5221869786",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5221870495",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5221870495",
+   "question": "None. The reviewer withdrew it. Confirm the replacement is in the list.",
+   "state": "superseded",
+   "text": {
+    "ask": "> [!NOTE]\n> **This report is out of date.** Scroll down for Devin Review's latest report on this PR.\n\n**Devin Review** found 2 new potential issues.",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5221969733",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5221969733",
+   "question": "None. The reviewer withdrew it. Confirm the replacement is in the list.",
+   "state": "superseded",
+   "text": {
+    "ask": "> [!NOTE]\n> **This report is out of date.** Scroll down for Devin Review's latest report on this PR.\n\n**Devin Review** found 6 new potential issues.",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5222683956",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5222683956",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5222684409",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5222684409",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5222684892",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5222684892",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5222685430",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5222685430",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5222686007",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5222686007",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5222686450",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5222686450",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5222687045",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5222687045",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5261400004",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5261400004",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5261400230",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5261400230",
+   "question": "Does this need a response, or is it already absorbed? Either way, record which.",
+   "state": "obligation-open",
+   "text": {
+    "ask": "**Devin Review** found 2 new potential issues.",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5261407552",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5261407552",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5261459164",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/1#pullrequestreview-5261459164",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  }
+ ],
+ "provenance": {
+  "anomalies": [],
+  "command": "contrib in laconicman/telegram-kb --pr 1",
+  "counters": [
+   {
+    "label": "inline threads",
+    "value": 53
+   },
+   {
+    "label": "review bodies",
+    "value": 125
+   },
+   {
+    "label": "issue comments",
+    "value": 3
+   },
+   {
+    "label": "owed",
+    "value": 1
+   },
+   {
+    "label": "to re-read",
+    "value": 0
+   },
+   {
+    "label": "pages fetched",
+    "value": 2
+   }
+  ],
+  "finishedAt": "2026-09-26T18:01:45Z",
+  "notes": [
+   "57 of those review bodies are mine — not obligations",
+   "3 of those issue comments are mine — not obligations",
+   "merged — 13 answered-claimed item(s) not listed; owed items are listed regardless",
+   "as of 2026-09-26T18:01:45Z",
+   "52 item(s) no-prose — counted, not owed",
+   "15 item(s) superseded — counted, not owed",
+   "snapshot: 257 item(s) known for this repository, age 4h; 0 new this run",
+   "bodies: full text, not excerpts",
+   "--no-snapshot: this run cannot inform the next one"
+  ],
+  "startedAt": "2026-09-26T18:01:42Z",
+  "subprocessCalls": 2
+ }
+}

@@ -8,35 +8,54 @@ import Testing
 @Suite("contracts")
 struct ContractTests {
 
-    /// <doc:Design>: per item `id`, `kind`, `permalink`, `state`, `question`, `changed`
-    /// and the minimum text — **nothing else**. Both failure modes cost the same
-    /// thing, so this is pinned as an exact key set rather than a superset.
-    @Test("--json emits exactly the seven keys, and no more")
-    func jsonContractIsExact() throws {
-        let pr = try Fixtures.threads(pr: 5233, comments: "pr-5233.positive.comments.json")
-        let result = try Fixtures.audit().run(pr, against: nil)
-        var provenance = Provenance(command: "test")
-        provenance.examined("items", result.items.count)
+    /// <doc:Design>: per item `id`, `kind`, `permalink`, `state`, `question`, `changed`,
+    /// the minimum text and `resolution` — **nothing else**. Both failure modes cost the
+    /// same thing, so this is pinned as an exact key set rather than a superset.
+    @Test("--json emits exactly the eight keys, and no more")
+    func jsonContractIsExact() async throws {
+        // Both sources: the REST capture, which carries no resolution, and the GraphQL
+        // one, which does. `--all`, so the resolved threads are in the document too.
+        let rest = try Fixtures.threads(pr: 5233, comments: "pr-5233.positive.comments.json")
+        let live = try await Fixtures.resolution(pr: 1)
+        var resolutionObjects = 0
+        for (pr, saysResolution) in [(rest, false), (live, true)] {
+            let result = try Fixtures.audit().run(pr, against: nil)
+            var provenance = Provenance(command: "test")
+            provenance.examined("items", result.items.count)
 
-        let data = try InboundReporting.json(result, provenance: provenance)
-        let document = try #require(
-            try JSONSerialization.jsonObject(with: data) as? [String: Any])
-        #expect(Set(document.keys) == ["provenance", "items"])
+            let data = try InboundReporting.json(
+                result, provenance: provenance, options: .init(all: true))
+            let document = try #require(
+                try JSONSerialization.jsonObject(with: data) as? [String: Any])
+            #expect(Set(document.keys) == ["provenance", "items"])
 
-        let items = try #require(document["items"] as? [[String: Any]])
-        #expect(!items.isEmpty)
-        for item in items {
-            #expect(
-                Set(item.keys) == ["id", "kind", "permalink", "state", "question", "changed", "text"],
-                "item \(item["id"] ?? "?")")
-            let text = try #require(item["text"] as? [String: Any])
-            #expect(Set(text.keys) == ["ask", "reply"])
+            let items = try #require(document["items"] as? [[String: Any]])
+            #expect(items.contains { $0["kind"] as? String == Channel.inlineThread.rawValue })
+            for item in items {
+                #expect(
+                    Set(item.keys)
+                        == ["id", "kind", "permalink", "state", "question", "changed", "text", "resolution"],
+                    "item \(item["id"] ?? "?")")
+                let text = try #require(item["text"] as? [String: Any])
+                #expect(Set(text.keys) == ["ask", "reply"])
+                // An object — every key, `resolvedBy` null or not — on an inline thread
+                // whose source said; null on the other channels and when it did not.
+                let isInline = item["kind"] as? String == Channel.inlineThread.rawValue
+                if isInline && saysResolution {
+                    let resolution = try #require(item["resolution"] as? [String: Any])
+                    #expect(Set(resolution.keys) == ["isResolved", "resolvedBy", "byAsker"])
+                    resolutionObjects += 1
+                } else {
+                    #expect(item["resolution"] is NSNull, "item \(item["id"] ?? "?")")
+                }
+            }
         }
+        #expect(resolutionObjects > 0, "the object shape was examined, not only nulls")
     }
 
     /// `changed` is present as `null` rather than absent, so a consumer reads a null
     /// instead of having to tell "key missing" from "nothing changed".
-    @Test("changed and reply encode as null, never as an absent key")
+    @Test("changed, reply and resolution encode as null, never as an absent key")
     func nullsAreExplicit() throws {
         let item = InboundItem(
             id: "x", kind: .reviewBody, permalink: "u", state: .obligationOpen,
@@ -46,6 +65,7 @@ struct ContractTests {
                 as? [String: Any])
         #expect(object["changed"] is NSNull)
         #expect((object["text"] as? [String: Any])?["reply"] is NSNull)
+        #expect(object["resolution"] is NSNull)
     }
 
     // MARK: - The provenance gate
@@ -417,8 +437,11 @@ struct ContractTests {
         var future = result.updatedSnapshot
         future.schemaVersion = Snapshot.currentSchemaVersion + 1
         try store.save(future)
-        #expect(throws: SnapshotError.self) {
+        let refusal = try #require(throws: SnapshotError.self) {
             _ = try store.load(repository: "pjsip/pjproject")
+        }
+        if case .schemaMismatch = refusal {} else {
+            Issue.record("expected schemaMismatch, got \(refusal)")
         }
     }
 
@@ -471,6 +494,34 @@ struct ContractTests {
         _ = try await counting.run(["sh", "-c", "exit 1"], cwd: nil)
         #expect(counting.count == 2)
         #expect(counting.failures == 1)
+    }
+
+    /// `waitUntilExit()` parks its thread in a run loop, and a task that resumed on
+    /// another cooperative thread after launch could stay parked there after the child
+    /// had exited and been reaped: a full `swift test` hung over ten minutes in
+    /// `countingRunner` that way. This batch hung on every try against that runner.
+    /// The time limit names the test if it hangs again; it cannot end the run, since a
+    /// blocked thread never sees the cancellation.
+    @Test(
+        "many short subprocesses in flight together each return their own result",
+        .timeLimit(.minutes(1)))
+    func concurrentRunsAllReturn() async throws {
+        let runs = 400, width = 8
+        let counting = CountingCommandRunner(SystemCommandRunner())
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            for i in 0..<runs {
+                if i >= width { try await group.next() }
+                group.addTask {
+                    let out = try await counting.run(
+                        ["sh", "-c", "echo \(i); exit \(i % 2)"], cwd: nil)
+                    #expect(out.stdoutText == "\(i)\n")
+                    #expect(out.status == Int32(i % 2))
+                }
+            }
+            try await group.waitForAll()
+        }
+        #expect(counting.count == runs)
+        #expect(counting.failures == runs / 2)
     }
 
     // MARK: - Globs
@@ -563,6 +614,77 @@ struct SnapshotCompatibilityTests {
         #expect(ack.pointer == "absorbed in round 3")
         #expect(snapshot.entries["pullrequestreview-3"]?.prose
             == "Please add a regression test.")
+    }
+
+    /// Written by a newer build: one entry holds a state this build does not know. It
+    /// used to fail the whole load with a `DecodingError`. Now that entry has no
+    /// recorded state, and nothing else is lost — re-encoded, the snapshot is the file
+    /// minus that one key.
+    @Test("a state this build does not know loads as nil, and nothing else is lost")
+    func unknownState() throws {
+        let fixture = try Fixtures.data("snapshots/schema1-unknown-state.json")
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appending(path: "ck-unknown-state-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = SnapshotStore(directory: directory)
+        try FileManager.default.createDirectory(
+            at: store.url(for: "o/r").deletingLastPathComponent(),
+            withIntermediateDirectories: true)
+        try fixture.write(to: store.url(for: "o/r"))
+
+        let snapshot = try #require(try store.load(repository: "o/r"))
+        #expect(try #require(snapshot.entries["discussion_r1"]).state == nil)
+        #expect(snapshot.entries["discussion_r4"]?.state == .answeredChecked)
+
+        var expected = try #require(
+            try JSONSerialization.jsonObject(with: fixture) as? [String: Any])
+        var entries = try #require(expected["entries"] as? [String: Any])
+        var unknown = try #require(entries["discussion_r1"] as? [String: Any])
+        let raw = try #require(unknown.removeValue(forKey: "state") as? String)
+        #expect(ItemState(rawValue: raw) == nil, "the fixture must hold a state this build lacks")
+        entries["discussion_r1"] = unknown
+        expected["entries"] = entries
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let actual = try JSONSerialization.jsonObject(with: try encoder.encode(snapshot))
+        #expect(actual as? NSDictionary == expected as NSDictionary)
+    }
+
+    /// Written by a newer schema, in a shape this build cannot decode: one entry's `kind`
+    /// is an object. The version guard used to check an already-decoded snapshot, so this
+    /// threw a `DecodingError` that read like a corrupt file. The version is now read
+    /// first, and the refusal names the schema.
+    @Test("a newer schema this build cannot decode is refused as a schema mismatch")
+    func newerSchemaUndecodable() throws {
+        let fixture = try Fixtures.data("snapshots/schema2-undecodable-entry.json")
+        let json = try #require(
+            try JSONSerialization.jsonObject(with: fixture) as? [String: Any])
+        let version = try #require(json["schemaVersion"] as? Int)
+        try #require(
+            version > Snapshot.currentSchemaVersion, "the fixture must come from a newer schema")
+        #expect(throws: DecodingError.self, "the fixture must be a shape this build cannot read") {
+            _ = try decode("schema2-undecodable-entry")
+        }
+
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appending(path: "ck-newer-schema-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = SnapshotStore(directory: directory)
+        try FileManager.default.createDirectory(
+            at: store.url(for: "o/r").deletingLastPathComponent(),
+            withIntermediateDirectories: true)
+        try fixture.write(to: store.url(for: "o/r"))
+
+        let error = try #require(throws: SnapshotError.self) {
+            _ = try store.load(repository: "o/r")
+        }
+        guard case .schemaMismatch(let found, let expected) = error else {
+            Issue.record("expected schemaMismatch, got \(error)")
+            return
+        }
+        #expect(found == version)
+        #expect(expected == Snapshot.currentSchemaVersion)
     }
 }
 
@@ -750,8 +872,11 @@ struct SecondRoundTests {
         encoder.dateEncodingStrategy = .iso8601
         try encoder.encode(future).write(to: store.legacyURL(for: "o/r"))
 
-        #expect(throws: SnapshotError.self) {
+        let refusal = try #require(throws: SnapshotError.self) {
             _ = try store.load(repository: "o/r")
+        }
+        if case .schemaMismatch = refusal {} else {
+            Issue.record("expected schemaMismatch, got \(refusal)")
         }
 
         // Malformed JSON is likewise not an empty history.

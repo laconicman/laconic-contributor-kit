@@ -1,0 +1,68 @@
+{
+ "items": [
+  {
+   "changed": null,
+   "id": "pullrequestreview-5310903366",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/7#pullrequestreview-5310903366",
+   "question": "Does this need a response, or is it already absorbed? Either way, record which.",
+   "state": "obligation-open",
+   "text": {
+    "ask": "## ✅ Devin Review: No Issues Found\n\nDevin Review analyzed this PR and found no bugs or issues to report.",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "issuecomment-5823164776",
+   "kind": "issue-comment",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/7#issuecomment-5823164776",
+   "question": "Does this need a response, or is it already absorbed? Either way, record which.",
+   "state": "obligation-open",
+   "text": {
+    "ask": "I'll fix CI failures and address comments from users with write access. I'll skip comments containing \"(aside)\".\n\n- [ ] Disable automatic comment, CI, and merge conflict monitoring",
+    "reply": null
+   }
+  }
+ ],
+ "provenance": {
+  "anomalies": [],
+  "command": "contrib in laconicman/telegram-kb --pr 7",
+  "counters": [
+   {
+    "label": "inline threads",
+    "value": 0
+   },
+   {
+    "label": "review bodies",
+    "value": 1
+   },
+   {
+    "label": "issue comments",
+    "value": 2
+   },
+   {
+    "label": "owed",
+    "value": 2
+   },
+   {
+    "label": "to re-read",
+    "value": 0
+   },
+   {
+    "label": "pages fetched",
+    "value": 1
+   }
+  ],
+  "finishedAt": "2026-09-26T18:02:05Z",
+  "notes": [
+   "1 of those issue comments are mine — not obligations",
+   "as of 2026-09-26T18:02:05Z",
+   "snapshot: 257 item(s) known for this repository, age 4h; 0 new this run",
+   "bodies: full text, not excerpts",
+   "--no-snapshot: this run cannot inform the next one"
+  ],
+  "startedAt": "2026-09-26T18:02:04Z",
+  "subprocessCalls": 1
+ }
+}

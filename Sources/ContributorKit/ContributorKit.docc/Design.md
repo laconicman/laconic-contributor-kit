@@ -69,13 +69,25 @@ the same three endpoints, and ~193,000 raw.
 
 Both failure modes cost the same thing. If the tool judges meaning it will be wrong and
 the reader re-derives anyway; if it dumps raw comments the reader re-enumerates, which is
-the waste being eliminated. Hence ``InboundItem``'s seven-key contract: `id`, `kind`,
-`permalink`, `state`, `question`, `changed`, `text`, and nothing else.
+the waste being eliminated. Hence ``InboundItem``'s eight-key contract: `id`, `kind`,
+`permalink`, `state`, `question`, `changed`, `text`, `resolution`, and nothing else.
+
+`resolution` is the one key that reports rather than settles. It carries GitHub's
+`isResolved` flag for an inline thread, the login that resolved it, and whether that
+login is the asker's. A thread is resolved for more reasons than the asker's consent: I
+can resolve my own, a maintainer can, and a reviewer bot's fix session resolves under the
+reviewer's own login. So the reader gets *who* resolved it, and the audit never decides a
+state on it. It was seven keys until 2026-09-26, when issue #7 showed why the reader needs
+this: the one unresolved thread across seven pull requests was indistinguishable, in the
+contract, from the 110 resolved ones.
 
 ## Reading a reviewer's declared metadata — the limit
 
 Supersession is allowed: a reviewer writing *"This report is out of date"* has retracted
-the ask, and taking the asker at their word is not judging meaning.
+the ask, and taking the asker at their word is not judging meaning. A verdict is the same
+move in the other direction. A reply from the asker's login that opens `✅ **Resolved**:`
+confirms my reply (``VerdictDetector``). Both phrases are matched only where the asker
+puts them, at the opening; a mention elsewhere means nothing.
 
 **A category label is not intent, and this line was drawn the hard way.** The kit briefly
 read one reviewer's `kind: "analysis"` marker as "a receipt, not an ask", on 13 confirming
@@ -86,6 +98,39 @@ The verification that let it through — *"9 of 9 reclassified items carried the
 confirmed a regex, not the premise. ``InformationalDetector`` is now narrow by
 construction: it never applies to an inline thread, because an inline thread's lifecycle is
 decidable from ids alone and suppressing one can only ever hide a real ask.
+
+## A reviewer bot's thread, measured
+
+The inline-thread rules assume the asker is one party speaking in its own voice, and only
+after my reply. A reviewer bot that fixes its own findings breaks both assumptions. What
+follows was measured on 111 Devin Review threads across `laconicman/telegram-kb` #1–#7 on
+2026-09-26, then checked by an independent walk of the same threads (see
+`docs/Verification.md`). It is what the verdict, the bot gate and the resolution rules
+stand on.
+
+- **It resolves on HEAD, not on a reply.** The reviewer resolves its own thread when a push
+  makes the finding untrue: code, docs, help text or the PR description. A reply never
+  triggers it. On 12 threads the verdict came before my reply did. A reply that defers a
+  behavioural finding to tech debt leaves the thread open for good. The one unresolved
+  thread of 111 was that shape, so an unresolved thread on a closed subject stays listed
+  (``InboundItem/awaitsLook``).
+- **Its verdict is a fixed phrase with no marker.** All 92 verdict replies open
+  `✅ **Resolved**: <what fixed it>`, and it posts them when it re-reviews, which can be
+  before I reply. None of the 19 fix-session replies opens that way. So the phrase, read
+  only at the opening, is the asker confirming (``VerdictDetector``).
+- **One login, two roles.** The bot's fix sessions post and resolve under the reviewer's
+  own login. Their replies — "Fixed in `<sha>`", "Closed the remaining half of this in
+  `<sha>`" — land among the asker's, so from a configured bot only the verdict confirms
+  (``ItemState/askerReplied``). Nothing a login can express tells the two roles apart.
+  Making the login "mine" would also claim every root. That limit is recorded rather than
+  guessed around.
+- **One app, two spellings.** Its comments are authored by `devin-ai-integration`, and its
+  resolutions by `devin-ai-integration[bot]`. Every comparison goes through ``Login``.
+
+The rule underneath: read what the asker *declares* — a fixed phrase where it puts one,
+the resolution flag and who set it — and never infer what it *meant*. None of these
+readings clears an obligation by itself. A verdict upgrades a reply I wrote; resolution
+only keeps closure from hiding a thread.
 
 ## Nothing leaves the workspace without an explicit flag
 

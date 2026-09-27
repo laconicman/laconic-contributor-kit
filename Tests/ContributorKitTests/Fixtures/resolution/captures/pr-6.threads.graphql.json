@@ -1,0 +1,243 @@
+[
+ {
+  "data": {
+   "repository": {
+    "pullRequest": {
+     "state": "OPEN",
+     "reviewThreads": {
+      "pageInfo": {
+       "hasNextPage": false,
+       "endCursor": "Y3Vyc29yOnYyOpK0MjAyNi0wOS0yNFQxOTo1MjoxOFrOpb5FaA=="
+      },
+      "nodes": [
+       {
+        "isResolved": true,
+        "isOutdated": false,
+        "path": "Sources/TelegramKBStore/Store.swift",
+        "resolvedBy": {
+         "login": "devin-ai-integration[bot]"
+        },
+        "comments": {
+         "totalCount": 3,
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "databaseId": 4097650232,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T19:32:53Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/6#discussion_r4097650232",
+           "body": "<!-- devin-review-comment {\"id\": \"BUG_pr-review-job-15ace3304cc94ee78a7647e6c6cea3df_0001\", \"file_path\": \"Sources/TelegramKBStore/Store.swift\", \"start_line\": 83, \"end_line\": 83, \"side\": \"RIGHT\", \"based_on_repo_rules\": false, \"kind\": \"bug\"} -->\n\n🟡 **Pinned readers delay sync completion**\n\nWhen a reader holds a snapshot after the crawl, `checkpoint(.truncate)` waits up to ten seconds before returning BUSY. The writer's [busyMode](https://github.com/laconicman/telegram-kb/blob/1d163a5cec563d76d015a193283c91f2257deefa/Sources/TelegramKBStore/Store.swift#L18-L27 \"Sources/TelegramKBStore/Store.swift:18-27\") applies here, delaying even a completed sync.\n\n<details>\n<summary>Learn more</summary>\n\nA TRUNCATE checkpoint waits for WAL readers to release their snapshots. The writer connection has a ten-second busy timeout in [openForWriting](https://github.com/laconicman/telegram-kb/blob/1d163a5cec563d76d015a193283c91f2257deefa/Sources/TelegramKBStore/Store.swift#L18-L27 \"Sources/TelegramKBStore/Store.swift:18-27\"). A pinned reader therefore makes the final cleanup wait before it can take the BUSY path. The CLI does this cleanup on exit in [run](https://github.com/laconicman/telegram-kb/blob/1d163a5cec563d76d015a193283c91f2257deefa/Sources/tgkb/Sync.swift#L53-L60 \"Sources/tgkb/Sync.swift:53-60\").\n\n**Example:** A reader starts a 30-second snapshot just before a crawl ends. The crawl has finished, but `tgkb sync` remains running for up to ten more seconds, then exits without truncating the WAL.\n\n**Recommended fix:** Give the optional checkpoint its own short or immediate busy policy rather than using the writer's ten-second timeout. Keep the ten-second timeout for normal write transactions; verify the cleanup returns promptly with a pinned reader.\n\n</details>\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/6\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+          },
+          {
+           "databaseId": 4097808203,
+           "author": {
+            "login": "laconicman"
+           },
+           "createdAt": "2026-09-24T19:50:52Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/6#discussion_r4097808203",
+           "body": "Fixed. The checkpoint now runs under an immediate busy policy — `sqlite3_busy_timeout(0)` inside the barrier, restored afterward via the non-throwing C call (a `PRAGMA` restore could itself throw and leave the writer connection with a zeroed timeout). A pinned reader is skipped instantly rather than waited out. `truncateWALDoesNotWaitOnReaders` pins a read transaction and asserts the call returns in <5s; the mutant restoring the default timeout goes red."
+          },
+          {
+           "databaseId": 4097819808,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T19:52:12Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/6#discussion_r4097819808",
+           "body": "✅ **Resolved**: The cleanup now sets the immediate busy timeout around the truncate checkpoint and restores the prior timeout."
+          }
+         ]
+        }
+       },
+       {
+        "isResolved": true,
+        "isOutdated": true,
+        "path": "Sources/tgkb/Sync.swift",
+        "resolvedBy": {
+         "login": "devin-ai-integration[bot]"
+        },
+        "comments": {
+         "totalCount": 4,
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "databaseId": 4097650348,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T19:32:54Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/6#discussion_r4097650348",
+           "body": "<!-- devin-review-comment {\"id\": \"BUG_pr-review-job-15ace3304cc94ee78a7647e6c6cea3df_0002\", \"file_path\": \"Sources/tgkb/Sync.swift\", \"start_line\": 55, \"end_line\": 55, \"side\": \"RIGHT\", \"based_on_repo_rules\": false, \"kind\": \"bug\"} -->\n\n🟡 **Checkpoint failures disappear after sync**\n\nIf cleanup fails with a non-BUSY database error, `try?` discards it. The sync reports success while its WAL remains unreclaimed.\n\n<details>\n<summary>Learn more</summary>\n\n[truncateWAL](https://github.com/laconicman/telegram-kb/blob/1d163a5cec563d76d015a193283c91f2257deefa/Sources/TelegramKBStore/Store.swift#L80-L89 \"Sources/TelegramKBStore/Store.swift:80-89\") deliberately ignores only SQLITE_BUSY; other database failures propagate. The deferred `try?` immediately suppresses those other failures as well. This can make a completed sync exit normally even though the promised checkpoint failed, leaving the WAL untouched without a diagnostic.\n\n**Example:** A crawl commits its last page, then a checkpoint fails with an I/O error. The error is discarded and `tgkb sync` reports success, although no space was reclaimed.\n\n**Recommended fix:** Run cleanup in a path that distinguishes BUSY from other failures and surfaces non-BUSY checkpoint errors. Preserve any original crawl error when cleanup also fails, rather than overwriting it.\n\n</details>\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/6\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+          },
+          {
+           "databaseId": 4097808502,
+           "author": {
+            "login": "laconicman"
+           },
+           "createdAt": "2026-09-24T19:50:54Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/6#discussion_r4097808502",
+           "body": "Fixed by moving cleanup into `ChannelSync.sync` — the layer tests can drive, which also resolves the wiring finding below. BUSY stays absorbed inside `truncateWAL`; any other error now sets `Outcome.walCleanupFailed`, which the CLI turns into a stderr warning while the sync exit stays honest. On the error path the reclaim is still attempted (`try?`, deliberately — the crawl error is the one that must propagate). The `--import-resolutions` path bypasses ChannelSync, so it owns a scoped defer with the same warn-on-error."
+          },
+          {
+           "databaseId": 4097918529,
+           "author": {
+            "login": "laconicman"
+           },
+           "createdAt": "2026-09-24T20:02:00Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/6#discussion_r4097918529",
+           "body": "Re-checked after the markup edit — the ask is unchanged, and the fix stands as described above (`Outcome.walCleanupFailed` → stderr warning; error-path reclaim attempted with the crawl error dominant)."
+          },
+          {
+           "databaseId": 4098504225,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T21:09:29Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/6#discussion_r4098504225",
+           "body": "Closed out the last remaining `try?` in 33047f7: `ChannelSync.sync`'s failed-walk branch still swallowed a non-BUSY cleanup failure. It now throws `ChannelSync.CleanupAlsoFailed(walk:cleanup:)` — the walk's error leads, the cleanup's rides along — so nothing vanishes on either path. Regression `failedWalkReportsFailedCleanup` + mutant restoring the `try?`. (The two older ChannelSync mutants were also rebased onto the `walk()` extraction; they had stopped applying.)"
+          }
+         ]
+        }
+       },
+       {
+        "isResolved": true,
+        "isOutdated": false,
+        "path": "Tests/TelegramKBStoreTests/StoreTests.swift",
+        "resolvedBy": {
+         "login": "devin-ai-integration[bot]"
+        },
+        "comments": {
+         "totalCount": 3,
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "databaseId": 4097650449,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T19:32:55Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/6#discussion_r4097650449",
+           "body": "<!-- devin-review-comment {\"id\": \"ANALYSIS_pr-review-job-15ace3304cc94ee78a7647e6c6cea3df_0001\", \"file_path\": \"Tests/TelegramKBStoreTests/StoreTests.swift\", \"start_line\": 60, \"end_line\": 65, \"side\": \"RIGHT\", \"kind\": \"analysis\"} -->\n\n🔍 **CLI cleanup has no regression test**\n\nThe test calls `truncateWAL()` directly. Removing the new defer in `Sync.run` leaves this test green, so the CLI cleanup lacks a regression test under the repository's test rule.\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/6\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+          },
+          {
+           "databaseId": 4097808789,
+           "author": {
+            "login": "laconicman"
+           },
+           "createdAt": "2026-09-24T19:50:56Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/6#discussion_r4097808789",
+           "body": "Fixed by moving the call into `ChannelSync.sync` — the seam that exists precisely because `tgkb`'s `run` cannot be imported by a test. `syncLeavesWALTruncated` drives a stub-fetched sync end to end and asserts the WAL is empty afterward; a mutant that drops the success-path cleanup goes red."
+          },
+          {
+           "databaseId": 4097885876,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T19:58:51Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/6#discussion_r4097885876",
+           "body": "✅ **Resolved**: Resolved: Scripts/mutants/syncLeavesWALTruncated.patch now provides mutation coverage for removing ChannelSync's cleanup call."
+          }
+         ]
+        }
+       },
+       {
+        "isResolved": true,
+        "isOutdated": false,
+        "path": "Tests/TelegramKBStoreTests/StoreTests.swift",
+        "resolvedBy": {
+         "login": "devin-ai-integration[bot]"
+        },
+        "comments": {
+         "totalCount": 3,
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "databaseId": 4097820598,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T19:52:17Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/6#discussion_r4097820598",
+           "body": "<!-- devin-review-comment {\"id\": \"ANALYSIS_pr-review-job-cd8c26807cd546cdb0ae7ef684e6f6e4_0001\", \"file_path\": \"Tests/TelegramKBStoreTests/StoreTests.swift\", \"start_line\": 253, \"end_line\": 253, \"side\": \"RIGHT\", \"kind\": \"analysis\"} -->\n\n🔍 **Reader setup failure hangs the test**\n\nIf the detached read throws before signaling `acquired`, the test waits forever rather than reporting the database error. Signal setup completion on both success and failure paths.\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/6\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+          },
+          {
+           "databaseId": 4097876818,
+           "author": {
+            "login": "laconicman"
+           },
+           "createdAt": "2026-09-24T19:58:03Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/6#discussion_r4097876818",
+           "body": "Fixed — the catch path now signals `acquired` too and hands the error up (thrown directly, so the test reports the real failure rather than hanging or asserting sideways). Written before the semaphore signal, so the handoff is happens-before-safe."
+          },
+          {
+           "databaseId": 4097884766,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T19:58:45Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/6#discussion_r4097884766",
+           "body": "✅ **Resolved**: Resolved: the reader thread now signals acquired on both success and setup failure, and the test propagates setup errors."
+          }
+         ]
+        }
+       },
+       {
+        "isResolved": true,
+        "isOutdated": true,
+        "path": "Sources/TelegramKB/TelegramKB.docc/Research.md",
+        "resolvedBy": {
+         "login": "devin-ai-integration[bot]"
+        },
+        "comments": {
+         "totalCount": 3,
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "databaseId": 4097820735,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T19:52:18Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/6#discussion_r4097820735",
+           "body": "<!-- devin-review-comment {\"id\": \"ANALYSIS_pr-review-job-cd8c26807cd546cdb0ae7ef684e6f6e4_0002\", \"file_path\": \"Sources/TelegramKB/TelegramKB.docc/Research.md\", \"start_line\": 64, \"end_line\": 64, \"side\": \"RIGHT\", \"kind\": \"analysis\"} -->\n\n🔍 **Research index names the wrong cleanup site**\n\nThe index says channel cleanup is deferred in `Sync.run`; it actually runs in [ChannelSync.sync](https://github.com/laconicman/telegram-kb/blob/362a01316589ef139f2fff944acbea5b3e2c7fd2/Sources/TelegramKBSync/ChannelSync.swift#L48-L63 \"Sources/TelegramKBSync/ChannelSync.swift:48-63\"). `Sync.run` owns only import cleanup.\n\n<!-- devin-review-badge-begin -->\n<a href=\"https://app.devin.ai/review/laconicman/telegram-kb/pull/6\" target=\"_blank\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://static.devin.ai/assets/gh-devin-review-dark.svg?v=4\"><img src=\"https://static.devin.ai/assets/gh-devin-review-light.svg?v=4\" alt=\"Devin Review\"></picture></a>\n<!-- devin-review-badge-end -->\n\n---\n*Was this helpful? React with 👍 or 👎 to provide feedback.*"
+          },
+          {
+           "databaseId": 4097877199,
+           "author": {
+            "login": "laconicman"
+           },
+           "createdAt": "2026-09-24T19:58:05Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/6#discussion_r4097877199",
+           "body": "Fixed — the index now points at `ChannelSync.sync` (with the immediate-busy-policy detail) and names `--import-resolutions` as the path `run` still owns."
+          },
+          {
+           "databaseId": 4097885321,
+           "author": {
+            "login": "devin-ai-integration"
+           },
+           "createdAt": "2026-09-24T19:58:48Z",
+           "url": "https://github.com/laconicman/telegram-kb/pull/6#discussion_r4097885321",
+           "body": "✅ **Resolved**: Resolved: Research.md now identifies ChannelSync.sync as the channel cleanup site and distinguishes import cleanup."
+          }
+         ]
+        }
+       }
+      ]
+     }
+    }
+   }
+  }
+ }
+]

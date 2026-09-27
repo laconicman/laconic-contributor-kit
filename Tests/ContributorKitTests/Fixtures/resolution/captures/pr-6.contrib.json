@@ -1,0 +1,190 @@
+{
+ "items": [
+  {
+   "changed": null,
+   "id": "discussion_r4097650232",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/6#discussion_r4097650232",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🟡 **Pinned readers delay sync completion**\n\nWhen a reader holds a snapshot after the crawl, `checkpoint(.truncate)` waits up to ten seconds before returning BUSY. The writer's [busyMode](https://github.com/laconicman/telegram-kb/blob/1d163a5cec563d76d015a193283c91f2257deefa/Sources/TelegramKBStore/Store.swift#L18-L27 \"Sources/TelegramKBStore/Store.swift:18-27\") applies here, delaying even a completed sync.\n\nLearn more\n\n\n\nA TRUNCATE checkpoint waits for WAL readers to release their snapshots. The writer connection has a ten-second busy timeout in [openForWriting](https://github.com/laconicman/telegram-kb/blob/1d163a5cec563d76d015a193283c91f2257deefa/Sources/TelegramKBStore/Store.swift#L18-L27 \"Sources/TelegramKBStore/Store.swift:18-27\"). A pinned reader therefore makes the final cleanup wait before it can take the BUSY path. The CLI does this cleanup on exit in [run](https://github.com/laconicman/telegram-kb/blob/1d163a5cec563d76d015a193283c91f2257deefa/Sources/tgkb/Sync.swift#L53-L60 \"Sources/tgkb/Sync.swift:53-60\").\n\n**Example:** A reader starts a 30-second snapshot just before a crawl ends. The crawl has finished, but `tgkb sync` remains running for up to ten more seconds, then exits without truncating the WAL.\n\n**Recommended fix:** Give the optional checkpoint its own short or immediate busy policy rather than using the writer's ten-second timeout. Keep the ten-second timeout for normal write transactions; verify the cleanup returns promptly with a pinned reader.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Fixed. The checkpoint now runs under an immediate busy policy — `sqlite3_busy_timeout(0)` inside the barrier, restored afterward via the non-throwing C call (a `PRAGMA` restore could itself throw and leave the writer connection with a zeroed timeout). A pinned reader is skipped instantly rather than waited out. `truncateWALDoesNotWaitOnReaders` pins a read transaction and asserts the call returns in <5s; the mutant restoring the default timeout goes red."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4097650348",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/6#discussion_r4097650348",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🟡 **Checkpoint failures disappear after sync**\n\nIf cleanup fails with a non-BUSY database error, `try?` discards it. The sync reports success while its WAL remains unreclaimed.\n\nLearn more\n\n\n\n[truncateWAL](https://github.com/laconicman/telegram-kb/blob/1d163a5cec563d76d015a193283c91f2257deefa/Sources/TelegramKBStore/Store.swift#L80-L89 \"Sources/TelegramKBStore/Store.swift:80-89\") deliberately ignores only SQLITE_BUSY; other database failures propagate. The deferred `try?` immediately suppresses those other failures as well. This can make a completed sync exit normally even though the promised checkpoint failed, leaving the WAL untouched without a diagnostic.\n\n**Example:** A crawl commits its last page, then a checkpoint fails with an I/O error. The error is discarded and `tgkb sync` reports success, although no space was reclaimed.\n\n**Recommended fix:** Run cleanup in a path that distinguishes BUSY from other failures and surfaces non-BUSY checkpoint errors. Preserve any original crawl error when cleanup also fails, rather than overwriting it.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Re-checked after the markup edit — the ask is unchanged, and the fix stands as described above (`Outcome.walCleanupFailed` → stderr warning; error-path reclaim attempted with the crawl error dominant)."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4097650449",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/6#discussion_r4097650449",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🔍 **CLI cleanup has no regression test**\n\nThe test calls `truncateWAL()` directly. Removing the new defer in `Sync.run` leaves this test green, so the CLI cleanup lacks a regression test under the repository's test rule.\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Fixed by moving the call into `ChannelSync.sync` — the seam that exists precisely because `tgkb`'s `run` cannot be imported by a test. `syncLeavesWALTruncated` drives a stub-fetched sync end to end and asserts the WAL is empty afterward; a mutant that drops the success-path cleanup goes red."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4097820598",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/6#discussion_r4097820598",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🔍 **Reader setup failure hangs the test**\n\nIf the detached read throws before signaling `acquired`, the test waits forever rather than reporting the database error. Signal setup completion on both success and failure paths.\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Fixed — the catch path now signals `acquired` too and hands the error up (thrown directly, so the test reports the real failure rather than hanging or asserting sideways). Written before the semaphore signal, so the handoff is happens-before-safe."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4097820735",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/6#discussion_r4097820735",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🔍 **Research index names the wrong cleanup site**\n\nThe index says channel cleanup is deferred in `Sync.run`; it actually runs in [ChannelSync.sync](https://github.com/laconicman/telegram-kb/blob/362a01316589ef139f2fff944acbea5b3e2c7fd2/Sources/TelegramKBSync/ChannelSync.swift#L48-L63 \"Sources/TelegramKBSync/ChannelSync.swift:48-63\"). `Sync.run` owns only import cleanup.\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Fixed — the index now points at `ChannelSync.sync` (with the immediate-busy-policy detail) and names `--import-resolutions` as the path `run` still owns."
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5309221941",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/6#pullrequestreview-5309221941",
+   "question": "None. Acknowledged, and the body has not moved since.",
+   "state": "obligation-acknowledged",
+   "text": {
+    "ask": "> [!NOTE]\n> **Newer findings are available below.** Devin Review posted a newer report on this PR, in addition to the findings presented here.\n\n**Devin Review** found 3 potential issues.",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5309440583",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/6#pullrequestreview-5309440583",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5309441516",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/6#pullrequestreview-5309441516",
+   "question": "None. Acknowledged, and the body has not moved since.",
+   "state": "obligation-acknowledged",
+   "text": {
+    "ask": "**Devin Review** found 2 new potential issues.",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5309521284",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/6#pullrequestreview-5309521284",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5309521939",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/6#pullrequestreview-5309521939",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5309522547",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/6#pullrequestreview-5309522547",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5310254251",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/6#pullrequestreview-5310254251",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  }
+ ],
+ "provenance": {
+  "anomalies": [],
+  "command": "contrib in laconicman/telegram-kb --pr 6",
+  "counters": [
+   {
+    "label": "inline threads",
+    "value": 5
+   },
+   {
+    "label": "review bodies",
+    "value": 13
+   },
+   {
+    "label": "issue comments",
+    "value": 1
+   },
+   {
+    "label": "owed",
+    "value": 0
+   },
+   {
+    "label": "to re-read",
+    "value": 0
+   },
+   {
+    "label": "pages fetched",
+    "value": 1
+   }
+  ],
+  "finishedAt": "2026-09-26T18:02:03Z",
+  "notes": [
+   "6 of those review bodies are mine — not obligations",
+   "1 of those issue comments are mine — not obligations",
+   "as of 2026-09-26T18:02:03Z",
+   "5 item(s) no-prose — counted, not owed",
+   "snapshot: 257 item(s) known for this repository, age 4h; 0 new this run",
+   "bodies: full text, not excerpts",
+   "--no-snapshot: this run cannot inform the next one"
+  ],
+  "startedAt": "2026-09-26T18:02:03Z",
+  "subprocessCalls": 1
+ }
+}

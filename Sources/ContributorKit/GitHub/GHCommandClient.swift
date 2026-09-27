@@ -88,7 +88,8 @@ public struct GHCommandClient: GitHubClient {
                 threads.append(
                     RemoteThread(
                         comments: comments,
-                        isResolved: node.isResolved ?? false,
+                        isResolved: node.isResolved,
+                        resolvedBy: node.resolvedBy?.login,
                         isOutdated: node.isOutdated ?? false,
                         path: node.path))
             }

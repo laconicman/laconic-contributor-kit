@@ -1,0 +1,142 @@
+{
+ "items": [
+  {
+   "changed": null,
+   "id": "discussion_r4096829788",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/4#discussion_r4096829788",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🔴 **Undated pages falsely complete backfills**\n\nWhen every block lacks a readable date, `post(from:)` drops the entire page. [WebPreviewSource.crawl](https://github.com/laconicman/telegram-kb/blob/c737ba898816417f882f25484964aa94d4dd258d/Sources/TelegramKBIngest/WebPreviewSource.swift#L131 \"Sources/TelegramKBIngest/WebPreviewSource.swift:131\") treats empty posts as exhaustion, marking the unfinished backfill complete.\n\nLearn more\n\n\n\nAn unreadable block is counted by `WebPreviewParser.page`, but a page containing only unreadable blocks has no parsed posts. [WebPreviewSource.crawl](https://github.com/laconicman/telegram-kb/blob/c737ba898816417f882f25484964aa94d4dd258d/Sources/TelegramKBIngest/WebPreviewSource.swift#L121-L134 \"Sources/TelegramKBIngest/WebPreviewSource.swift:121-134\") checks only parsed posts to decide whether history ended. It then passes `reachedEnd` to [ChannelSync.sync](https://github.com/laconicman/telegram-kb/blob/c737ba898816417f882f25484964aa94d4dd258d/Sources/TelegramKBSync/ChannelSync.swift#L82-L88 \"Sources/TelegramKBSync/ChannelSync.swift:82-88\"), which records the backfill as complete. Subsequent syncs use that completion state instead of resuming the skipped history.\n\n**Example:** A fresh channel yields a valid first page and then a page of 20 blocks without readable dates. The second page contributes zero posts, so the crawler marks the backfill complete instead of reporting an unreadable page and leaving the backfill open.\n\n**Recommended fix:** In `WebPreviewSource.crawl`, distinguish zero message blocks from zero readable posts using the parser's block count or `skippedBlocks`. Do not set `reachedEnd` when unreadable blocks exist; keep the backfill resumable and surface the warning. Add a crawler test covering an all-undated page after a valid page.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Fixed in e7099c2: the exhaustion guard now requires zero *message blocks*, not zero parsed posts — an all-unreadable page stops the walk without claiming the end, so the backfill stays resumable and the skips surface in `unreadableBlocks`. Regression test `allUnreadablePageIsNotExhaustion` plus a mutant restoring the unconditional `reachedEnd = true`, red-verified."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4096829975",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/4#discussion_r4096829975",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🔍 **Missing identifiers are not counted**\n\nThe comment says missing `data-post` blocks count as skipped, but [page(html:)](https://github.com/laconicman/telegram-kb/blob/c737ba898816417f882f25484964aa94d4dd258d/Sources/TelegramKBIngest/WebPreviewParser.swift#L36-L38 \"Sources/TelegramKBIngest/WebPreviewParser.swift:36-38\") excludes them before counting. Clarify the warning's scope.\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Fixed in e7099c2: the selector is now class-wide (`div.tgme_widget_message`, no `[data-post]` qualifier), so a message div missing the attribute lands in `skippedBlocks` via `post(from:)` returning nil rather than vanishing before counting. The comment states the scope honestly now. Test `missingDataPostIsCounted` plus a mutant restoring the `[data-post]` selector, red-verified."
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4097369698",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/4#discussion_r4097369698",
+   "question": "None. The asker confirmed it themselves; read only if you doubt the match.",
+   "state": "answered-confirmed",
+   "text": {
+    "ask": "🔍 **Skipped-block documentation excludes id-less messages**\n\n`Page.skippedBlocks` now includes blocks without `data-post`, but its property comment says it counts only blocks carrying that attribute. Update the comment to match the counter.\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": "Fixed in 51fbae9 — the property comment now reads \"Message blocks (div.tgme_widget_message) that could not be read as a post — missing or malformed data-post, unreadable date, out-of-range id\", matching the widened selector."
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5308243711",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/4#pullrequestreview-5308243711",
+   "question": "None. Acknowledged, and the body has not moved since.",
+   "state": "obligation-acknowledged",
+   "text": {
+    "ask": "> [!NOTE]\n> **Newer findings are available below.** Devin Review posted a newer report on this PR, in addition to the findings presented here.\n\n**Devin Review** found 2 potential issues.",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5308885582",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/4#pullrequestreview-5308885582",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5308886396",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/4#pullrequestreview-5308886396",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5308887503",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/4#pullrequestreview-5308887503",
+   "question": "None. Acknowledged, and the body has not moved since.",
+   "state": "obligation-acknowledged",
+   "text": {
+    "ask": "**Devin Review** found 1 new potential issue.",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5308906574",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/4#pullrequestreview-5308906574",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  }
+ ],
+ "provenance": {
+  "anomalies": [],
+  "command": "contrib in laconicman/telegram-kb --pr 4",
+  "counters": [
+   {
+    "label": "inline threads",
+    "value": 3
+   },
+   {
+    "label": "review bodies",
+    "value": 8
+   },
+   {
+    "label": "issue comments",
+    "value": 1
+   },
+   {
+    "label": "owed",
+    "value": 0
+   },
+   {
+    "label": "to re-read",
+    "value": 0
+   },
+   {
+    "label": "pages fetched",
+    "value": 1
+   }
+  ],
+  "finishedAt": "2026-09-26T18:02:00Z",
+  "notes": [
+   "3 of those review bodies are mine — not obligations",
+   "1 of those issue comments are mine — not obligations",
+   "as of 2026-09-26T18:02:00Z",
+   "3 item(s) no-prose — counted, not owed",
+   "snapshot: 257 item(s) known for this repository, age 4h; 0 new this run",
+   "bodies: full text, not excerpts",
+   "--no-snapshot: this run cannot inform the next one"
+  ],
+  "startedAt": "2026-09-26T18:01:59Z",
+  "subprocessCalls": 1
+ }
+}

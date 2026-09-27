@@ -1,0 +1,597 @@
+{
+ "items": [
+  {
+   "changed": null,
+   "id": "discussion_r4097237099",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4097237099",
+   "question": "Answer it, or say why it should be left out — but it needs an answer.",
+   "state": "open-ask",
+   "text": {
+    "ask": "🔴 **Link matches beyond 100 are unreachable**\n\nWhen a URL has over 100 matches, `find_links` caps every request at 100 without offering pagination. Clients cannot retrieve the remaining posts despite the reported `total`.\n\nLearn more\n\n\n\n`find_links` reads a bounded first page from `Store.links(to:limit:)` and reports the full count, but the tool has no cursor or offset argument. Increasing `limit` cannot advance past the first 100 results because `Args.int` clamps it. This is a permanent retrieval gap, not simply a compact default response.\n\n**Example:** A URL shared by 140 posts returns 100 links and `total: 140`. Calling again with `limit: 140` returns the same 100; the other 40 cannot be requested.\n\n**Recommended fix:** Add stable pagination to `Store.links(to:)` and expose an opaque cursor and `next_cursor` in `find_links`, with ordering that uniquely identifies each link row. Test traversal past 100 matches.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4097237210",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4097237210",
+   "question": "Answer it, or say why it should be left out — but it needs an answer.",
+   "state": "open-ask",
+   "text": {
+    "ask": "🟡 **Search results mix two database snapshots**\n\nWhen sync commits between `store.search` and `store.posts`, `searchPosts` can return updated text that no longer matches the query. `total` and the cursor still describe the earlier snapshot, and a missing post disappears from the page.\n\nLearn more\n\n\n\nSearch hits, count and cursor are computed in [search](https://github.com/laconicman/telegram-kb/blob/3950a115d3c916913e590bd1dc9e3768438e0a45/Sources/TelegramKBStore/Search.swift#L133-L183 \"Sources/TelegramKBStore/Search.swift:133-183\") inside one read snapshot. Hydration takes a second snapshot in [posts(ids:)](https://github.com/laconicman/telegram-kb/blob/3950a115d3c916913e590bd1dc9e3768438e0a45/Sources/TelegramKBStore/Search.swift#L223-L228 \"Sources/TelegramKBStore/Search.swift:223-228\"). A concurrent writer can change a matched post between them, so the result page combines old search metadata and new post content. `find_links` has the same split between `links(to:)` and hydration, yielding inconsistent snippets and dates after a sync.\n\n**Example:** Search for `swift` returns an ID with `total: 1`; sync replaces that post's text with `kotlin` before hydration. The returned search record has a `kotlin` snippet under a `swift` query, with `index_moved_since_cursor: false` on this first page.\n\n**Recommended fix:** Hydrate search and link hits inside the same short `dbPool.read` transaction that selects the hits and computes totals; expose a Store API returning hydrated page data or accept a read-scoped callback. Test a write between the previous two reads.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4097237349",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4097237349",
+   "question": "Answer it, or say why it should be left out — but it needs an answer.",
+   "state": "open-ask",
+   "text": {
+    "ask": "🟡 **Date filter drops final-second posts**\n\nWith a date-only `to`, `Args.date` ends the day at `23:59:59Z`. Posts timestamped after that instant but before midnight disappear from `search_posts`.\n\nLearn more\n\n\n\nThe `to` parameter promises an inclusive calendar day. [SearchFilter.sql](https://github.com/laconicman/telegram-kb/blob/3950a115d3c916913e590bd1dc9e3768438e0a45/Sources/TelegramKBStore/SearchFilter.swift#L40-L45 \"Sources/TelegramKBStore/SearchFilter.swift:40-45\") uses `p.date <= ?`, so turning the upper bound into `23:59:59Z` excludes a timestamp with any fraction of the final second. Store dates are `Date` values and can retain fractional seconds, including dates supplied by other ingest sources.\n\n**Example:** `to: \"2026-09-24\"` excludes a post dated `2026-09-24T23:59:59.500Z`; it belongs to the requested day.\n\n**Recommended fix:** Represent date-only upper bounds as the next day's midnight with an exclusive comparison, preserving inclusive comparisons for explicit timestamps; alternatively represent the final instant at the database's actual date precision. Add a fractional-final-second case.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4097237506",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4097237506",
+   "question": "Answer it, or say why it should be left out — but it needs an answer.",
+   "state": "open-ask",
+   "text": {
+    "ask": "🟡 **Text-only clients see false pagination instructions**\n\nOn a final page, `render` compares the page size with `total` and asks clients to pass a nonexistent `next_cursor`. A zero-limit link count also says no posts exist despite a positive `total`.\n\nLearn more\n\n\n\nThe search and link text renderers use `page.count < total` to decide whether another page exists. That comparison is true on every page when the total exceeds the page size, including the final page; the store instead determines continuation with `nextCursor`. For `find_links` with `limit: 0`, [render](https://github.com/laconicman/telegram-kb/blob/7bfc4aeabcda08cb0a86b5fe1f13cba6879de1b6/Sources/TelegramKBMCP/ToolHandler.swift#L213-L225 \"Sources/TelegramKBMCP/ToolHandler.swift:213-225\") returns `No posts link to that URL.` before even considering the positive total.\n\n**Example:** Two posts match a URL and the client requests one per page. Page two returns its sole post with `next_cursor: nil`, but its text says `1 of 2 post(s) — pass next_cursor for the rest`. With `limit: 0`, it says no posts link to the URL despite `total: 2`.\n\n**Recommended fix:** Pass `nextCursor` into both renderers and base continuation text on its presence. Handle count-only pages separately, stating the total rather than treating an empty page as an empty result set.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4097237667",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4097237667",
+   "question": "Answer it, or say why it should be left out — but it needs an answer.",
+   "state": "open-ask",
+   "text": {
+    "ask": "🔍 **MCP dependency allowlist needs reconciliation**\n\n`TelegramKBMCP` now directly depends on Logging and SystemPackage, beyond the dependencies permitted by [review guidelines](https://github.com/laconicman/telegram-kb/blob/3950a115d3c916913e590bd1dc9e3768438e0a45/REVIEW.md#L25-L26 \"REVIEW.md:25-26\"). The closure check examines only local targets, so it cannot enforce that external-package rule. Reconcile the rule with the new dependencies.\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4097237785",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4097237785",
+   "question": "Answer it, or say why it should be left out — but it needs an answer.",
+   "state": "open-ask",
+   "text": {
+    "ask": "🔍 **Format-source documentation omits an emitted value**\n\n`format_source` documents `export`, but [FormatSource](https://github.com/laconicman/telegram-kb/blob/3950a115d3c916913e590bd1dc9e3768438e0a45/Sources/TelegramKBModel/PostKind.swift#L21-L23 \"Sources/TelegramKBModel/PostKind.swift:21-23\") defines `absent` instead. Update the field documentation to match emitted values.\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4098761481",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4098761481",
+   "question": "Answer it, or say why it should be left out — but it needs an answer.",
+   "state": "open-ask",
+   "text": {
+    "ask": "🔴 **Oversized limit terminates the server**\n\nA floating-point `limit` above `Int.max` makes `Args.int` trap during conversion, before the page-size clamp runs. The MCP server exits instead of rejecting the argument.\n\nLearn more\n\n\n\n`limit` is a JSON number decoded as an MCP `Value`. A whole-valued double can exceed the range of Swift `Int`; checking whether it equals its rounded value does not make `Int(double)` safe. The conversion traps before the handler can return a result or `MCPError.invalidParams`.\n\n**Example:** `search_posts` with `{\"query\":\"swift\",\"limit\":1e20}` reaches the double branch; `1e20.rounded()` equals `1e20`, but converting it to `Int` terminates the process rather than clamping to 100.\n\n**Recommended fix:** Check that the double is finite, nonnegative, integral, and representable before converting; alternatively clamp values above `max` in the double domain before conversion. Reject other numeric values with `MCPError.invalidParams`, and test a whole-valued number larger than `Int.max`.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4098761607",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4098761607",
+   "question": "Answer it, or say why it should be left out — but it needs an answer.",
+   "state": "open-ask",
+   "text": {
+    "ask": "🟡 **Shortener pagination fails after resolution changes**\n\nWhen a queried shortener gains or changes resolution, `links(to:)` rejects its previous cursor as foreign. Its fingerprint changes with the resolved destination, so the client receives no page or `index_moved_since_cursor` warning.\n\nLearn more\n\n\n\nA link cursor carries a fingerprint of the match key and the index generation. A shortener's match key comes from its `urlResolution` row, which a writer can update between pages. The writer increments the generation in [upsert(resolutions:)](https://github.com/laconicman/telegram-kb/blob/7bfc4aeabcda08cb0a86b5fe1f13cba6879de1b6/Sources/TelegramKBStore/Store.swift#L243-L258 \"Sources/TelegramKBStore/Store.swift:243-258\"), but the changed match key causes `Cursor.resume` to throw before that generation can be compared. This turns ordinary corpus movement into an invalid-argument error instead of the advertised drift signal.\n\n**Example:** A query for `https://clck.ru/x` returns page one while its resolution points to `https://a.example`. An import changes its destination to `https://b.example`; the same URL and cursor now yield `cursorDoesNotMatchQuery`, rather than a page marked as moved.\n\n**Recommended fix:** Bind the cursor to the stable canonical query URL as well as the lookup mode, not its mutable resolved match key; retain the generation check to signal changed membership. Preserve equivalent-spelling cursor sharing where the effective key remains stable, and test a changed resolution of the queried URL between pages.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4098761768",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4098761768",
+   "question": "Answer it, or say why it should be left out — but it needs an answer.",
+   "state": "open-ask",
+   "text": {
+    "ask": "🟡 **Final pages violate their output schemas**\n\nOn a final page, `next_cursor` encodes as `null`, but both tool schemas declare it as a string. Schema-validating MCP clients reject otherwise successful search and link results.\n\nLearn more\n\n\n\nBoth [SearchPostsOutput](https://github.com/laconicman/telegram-kb/blob/7bfc4aeabcda08cb0a86b5fe1f13cba6879de1b6/Sources/TelegramKBMCP/Records.swift#L56-L64 \"Sources/TelegramKBMCP/Records.swift:56-64\") and [FindLinksOutput](https://github.com/laconicman/telegram-kb/blob/7bfc4aeabcda08cb0a86b5fe1f13cba6879de1b6/Sources/TelegramKBMCP/Records.swift#L81-L89 \"Sources/TelegramKBMCP/Records.swift:81-89\") hold `next_cursor` as `String?`. Swift's synthesized `Encodable` omits optional keys when they are nil, rather than encoding JSON `null`. The declared output schema does not list `next_cursor` as required, so omitted keys are valid under the current schema. No bug here if the SDK encodes via the synthesized `Codable` conformance; verify the exact encoded `structuredContent` on a terminal page before changing the schema.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4098761906",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4098761906",
+   "question": "Answer it, or say why it should be left out — but it needs an answer.",
+   "state": "open-ask",
+   "text": {
+    "ask": "🔍 **Duplicate links repeat full post hydration**\n\nWhen one post contains several matching links, `linkedPosts` loads that post and its relations once per link. The handler then keeps only one copy per post ID. Deduplicating hydration IDs can reduce repeated database reads without changing link-hit order.\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4098885359",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4098885359",
+   "question": "Answer it, or say why it should be left out — but it needs an answer.",
+   "state": "open-ask",
+   "text": {
+    "ask": "🟡 **Text-only pagination points to invalid argument**\n\nWhen more results exist, `footer` tells text-only clients to pass `next_cursor`, but the tool accepts `cursor`. Following that instruction returns `invalidParams` instead of the next page.\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4098885529",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4098885529",
+   "question": "Answer it, or say why it should be left out — but it needs an answer.",
+   "state": "open-ask",
+   "text": {
+    "ask": "🟡 **Fractional-second search bounds are rejected**\n\nWhen `from` or `to` contains fractional seconds, `date` rejects a valid ISO-8601 timestamp. The default `ISO8601FormatStyle` omits fractional seconds, so clients cannot filter at stored millisecond precision.\n\nLearn more\n\n\n\n`search_posts` accepts ISO-8601 date bounds, and the archive can retain fractional seconds. The default `Date.ISO8601FormatStyle()` used by [iso](https://github.com/laconicman/telegram-kb/blob/a595d78c8d9955b51d4e1b59239d14bb42763d84/Sources/TelegramKBMCP/ToolHandler.swift#L325 \"Sources/TelegramKBMCP/ToolHandler.swift:325\") parses timestamps without fractional seconds. The parser falls through to the date-only branch and rejects a valid fractional timestamp as `invalidParams`.\n\n**Example:** A caller provides `to: \"2023-11-14T23:59:59.500Z\"` to include posts through half a second before midnight. The tool rejects the call instead of applying that bound.\n\n**Recommended fix:** Try a format style with `includingFractionalSeconds: true` alongside the existing nonfractional style, and add an MCP test for a fractional bound.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4098885707",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4098885707",
+   "question": "Answer it, or say why it should be left out — but it needs an answer.",
+   "state": "open-ask",
+   "text": {
+    "ask": "🟡 **Final-day posts vanish from date-only searches**\n\nFor a post after 23:59:59.999, `date` ends a date-only `to` one millisecond before midnight. The inclusive filter omits that post even though its date is the requested day.\n\nLearn more\n\n\n\nA date-only `to` represents all posts on that calendar day. This upper bound is the final millisecond, but `Post.date` is a Foundation `Date` and the store does not round its values before persisting them in [write](https://github.com/laconicman/telegram-kb/blob/a595d78c8d9955b51d4e1b59239d14bb42763d84/Sources/TelegramKBStore/Store.swift#L107-L124 \"Sources/TelegramKBStore/Store.swift:107-124\"). An imported post can therefore carry a sub-millisecond timestamp after the chosen upper bound. The inclusive SQL comparison in [SearchFilter.sql](https://github.com/laconicman/telegram-kb/blob/a595d78c8d9955b51d4e1b59239d14bb42763d84/Sources/TelegramKBStore/SearchFilter.swift#L40-L45 \"Sources/TelegramKBStore/SearchFilter.swift:40-45\") excludes it.\n\n**Example:** For `to: \"2023-11-14\"`, a post dated `2023-11-14T23:59:59.9995Z` falls outside the computed bound, although it belongs to November 14.\n\n**Recommended fix:** Represent date-only upper bounds as an exclusive next-day bound (`p.date < nextMidnight`) rather than an inclusive approximation of the previous day. Preserve inclusive comparison for explicit timestamp bounds; add a boundary test with sub-millisecond dates.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4098885849",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4098885849",
+   "question": "Answer it, or say why it should be left out — but it needs an answer.",
+   "state": "open-ask",
+   "text": {
+    "ask": "🔍 **Link cursor summary is out of date**\n\nThe PR summary says shortener and destination queries share a cursor. `links(to:)` fingerprints the query's canonical URL instead, so those queries have distinct cursors. Reconcile the summary with the later review notes.\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4099000569",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4099000569",
+   "question": "Answer it, or say why it should be left out — but it needs an answer.",
+   "state": "open-ask",
+   "text": {
+    "ask": "🟡 **Date-only searches fail client schema validation**\n\nWhen a client validates `from` or `to`, the `date-time` schema rejects `YYYY-MM-DD`. The [date decoder](https://github.com/laconicman/telegram-kb/blob/34433e31a235de95b598cc538eea06389c7ed600/Sources/TelegramKBMCP/ToolHandler.swift#L329-L334 \"Sources/TelegramKBMCP/ToolHandler.swift:329-334\") accepts that spelling, so clients cannot send supported whole-day bounds.\n\n```suggestion\n                \"from\": .object([\"type\": \"string\",\n                                 \"description\": \"Oldest post date, inclusive; ISO-8601 or YYYY-MM-DD.\"]),\n                \"to\": .object([\"type\": \"string\",\n                               \"description\": \"Newest post date, inclusive; ISO-8601 or YYYY-MM-DD.\"]),\n```\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4099000684",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4099000684",
+   "question": "Answer it, or say why it should be left out — but it needs an answer.",
+   "state": "open-ask",
+   "text": {
+    "ask": "🟡 **Search dates lose fractional timestamps**\n\nFor posts stamped between whole seconds, `PostSummary.date` drops the fraction. Reusing that displayed date as an inclusive `to` excludes the post itself.\n\nLearn more\n\n\n\nSearch records expose the post's date, and the search tool accepts inclusive timestamp bounds with fractional seconds. The default ISO-8601 rendering omits the fraction from stored dates with millisecond precision. Other MCP date renderings use the same format at [the full post](https://github.com/laconicman/telegram-kb/blob/34433e31a235de95b598cc538eea06389c7ed600/Sources/TelegramKBMCP/Records.swift#L154 \"Sources/TelegramKBMCP/Records.swift:154\") and [link hits](https://github.com/laconicman/telegram-kb/blob/34433e31a235de95b598cc538eea06389c7ed600/Sources/TelegramKBMCP/ToolHandler.swift#L147 \"Sources/TelegramKBMCP/ToolHandler.swift:147\"), so the problem also affects those returned timestamps.\n\n**Example:** A post dated `2023-11-14T23:59:59.500Z` is shown as `2023-11-14T23:59:59Z`. Searching with `to` set to that displayed date excludes it, although the caller chose the post's own date.\n\n**Recommended fix:** Render all returned post dates using an ISO-8601 style that includes fractional seconds. Add a round-trip test using a stored post with a `.500` timestamp and reuse the returned date as an inclusive bound.\n\n\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4099000812",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4099000812",
+   "question": "Answer it, or say why it should be left out — but it needs an answer.",
+   "state": "open-ask",
+   "text": {
+    "ask": "🔍 **Cursor mutation has stale context**\n\nThe patch still expects `filter.to` to end the fingerprint fields, but `filter.before` now follows it. `git apply --check` fails, so this mutant cannot verify its regression test.\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4099230621",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4099230621",
+   "question": "Answer it, or say why it should be left out — but it needs an answer.",
+   "state": "open-ask",
+   "text": {
+    "ask": "🟡 **Link pages can skip tied matches**\n\nWhen a post has multiple matching links, `links(to:)` gives those links identical sort keys. Separate offset queries can order the ties differently, repeating one link and skipping another without reporting drift.\n\n```suggestion\n            ORDER BY l.channelUsername, l.messageID, l.id LIMIT ? OFFSET ?\n            \"\"\", arguments: [argument, cap, offset])\n```\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4099230746",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4099230746",
+   "question": "Answer it, or say why it should be left out — but it needs an answer.",
+   "state": "open-ask",
+   "text": {
+    "ask": "🟡 **Text-only search omits channel and author**\n\nWhen a client displays only `content`, `search_posts` renders links and snippets but omits the channel and author fields. Users cannot identify signed authors from search results without inspecting structured data.\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "discussion_r4099299933",
+   "kind": "inline-thread",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#discussion_r4099299933",
+   "question": "Answer it, or say why it should be left out — but it needs an answer.",
+   "state": "open-ask",
+   "text": {
+    "ask": "🔍 **Pagination mutant preserves the total order**\n\nChanging `l.id` to descending still gives tied links a total order. The test fails on insertion order, not skipped or repeated links; this mutant does not verify the original pagination failure.\n\n\n\n*Was this helpful? React with 👍 or 👎 to provide feedback.*",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5308730660",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#pullrequestreview-5308730660",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5310556185",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#pullrequestreview-5310556185",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5310556669",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#pullrequestreview-5310556669",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5310557075",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#pullrequestreview-5310557075",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5310557916",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#pullrequestreview-5310557916",
+   "question": "Does this need a response, or is it already absorbed? Either way, record which.",
+   "state": "obligation-open",
+   "text": {
+    "ask": "> [!NOTE]\n> **Newer findings are available below.** Devin Review posted a newer report on this PR, in addition to the findings presented here.\n\n**Devin Review** found 4 new potential issues.",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5310685084",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#pullrequestreview-5310685084",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5310687055",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#pullrequestreview-5310687055",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5310688432",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#pullrequestreview-5310688432",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5310689714",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#pullrequestreview-5310689714",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5310691297",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#pullrequestreview-5310691297",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5310692594",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#pullrequestreview-5310692594",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5310701813",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#pullrequestreview-5310701813",
+   "question": "Does this need a response, or is it already absorbed? Either way, record which.",
+   "state": "obligation-open",
+   "text": {
+    "ask": "> [!NOTE]\n> **Newer findings are available below.** Devin Review posted a newer report on this PR, in addition to the findings presented here.\n\n**Devin Review** found 4 new potential issues.",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5310792824",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#pullrequestreview-5310792824",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5310794033",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#pullrequestreview-5310794033",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5310795276",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#pullrequestreview-5310795276",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5310796659",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#pullrequestreview-5310796659",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5310841421",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#pullrequestreview-5310841421",
+   "question": "Does this need a response, or is it already absorbed? Either way, record which.",
+   "state": "obligation-open",
+   "text": {
+    "ask": "> [!NOTE]\n> **Newer findings are available below.** Devin Review posted a newer report on this PR, in addition to the findings presented here.\n\n**Devin Review** found 3 new potential issues.",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5311088688",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#pullrequestreview-5311088688",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5311089973",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#pullrequestreview-5311089973",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5311091102",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#pullrequestreview-5311091102",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5311092563",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#pullrequestreview-5311092563",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5311107840",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#pullrequestreview-5311107840",
+   "question": "Does this need a response, or is it already absorbed? Either way, record which.",
+   "state": "obligation-open",
+   "text": {
+    "ask": "> [!NOTE]\n> **Newer findings are available below.** Devin Review posted a newer report on this PR, in addition to the findings presented here.\n\n**Devin Review** found 2 new potential issues.",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5311177557",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#pullrequestreview-5311177557",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5311178624",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#pullrequestreview-5311178624",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5311185720",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#pullrequestreview-5311185720",
+   "question": "Does this need a response, or is it already absorbed? Either way, record which.",
+   "state": "obligation-open",
+   "text": {
+    "ask": "**Devin Review** found 1 new potential issue.",
+    "reply": null
+   }
+  },
+  {
+   "changed": null,
+   "id": "pullrequestreview-5311208947",
+   "kind": "review-body",
+   "permalink": "https://github.com/laconicman/telegram-kb/pull/5#pullrequestreview-5311208947",
+   "question": "None. No prose after stripping boilerplate.",
+   "state": "no-prose",
+   "text": {
+    "ask": "",
+    "reply": null
+   }
+  }
+ ],
+ "provenance": {
+  "anomalies": [],
+  "command": "contrib in laconicman/telegram-kb --pr 5",
+  "counters": [
+   {
+    "label": "inline threads",
+    "value": 20
+   },
+   {
+    "label": "review bodies",
+    "value": 26
+   },
+   {
+    "label": "issue comments",
+    "value": 1
+   },
+   {
+    "label": "owed",
+    "value": 25
+   },
+   {
+    "label": "to re-read",
+    "value": 0
+   },
+   {
+    "label": "pages fetched",
+    "value": 1
+   }
+  ],
+  "finishedAt": "2026-09-26T18:02:02Z",
+  "notes": [
+   "1 of those issue comments are mine — not obligations",
+   "as of 2026-09-26T18:02:02Z",
+   "21 item(s) no-prose — counted, not owed",
+   "snapshot: 257 item(s) known for this repository, age 4h; 0 new this run",
+   "bodies: full text, not excerpts",
+   "--no-snapshot: this run cannot inform the next one"
+  ],
+  "startedAt": "2026-09-26T18:02:01Z",
+  "subprocessCalls": 1
+ }
+}

@@ -90,6 +90,38 @@ public struct Snapshot: Codable, Sendable {
     public var age: TimeInterval { Date().timeIntervalSince(updatedAt) }
 }
 
+extension Snapshot.Entry {
+    /// Hand-written for one field: a `state` this build does not know decodes as `nil`.
+    ///
+    /// Every build on the machine shares one state directory, and states keep arriving —
+    /// `collapsed-unexamined`, then `asker-replied`. Synthesized decoding threw on the
+    /// unknown raw value, so one entry failed the whole snapshot with an error that read
+    /// like a corrupt file, before the schema-version guard could say anything. `nil` is
+    /// "no recorded state", which every reader already handles; the stored state feeds
+    /// only the `was → now` line and `ack`'s eligibility, and the next run re-classifies.
+    ///
+    /// Every other field decodes as synthesized. A new optional property must be read
+    /// here too: left out, it compiles and loads as `nil` forever.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try container.decode(Channel.self, forKey: .kind)
+        url = try container.decode(String.self, forKey: .url)
+        author = try container.decode(String.self, forKey: .author)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt)
+        lastEditedAt = try container.decodeIfPresent(Date.self, forKey: .lastEditedAt)
+        bodySha256 = try container.decode(String.self, forKey: .bodySha256)
+        subject = try container.decodeIfPresent(String.self, forKey: .subject)
+        prose = try container.decodeIfPresent(String.self, forKey: .prose)
+        state = try container.decodeIfPresent(String.self, forKey: .state)
+            .flatMap(ItemState.init(rawValue:))
+        firstSeen = try container.decode(Date.self, forKey: .firstSeen)
+        myReplyID = try container.decodeIfPresent(String.self, forKey: .myReplyID)
+        myReplyAt = try container.decodeIfPresent(Date.self, forKey: .myReplyAt)
+        acknowledged = try container.decodeIfPresent(Acknowledgement.self, forKey: .acknowledged)
+    }
+}
+
 public enum SnapshotError: Error, CustomStringConvertible {
     case schemaMismatch(found: Int, expected: Int)
     case unknownItem(String)

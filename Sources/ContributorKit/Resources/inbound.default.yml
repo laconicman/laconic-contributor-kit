@@ -56,6 +56,35 @@ inbound:
     - "please disregard this review"
     - "this report has been superseded"
 
+  # An asker can CONFIRM a fix in its own words. A reply from the asker's login whose
+  # stripped prose OPENS with one of these is the asker's verdict, and confirms my reply
+  # (`answered-confirmed`) whenever it was posted, before my reply or after it. It never
+  # stands in for a reply I did not write: a verdict with no reply of mine stays
+  # `open-ask`. Opening only, as with supersession, because a reply that mentions the
+  # phrase is not a verdict.
+  #
+  # Seeded for Devin Review only. Its verdicts open `✅ **Resolved**: <what fixed it>` and
+  # carry no marker: 92 of 92 did on laconicman/telegram-kb, 2026-09-26, and none of the
+  # 19 fix-session replies posted under the same login did. That is one reviewer on one
+  # repository. Add another reviewer's phrase only after it has been measured the same
+  # way. A FIXED, UNAMBIGUOUS PHRASE ONLY.
+  verdictPhrases:
+    - "✅ **Resolved**:"
+
+  # A BOT asker's reply after mine confirms only when it is a verdict. From a person,
+  # any reply after mine is the asker confirming, as it always was. A reviewer bot's
+  # login also carries its fix sessions, and their "Fixed in <sha>" or "Closed the
+  # remaining half of this in <sha>" is news about my fix, not a confirmation of it. One
+  # such correction was read as `answered-confirmed`. Its latest non-verdict reply after
+  # mine now lists the thread as `asker-replied`: not owed, but a question. Matched
+  # against the asker's login, case-insensitively, with a GitHub App's `[bot]` suffix
+  # ignored.
+  #
+  # Seeded for Devin Review only, alongside its verdict phrase. A bot listed here with
+  # no verdict phrase of its own can never confirm by replying.
+  botAskers:
+    - devin-ai-integration
+
   # Forms of acknowledgement `contrib ack --with` accepts. Shape is always checked;
   # existence is checked only where it is free (see Acknowledgement.swift).
   acknowledgementKinds: ["comment", "commit", "pr-body", "none"]
