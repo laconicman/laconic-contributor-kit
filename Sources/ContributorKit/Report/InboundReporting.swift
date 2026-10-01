@@ -9,6 +9,75 @@ import Foundation
 /// issue comments" as a fact and as an assumption (<doc:Design>).
 public enum InboundReporting {
 
+    /// One reviewer channel's coverage on the head commit — the fetch's answer to
+    /// "did a reviewer actually run on THIS head, and what did it report" (issue
+    /// #10). Carried **verbatim**: a `SUCCESS` whose description says "Full review
+    /// skipped: trial expired" is a never-ran round, and matching on words to hide
+    /// that distinction would be a judgment the kit does not make.
+    public struct ReviewerReport: Codable, Sendable, Equatable {
+        /// The channel's name — `context` on a legacy status, `name` on a check run.
+        public var channel: String
+        /// The head commit the report sits on (7-char prefix, GitHub's short form).
+        public var head: String?
+        /// The reported state verbatim — `state` on a status, `conclusion ?? status`
+        /// on a check run.
+        public var state: String
+        /// The free-text detail verbatim — `description` or `title`.
+        public var detail: String?
+        public var url: String?
+        /// The login `lastReviewOn` refers to.
+        public var reviewLogin: String?
+        /// The newest review object by `reviewLogin`, as the commit it was left on.
+        /// "The last actual review was three heads ago" is coverage the state
+        /// string alone cannot carry.
+        public var lastReviewOn: String?
+
+        /// `Devin Review @ de08fb5 (head): SUCCESS "Full review skipped: trial
+        /// expired" — last review object on f4e3cda`
+        public var rendered: String {
+            var line = "\(channel) @ \(head ?? "?") (head): \(state)"
+            if let detail { line += " \"\(detail)\"" }
+            if let lastReviewOn {
+                line += " — last review object"
+                    + (reviewLogin.map { " by \($0)" } ?? "")
+                    + " on \(lastReviewOn)"
+            }
+            return line
+        }
+    }
+
+    /// The head commit's contexts as coverage lines.
+    ///
+    /// Every `StatusContext` is listed — legacy statuses are few and each one is
+    /// somebody's report. A `CheckRun` is listed only when `channels` names it,
+    /// because CI produces dozens and coverage answers a different question than
+    /// "did the build pass". `channels` also maps a check name to the login whose
+    /// latest review object supplies `lastReviewOn`.
+    public static func reviewerCoverage(
+        _ pr: PullRequestThreads, channels: [String: String]
+    ) -> [ReviewerReport] {
+        pr.headContexts
+            .filter { !$0.isCheckRun || channels[$0.name] != nil }
+            // One name can appear twice (a status and a run under the same
+            // app) — a tiebreak keeps the line order deterministic.
+            .sorted { $0.name != $1.name ? $0.name < $1.name : !$0.isCheckRun }
+            .map { context in
+                var report = ReviewerReport(
+                    channel: context.name,
+                    head: pr.headCommitOID.map { String($0.prefix(7)) },
+                    state: context.state, detail: context.detail, url: context.url)
+                if let login = channels[context.name],
+                    let latest = pr.reviewBodies
+                        .filter({ Login.same($0.author, login) && $0.commitOID != nil })
+                        .max(by: { $0.createdAt < $1.createdAt })
+                {
+                    report.reviewLogin = login
+                    report.lastReviewOn = latest.commitOID.map { String($0.prefix(7)) }
+                }
+                return report
+            }
+    }
+
     public struct Options: Sendable {
         /// Show everything examined, not only what is owed or has moved. Off by
         /// default: a reporter re-derives the same list every run and hands the model
@@ -21,7 +90,8 @@ public enum InboundReporting {
     }
 
     public static func terminal(
-        _ pr: PullRequestThreads, _ result: InboundAudit.Result, options: Options = .init()
+        _ pr: PullRequestThreads, _ result: InboundAudit.Result, options: Options = .init(),
+        reviewerChannels: [String: String]
     ) -> String {
         var lines: [String] = []
         let title = pr.title.isEmpty ? "" : " — \(pr.title)"
@@ -37,6 +107,13 @@ public enum InboundReporting {
             lines.append(
                 "Nothing owed. No item changed state, body or acknowledgement since the "
                     + "last run — \(result.items.count) compared.")
+            // A clean ledger and a never-ran review are the same absence: when the
+            // head carries reviewer contexts the verdict travels with the zero —
+            // verbatim, so "Full review skipped" cannot pass for a clean round
+            // (issue #10).
+            for reviewer in reviewerCoverage(pr, channels: reviewerChannels) {
+                lines.append("reviewer       \(reviewer.rendered)")
+            }
             return lines.joined(separator: "\n")
         }
 
@@ -93,8 +170,17 @@ public enum InboundReporting {
     /// or not.
     public static func record(
         _ result: InboundAudit.Result, _ pr: PullRequestThreads,
-        previous: Snapshot?, into provenance: inout Provenance
+        previous: Snapshot?, reviewerChannels: [String: String],
+        into provenance: inout Provenance
     ) {
+        // Reviewer coverage is recorded, not examined-counted: the contexts are
+        // what the head commit carries, and the verdict is what a "Nothing owed"
+        // reads beside the zero (issue #10).
+        provenance.reviewers = reviewerCoverage(pr, channels: reviewerChannels)
+        if pr.headContextsTruncated {
+            provenance.note(
+                "head check-context list truncated — reviewer coverage may be incomplete")
+        }
         for channel in Channel.allCases {
             let examined = result.examined[channel] ?? 0
             let mine = result.ownAuthored[channel] ?? 0

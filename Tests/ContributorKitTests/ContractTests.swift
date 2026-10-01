@@ -22,12 +22,20 @@ struct ContractTests {
             let result = try Fixtures.audit().run(pr, against: nil)
             var provenance = Provenance(command: "test")
             provenance.examined("items", result.items.count)
+            provenance.finish()
 
             let data = try InboundReporting.json(
                 result, provenance: provenance, options: .init(all: true))
             let document = try #require(
                 try JSONSerialization.jsonObject(with: data) as? [String: Any])
             #expect(Set(document.keys) == ["provenance", "items"])
+            // The provenance key set is pinned too — `reviewers` absent would be
+            // exactly the "0 as assumption" failure the block exists against.
+            let provenanceKeys = try #require(document["provenance"] as? [String: Any])
+            #expect(
+                Set(provenanceKeys.keys)
+                    == ["command", "startedAt", "finishedAt", "counters", "notes",
+                        "anomalies", "subprocessCalls", "reviewers"])
 
             let items = try #require(document["items"] as? [[String: Any]])
             #expect(items.contains { $0["kind"] as? String == Channel.inlineThread.rawValue })
@@ -43,7 +51,9 @@ struct ContractTests {
                 let isInline = item["kind"] as? String == Channel.inlineThread.rawValue
                 if isInline && saysResolution {
                     let resolution = try #require(item["resolution"] as? [String: Any])
-                    #expect(Set(resolution.keys) == ["isResolved", "resolvedBy", "byAsker"])
+                    #expect(
+                        Set(resolution.keys)
+                            == ["isResolved", "resolvedBy", "byAsker", "verdictComment"])
                     resolutionObjects += 1
                 } else {
                     #expect(item["resolution"] is NSNull, "item \(item["id"] ?? "?")")
@@ -97,7 +107,8 @@ struct ContractTests {
             truncatedConnections: ["reviews"])
         let result = try Fixtures.audit().run(pr, against: nil)
         var provenance = Provenance(command: "contrib in")
-        InboundReporting.record(result, pr, previous: nil, into: &provenance)
+        InboundReporting.record(
+            result, pr, previous: nil, reviewerChannels: [:], into: &provenance)
         provenance.finish()
         #expect(provenance.anomalies.contains { $0.kind == "truncatedFetch" })
     }
@@ -111,7 +122,8 @@ struct ContractTests {
         #expect(pr.bodiesAreExcerpts)
         let result = try Fixtures.audit().run(pr, against: nil)
         var provenance = Provenance(command: "contrib in")
-        InboundReporting.record(result, pr, previous: nil, into: &provenance)
+        InboundReporting.record(
+            result, pr, previous: nil, reviewerChannels: [:], into: &provenance)
         #expect(provenance.anomalies.contains { $0.kind == "excerptBodies" })
     }
 
@@ -393,6 +405,59 @@ struct ContractTests {
         let client = GHCommandClient(runner: runner, queryPath: "unused")
         let fetched = try await client.threads(repository: "o/r", number: 3)
         #expect(fetched.issueComments.map(\.id) == ["issue-3", "issuecomment-9"])
+    }
+
+    /// The #10 seam end to end: `commits(last: 1).statusCheckRollup.contexts`
+    /// decodes a StatusContext and a CheckRun into one `headContexts` list, and a
+    /// review node's `commit { oid }` becomes the comment's `commitOID`. A
+    /// `hasNextPage` inside contexts is the same truncation class as a comment
+    /// page — it must surface, not be dropped.
+    @Test("the client decodes head contexts and review-object commits")
+    func clientDecodesHeadContexts() async throws {
+        let payload = """
+            {"data":{"repository":{"issueOrPullRequest":{
+              "__typename":"PullRequest","number":7,"title":"t",
+              "url":"https://github.com/o/r/pull/7","pullRequestState":"OPEN",
+              "merged":false,
+              "reviews":{"pageInfo":{"hasNextPage":false,"endCursor":"r1"},"nodes":[
+                {"body":"1 issue","url":"https://github.com/o/r/pull/7#pullrequestreview-5",
+                 "submittedAt":"2026-09-30T10:00:00Z","viewerDidAuthor":false,
+                 "author":{"login":"devin-ai-integration"},
+                 "commit":{"oid":"f4e3cda549990000"}}]},
+              "commits":{"nodes":[
+                {"commit":{"oid":"de08fb51234560000",
+                 "statusCheckRollup":{"contexts":{"pageInfo":{"hasNextPage":true},
+                  "nodes":[
+                    {"__typename":"StatusContext","context":"Devin Review","state":"SUCCESS",
+                     "description":"Full review skipped: trial expired and no credits remaining",
+                     "targetUrl":"https://app.devin.ai/review/1"},
+                    {"__typename":"CheckRun","name":"build-and-test","status":"COMPLETED",
+                     "conclusion":"SUCCESS","title":"ok","detailsUrl":"https://x/1"}]}}}}
+              ]}}}},
+             "rateLimit":{"cost":1,"remaining":4999,"resetAt":"x"}}
+            """
+        let runner = RecordedCommandRunner([
+            .init(match: ["api", "graphql"], stdout: Data(payload.utf8))
+        ])
+        let client = GHCommandClient(runner: runner, queryPath: "unused")
+        let fetched = try await client.threads(repository: "o/r", number: 7)
+
+        #expect(fetched.headCommitOID == "de08fb51234560000")
+        #expect(fetched.headContexts.count == 2)
+        let status = try #require(fetched.headContexts.first { !$0.isCheckRun })
+        #expect(status.name == "Devin Review" && status.state == "SUCCESS")
+        #expect(status.detail == "Full review skipped: trial expired and no credits remaining")
+        #expect(status.url == "https://app.devin.ai/review/1")
+        let run = try #require(fetched.headContexts.first { $0.isCheckRun })
+        #expect(run.name == "build-and-test" && run.state == "SUCCESS")
+        #expect(run.detail == "ok" && run.url == "https://x/1")
+
+        #expect(fetched.reviewBodies.first?.commitOID == "f4e3cda549990000")
+        // A truncated context list is coverage evidence, reported as a note — it
+        // must not trip the fetch anomaly class, which would block the snapshot
+        // write on a field that feeds no obligation.
+        #expect(fetched.headContextsTruncated)
+        #expect(fetched.truncatedConnections.isEmpty)
     }
 
     // MARK: - Snapshot
@@ -923,7 +988,8 @@ struct SecondRoundTests {
         let result = try Fixtures.audit().run(pr, against: nil)
 
         var provenance = Provenance(command: "contrib in")
-        InboundReporting.record(result, pr, previous: nil, into: &provenance)
+        InboundReporting.record(
+            result, pr, previous: nil, reviewerChannels: [:], into: &provenance)
         provenance.finish()
         #expect(provenance.hasAnomaly, "and the command skips the save on exactly this")
 
@@ -947,7 +1013,9 @@ struct SecondRoundTests {
         let first = try Fixtures.audit().run(one, against: nil)
         var provenance = Provenance(command: "contrib in")
         let second = try Fixtures.audit().run(two, against: first.updatedSnapshot)
-        InboundReporting.record(second, two, previous: first.updatedSnapshot, into: &provenance)
+        InboundReporting.record(
+            second, two, previous: first.updatedSnapshot,
+            reviewerChannels: [:], into: &provenance)
         #expect(provenance.notes.contains { $0.contains("o/r#2") && $0.contains("baseline") })
     }
 

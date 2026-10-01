@@ -176,7 +176,9 @@ struct ResolutionTests {
             #expect(second.owed.isEmpty, "listed is not owed")
 
             var provenance = Provenance(command: "contrib in")
-            InboundReporting.record(second, fetched, previous: first.updatedSnapshot, into: &provenance)
+            InboundReporting.record(
+                second, fetched, previous: first.updatedSnapshot,
+                reviewerChannels: [:], into: &provenance)
             let quiet = provenance.notes.contains { $0.contains("not listed") && $0.contains("answered-claimed") }
             #expect(quiet == !listed, "the quiet count names only what is really unlisted")
         }
@@ -195,6 +197,11 @@ struct ResolutionTests {
                 $0.id == "discussion_r4025099437"
             })
         #expect(item.state == .answeredConfirmed)
+        // The verdict *comment*, not only the fact of one (issue #10's addendum):
+        // the consumer must be able to jump to the comment the state rested on.
+        #expect(item.resolution?.verdictComment != nil,
+            "an answered-confirmed verdict names the comment that carried it")
+        #expect(item.resolution?.verdictComment?.contains("discussion_r") == true)
     }
 
     /// The phrase upgrades my claim to confirmed; it never manufactures a reply I did

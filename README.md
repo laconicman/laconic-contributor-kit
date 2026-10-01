@@ -186,6 +186,15 @@ A command that recorded no examined counts at all raises an anomaly by itself, b
 a check that cannot distinguish *ran and passed* from *did not run* reports success in
 both cases.
 
+The same rule applies one level up: a reviewer that never ran and a reviewer that ran
+clean are the same absence on the ledger. So `contrib in` also prints a `reviewer`
+line per status/check channel on the head commit — **verbatim**, including
+`SUCCESS "Full review skipped: trial expired"`, which is the only place that truth
+appears — plus the head the configured reviewer's last review object sat on. A
+`Nothing owed` report carries those lines, and `--json` exposes them as
+`provenance.reviewers[]`. Which check-run names count as reviewer channels is
+`reviewerChannels:` in `inbound` config; legacy statuses are always listed.
+
 ## `contrib loc`
 
 **LOC is a trend, never a quality score.** Tests legitimately add lines and comments

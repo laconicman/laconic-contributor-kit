@@ -212,11 +212,17 @@ public struct InboundAudit: Sendable {
                         ask: rootProse.isEmpty ? root.body : rootProse,
                         reply: mine.last.map { stripper.prose(of: $0.body) }),
                     // Reported beside `state`, never an input to it — and only when the
-                    // source said: unknown is not unresolved.
+                    // source said: unknown is not unresolved. `verdictComment` names the
+                    // newest CURRENT asker reply that opened with a verdict phrase — one
+                    // posted before the ask's last edit judged different text, and
+                    // reporting its permalink unqualified would read as current.
                     resolution: thread.isResolved.map { isResolved in
                         .init(
                             isResolved: isResolved, resolvedBy: thread.resolvedBy,
-                            byAsker: thread.resolvedBy.map { Login.same($0, root.author) } ?? false)
+                            byAsker: thread.resolvedBy.map { Login.same($0, root.author) } ?? false,
+                            verdictComment: askerReplies.last {
+                                $0.isVerdict && !$0.predatesLastEdit
+                            }?.comment.permalink)
                     },
                     roundID: root.reviewID, roundAt: root.createdAt, author: root.author,
                     previousState: before == state ? nil : before,
@@ -358,11 +364,15 @@ public struct InboundAudit: Sendable {
         {
             // Same annotation as the branch above: a reviewer that re-appends its badge
             // re-opens an acknowledged item for no semantic reason, and the contributor
-            // should be told which kind of edit it was before re-reading.
-            let proseMoved = stripper.prose(of: comment.body) != previousProse
+            // should be told which kind of edit it was before re-reading. The anchor
+            // is what `show` diffs against — the prose at acknowledgement — not the
+            // last run's prose, which stores this very body and can never move (issue
+            // #9). Snapshots written before `proseAtAck` existed fall back to it.
+            let proseMoved = stripper.prose(of: comment.body)
+                != (previous.acknowledged?.proseAtAck ?? previousProse)
             parts.append(
                 "edited after it was acknowledged"
-                    + (proseMoved ? "" : " — markup only, prose unchanged"))
+                    + (proseMoved ? " — prose changed" : " — markup only, prose unchanged"))
         } else if now == .editedAfterMyAnswer {
             // `lastEditedAt` bumped and the body is byte-identical — the strongest
             // form of the same signal: not even markup moved. Without this the line

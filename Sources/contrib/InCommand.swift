@@ -25,10 +25,15 @@ struct InCommand: AsyncParsableCommand {
               id, kind, permalink, state, question, changed, text, resolution
             `changed` is null when nothing moved. **`text` is an OBJECT**, not a string:
             { "ask": <the whole ask>, "reply": <my reply, or null> }. `resolution` is
-            null off inline threads, else { "isResolved", "resolvedBy", "byAsker" } —
-            reported, never a discharge: a thread is resolved for more reasons than
-            the asker's consent. `byAsker` is derived: resolvedBy compared with the
-            root's author.
+            null off inline threads, else { "isResolved", "resolvedBy", "byAsker",
+            "verdictComment" } — reported, never a discharge: a thread is resolved for
+            more reasons than the asker's consent. `byAsker` is derived: resolvedBy
+            compared with the root's author; `verdictComment` is the permalink of the
+            newest asker reply that opened with a verdict phrase, or null.
+            `provenance.reviewers[]` is reviewer coverage on the head commit —
+            { "channel", "head", "state", "detail", "url", "reviewLogin",
+            "lastReviewOn" }, verbatim — so a never-ran review cannot pass for a
+            clean round.
             """
     )
 
@@ -85,7 +90,9 @@ struct InCommand: AsyncParsableCommand {
             let result = audit.run(threads, against: previous)
 
             locked.subprocessCalls = runner.count
-            InboundReporting.record(result, threads, previous: previous, into: &locked)
+            InboundReporting.record(
+                result, threads, previous: previous,
+                reviewerChannels: configuration.inbound.reviewerChannels, into: &locked)
             locked.finish()
 
             // An anomalous run must not become the next run's baseline: a truncated
@@ -112,7 +119,10 @@ struct InCommand: AsyncParsableCommand {
                     decoding: try InboundReporting.json(
                         result, provenance: provenance, options: options), as: UTF8.self))
         } else {
-            print(InboundReporting.terminal(threads, result, options: options))
+            print(
+                InboundReporting.terminal(
+                    threads, result, options: options,
+                    reviewerChannels: configuration.inbound.reviewerChannels))
         }
 
         try Self.emit(provenance)

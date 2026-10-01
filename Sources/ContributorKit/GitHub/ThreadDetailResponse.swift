@@ -41,6 +41,11 @@ struct ThreadDetailResponse: Decodable {
         var comments: Connection<CommentNode>?
         var reviews: Connection<CommentNode>?
         var reviewThreads: Connection<ThreadNode>?
+        /// Head commit + its status/check contexts — pull requests only. `last: 1`
+        /// is un-paginated on purpose: the audit's question is "what did the
+        /// reviewer report on THIS head", and a deeper history answers a question
+        /// nobody asked (issue #10).
+        var commits: Connection<CommitNode>?
 
         /// The subject's own body as a comment-shaped item on the issue-comments
         /// channel.
@@ -101,12 +106,64 @@ struct ThreadDetailResponse: Decodable {
         var comments: Connection<CommentNode>?
     }
 
+    /// `commits(last: 1)` wraps the commit object — the node is the edge, the
+    /// `commit` field the payload.
+    struct CommitNode: Decodable {
+        var commit: Commit?
+    }
+
+    struct Commit: Decodable {
+        var oid: String?
+        var statusCheckRollup: StatusCheckRollup?
+    }
+
+    struct StatusCheckRollup: Decodable {
+        var contexts: Connection<ContextNode>?
+    }
+
+    /// A `StatusCheckRollupContext` union member: StatusContext and CheckRun share
+    /// no field names, so one flat optional bag decodes either and `__typename`
+    /// says which it was. "Legacy status" and "check run" read differently on the
+    /// GitHub UI but mean the same thing for coverage — a named channel reporting
+    /// a state on this head (issue #10).
+    struct ContextNode: Decodable {
+        var __typename: String?
+        // StatusContext
+        var context: String?
+        var state: String?
+        var description: String?
+        var targetUrl: String?
+        // CheckRun — `status` while running, `conclusion` once COMPLETED.
+        var name: String?
+        var status: String?
+        var conclusion: String?
+        var title: String?
+        var detailsUrl: String?
+
+        var isCheckRun: Bool { __typename == "CheckRun" }
+        /// What the check calls itself: `context` on a status, `name` on a run.
+        var label: String? { isCheckRun ? name : context }
+        /// The state worth printing. A completed run's verdict is its conclusion;
+        /// mid-flight the status is all there is.
+        var reportedState: String? { isCheckRun ? (conclusion ?? status) : state }
+        /// Free-text detail verbatim — a check run's `title`, a status's
+        /// `description`.
+        var detail: String? { isCheckRun ? title : description }
+        var link: String? { isCheckRun ? detailsUrl : targetUrl }
+    }
+
     struct Actor: Decodable {
         var login: String?
     }
 
     struct ReviewRef: Decodable {
         var databaseId: Int?
+    }
+
+    /// `commit { oid }` — present on review nodes only: the head the review was
+    /// left on (issue #10's "ran on what").
+    struct OIDRef: Decodable {
+        var oid: String?
     }
 
     struct CommentNode: Decodable {
@@ -122,6 +179,8 @@ struct ThreadDetailResponse: Decodable {
         var author: Actor?
         /// Present on inline comments only: the review that carried this one.
         var pullRequestReview: ReviewRef?
+        /// Present on review nodes only: the head commit the review was left on.
+        var commit: OIDRef?
 
         /// `nil` when the node carries no permalink — the id is the permalink
         /// fragment, so a node without one cannot be tracked across runs and is worse
@@ -141,7 +200,8 @@ struct ThreadDetailResponse: Decodable {
                 updatedAt: GitHubTime.parse(updatedAt),
                 lastEditedAt: GitHubTime.parse(lastEditedAt),
                 body: body ?? "", bodyIsExcerpt: false, permalink: url,
-                reviewID: pullRequestReview?.databaseId.map(String.init))
+                reviewID: pullRequestReview?.databaseId.map(String.init),
+                commitOID: commit?.oid)
         }
     }
 }

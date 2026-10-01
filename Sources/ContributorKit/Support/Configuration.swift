@@ -52,6 +52,12 @@ public struct Configuration: Codable, Sendable {
         /// `<summary>` phrases whose `<details>` block unwraps into prose;
         /// anything else collapses to a `[collapsed: …]` marker line.
         public var keptDetailsSummaries: [String]
+        /// Status/check context names on the head commit that are a REVIEWER's
+        /// report, mapped to the login whose latest review object names the commit
+        /// it ran on (issue #10). Every legacy `StatusContext` is listed anyway; a
+        /// `CheckRun` is listed only when named here, because CI produces dozens
+        /// and coverage answers a different question than "did the build pass".
+        public var reviewerChannels: [String: String]
         /// A review-history boundary, `YYYY-MM-DD` or an ISO timestamp.
         ///
         /// Items raised before it are **counted and not listed** — the repository
@@ -87,6 +93,7 @@ public struct Configuration: Codable, Sendable {
             var verdictPhrases: [String]?
             var botAskers: [String]?
             var keptDetailsSummaries: [String]?
+            var reviewerChannels: [String: String]?
             var acknowledgementKinds: [String]?
             var horizon: String?
 
@@ -99,6 +106,7 @@ public struct Configuration: Codable, Sendable {
                 if let v = verdictPhrases { out.verdictPhrases = v }
                 if let v = botAskers { out.botAskers = v }
                 if let v = keptDetailsSummaries { out.keptDetailsSummaries = v }
+                if let v = reviewerChannels { out.reviewerChannels = v }
                 if let v = acknowledgementKinds { out.acknowledgementKinds = v }
                 if let v = horizon { out.horizon = v }
                 return out
@@ -148,6 +156,7 @@ public struct Configuration: Codable, Sendable {
             let verdicts = partial.verdictPhrases,
             let botAskers = partial.botAskers,
             let keptDetails = partial.keptDetailsSummaries,
+            let reviewerChannels = partial.reviewerChannels,
             let kinds = partial.acknowledgementKinds
         else {
             throw ConfigurationError.incompleteDefaults
@@ -158,7 +167,7 @@ public struct Configuration: Codable, Sendable {
                 boilerplateBlocks: blocks, boilerplatePatterns: patterns,
                 supersessionPhrases: supersession, informationalPatterns: informational,
                 verdictPhrases: verdicts, botAskers: botAskers,
-                keptDetailsSummaries: keptDetails,
+                keptDetailsSummaries: keptDetails, reviewerChannels: reviewerChannels,
                 horizon: partial.horizon, acknowledgementKinds: kinds))
     }
 

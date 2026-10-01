@@ -78,6 +78,14 @@ line; do not let it be no line.
 stamps `as of <time>` for this reason. **The audit that counts is the one run after the
 reviewer's re-run, not after your push.**
 
+**`owed 0` is not "the review ran clean."** A skipped or expired review produces the
+same absence as a completed one, so the block prints a `reviewer` line per
+status/check channel on the head commit — verbatim, e.g. `SUCCESS "Full review
+skipped: trial expired"` — and `last review object on <sha>` names the head the
+latest review actually landed on. A `Nothing owed` report carries them; so does
+`--json` as `provenance.reviewers[]`. Read the line before claiming the round is
+done.
+
 **Run one view, not both.** The table and `--json` carry the same bodies, so running
 both doubles the cost of an audit for nothing — measured at roughly 2,300 tokens a run
 against ~24,900 for a hand-rolled `jq` fetch and ~193,000 raw. Use the table to triage and

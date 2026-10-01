@@ -85,6 +85,22 @@ inbound:
   botAskers:
     - devin-ai-integration
 
+  # REVIEWER CHANNELS (issue #10): which status/check context names on the head
+  # commit are a reviewer's report, mapped to the login whose latest review object
+  # names the commit it ran on. `contrib in` prints each as a `reviewer` line —
+  # verbatim, state and description — and a "Nothing owed" carries them, because a
+  # clean ledger and a never-ran review are the same absence until the channel
+  # says which it was.
+  #
+  # Every legacy StatusContext is listed regardless of this map; a CheckRun is
+  # listed only when named here — CI produces dozens of runs and coverage answers
+  # a different question than "did the build pass". Devin Review reports through
+  # a legacy status: `context: Devin Review`, `creator: null`, SUCCESS whether it
+  # completed or skipped; the description ("Full review skipped: trial expired")
+  # is the only place the difference is visible.
+  reviewerChannels:
+    "Devin Review": "devin-ai-integration"
+
   # Forms of acknowledgement `contrib ack --with` accepts. Shape is always checked;
   # existence is checked only where it is free (see Acknowledgement.swift).
   acknowledgementKinds: ["comment", "commit", "pr-body", "none"]

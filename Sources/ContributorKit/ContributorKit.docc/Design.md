@@ -132,6 +132,34 @@ the resolution flag and who set it — and never infer what it *meant*. None of 
 readings clears an obligation by itself. A verdict upgrades a reply I wrote; resolution
 only keeps closure from hiding a thread.
 
+## Reviewer coverage is provenance too
+
+The same absence-check rule applies one level up (issue #10). Devin Review reports
+each run through a commit status — `context: Devin Review`, `SUCCESS` whether it
+completed or skipped, with the difference living only in the description
+("Completed analysis" vs "Full review skipped: trial expired") — and posts a
+review *object* only when it has findings. So `owed 0` and a review that never ran
+produce byte-identical ledgers: the audit's passing condition is an absence, and a
+skipped run is a failure mode that produces that absence.
+
+The fix is fetch, not judgment. `ThreadDetail.graphql` also reads the head
+commit's `statusCheckRollup` — legacy `StatusContext` and `CheckRun` under one
+name — and each review's `commit.oid`. The ledger then prints a `reviewer` line
+per channel, **verbatim**: the state and the free-text detail are what GitHub
+said, including "skipped" — the kit never pattern-matches a state into a verdict.
+The mapped login's newest review object contributes `lastReviewOn`, so "the last
+actual review was three heads ago" is visible beside "the status on this head".
+`--json` carries the same lines as `provenance.reviewers[]`, and a `Nothing owed`
+report lists them — a clean round and a never-ran round are no longer the same
+document. `resolution.verdictComment` names the permalink a `answered-confirmed`
+rested on, for the same reason `resolvedBy` names *who*.
+
+Check runs stay opt-in through `reviewerChannels` — CI produces dozens and
+coverage is not "did the build pass" — while legacy statuses are always listed:
+they are few, and each one is somebody's report. Issues have no head commit, so
+coverage is a pull-request surface; an issue fetches no `commits` field and its
+`reviewers` is an empty array — a fetch fact, not a claim that nothing ran.
+
 ## Nothing leaves the workspace without an explicit flag
 
 Not a LOC figure, not a register row, not a drafted reply. `contrib in` stops at the
@@ -194,7 +222,7 @@ Two lessons the review rounds on #5 paid for, recorded here because they general
   is another instance of the same bug.
 - **`prose` serves two readers, and the split must be explicit.** A
   `[collapsed: "Title" ·hash]` marker is display text for the contributor *and* input
-  to the emptiness check — `hasSubstantiveProse` exists because conflating the two is
+  to the emptiness check — `substantiveProse` exists because conflating the two is
   exactly how badge-only bodies once became obligations. The marker's hash covers the
   collapsed content, so an edit inside a `<details>` section moves `prose` and can
   never be mislabeled "markup only". Three corollaries the as-built review paid for:
