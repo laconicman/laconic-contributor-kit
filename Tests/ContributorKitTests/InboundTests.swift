@@ -892,6 +892,48 @@ struct InboundTests {
         #expect(after.items.first?.changed == "obligation-open → obligation-acknowledged")
     }
 
+    /// Issue #9: a rewritten ask was labelled "markup only, prose unchanged" while
+    /// `show`'s diff printed a full replacement. The acked-edit branch compared the
+    /// current prose against the *last run's* prose — which is the same body when
+    /// `bodySha256` matches, so it can never move. The diff `show` renders anchors at
+    /// the acknowledged prose; this annotation must agree with it.
+    @Test("a rewritten ask after acknowledgement is prose-changed, not markup-only")
+    func ackedEditAnnotationAnchorsAtAck() throws {
+        let original = RemoteComment(
+            id: "pullrequestreview-1", channel: .reviewBody, author: "devin",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: "🔍 **Draft changes do not abort staging**\n\nClarify which changes abort.",
+            permalink: "https://github.com/o/r/pull/1#pullrequestreview-1")
+
+        var snapshot = try Fixtures.audit().run(
+            pullRequest(reviewBodies: [original]), against: nil
+        ).updatedSnapshot
+        snapshot.entries["pullrequestreview-1"]?.acknowledged = Acknowledgement(
+            kind: .commit, pointer: "1da04eb", bodySha256AtAck: original.bodySHA256,
+            verified: true, verificationNote: "test",
+            proseAtAck: try Fixtures.audit().stripper.prose(of: original.body))
+
+        // The ask is rewritten wholesale; the snapshot then sees the new body.
+        let rewritten = RemoteComment(
+            id: "pullrequestreview-1", channel: .reviewBody, author: "devin",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: "🔍 **Preview omits additional item deletions**\n\nThe preview understates removals.",
+            permalink: "https://github.com/o/r/pull/1#pullrequestreview-1")
+        snapshot = try Fixtures.audit().run(
+            pullRequest(reviewBodies: [rewritten]), against: snapshot
+        ).updatedSnapshot
+
+        // Body unmoved since the last run, moved since the ack: the annotation must
+        // compare against what was ACKED — a replacement is not "markup only".
+        let after = try Fixtures.audit().run(
+            pullRequest(reviewBodies: [rewritten]), against: snapshot)
+        let changed = after.items.first?.changed ?? ""
+        #expect(!changed.contains("prose unchanged"),
+            "the ask was replaced since acknowledgement — saying 'markup only' lies")
+        #expect(changed.contains("prose changed"),
+            "the diff `show` renders starts at the acked text; say so")
+    }
+
     /// **The `--json` ask must be answerable from the JSON.** It was truncated at 400
     /// characters, so every round-3 ask in the live trial ended mid-sentence and the
     /// session had to re-fetch bodies with `gh api` — which is the re-enumeration the

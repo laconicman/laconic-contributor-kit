@@ -358,11 +358,15 @@ public struct InboundAudit: Sendable {
         {
             // Same annotation as the branch above: a reviewer that re-appends its badge
             // re-opens an acknowledged item for no semantic reason, and the contributor
-            // should be told which kind of edit it was before re-reading.
-            let proseMoved = stripper.prose(of: comment.body) != previousProse
+            // should be told which kind of edit it was before re-reading. The anchor
+            // is what `show` diffs against — the prose at acknowledgement — not the
+            // last run's prose, which stores this very body and can never move (issue
+            // #9). Snapshots written before `proseAtAck` existed fall back to it.
+            let proseMoved = stripper.prose(of: comment.body)
+                != (previous.acknowledged?.proseAtAck ?? previousProse)
             parts.append(
                 "edited after it was acknowledged"
-                    + (proseMoved ? "" : " — markup only, prose unchanged"))
+                    + (proseMoved ? " — prose changed" : " — markup only, prose unchanged"))
         } else if now == .editedAfterMyAnswer {
             // `lastEditedAt` bumped and the body is byte-identical — the strongest
             // form of the same signal: not even markup moved. Without this the line
