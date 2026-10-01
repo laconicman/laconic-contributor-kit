@@ -157,8 +157,8 @@ rested on, for the same reason `resolvedBy` names *who*.
 Check runs stay opt-in through `reviewerChannels` — CI produces dozens and
 coverage is not "did the build pass" — while legacy statuses are always listed:
 they are few, and each one is somebody's report. Issues have no head commit, so
-coverage is a pull-request surface; an issue's `reviewers` is empty by absence of
-the field, which is fetch truth, not a claim.
+coverage is a pull-request surface; an issue fetches no `commits` field and its
+`reviewers` is an empty array — a fetch fact, not a claim that nothing ran.
 
 ## Nothing leaves the workspace without an explicit flag
 
