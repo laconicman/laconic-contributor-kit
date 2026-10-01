@@ -21,7 +21,8 @@
 # entry, and the obligation machinery then works on it unchanged.
 #
 # Validated 2026-09-05 against octokit/graphql-schema@main with graphql-js;
-# re-validated 2026-09-07 after the edit-tracking fields were added.
+# re-validated 2026-09-07 after the edit-tracking fields were added, and
+# 2026-10-01 after the commits/statusCheckRollup contexts (issue #10).
 # Note `issueState`/`pullRequestState`: Issue.state and PullRequest.state return
 # different enums, so the same response key across the two fragments is a
 # validation error. The aliases are load-bearing, not cosmetic.
@@ -66,7 +67,31 @@ query ThreadDetail(
         }
         reviews(first: 100, after: $reviewCursor) {
           pageInfo { hasNextPage endCursor }
-          nodes { body url state submittedAt createdAt updatedAt lastEditedAt editor { login } viewerDidAuthor author { login } }
+          # `commit { oid }` is the head the review was LEFT ON — "ran on what"
+          # is the verdict a status context alone cannot carry (issue #10).
+          nodes { body url state submittedAt createdAt updatedAt lastEditedAt editor { login } viewerDidAuthor author { login } commit { oid } }
+        }
+        # Reviewer coverage (issue #10). `statusCheckRollup` unions legacy
+        # StatusContext and CheckRun; both surface under one name on the head
+        # commit. A SUCCESS whose description says "Full review skipped" is the
+        # only way a never-ran round can be told from a clean one — the audit's
+        # own absence-check cannot.
+        commits(last: 1) {
+          nodes {
+            commit {
+              oid
+              statusCheckRollup {
+                contexts(first: 100) {
+                  pageInfo { hasNextPage }
+                  nodes {
+                    __typename
+                    ... on StatusContext { context state description targetUrl }
+                    ... on CheckRun { name status conclusion title detailsUrl }
+                  }
+                }
+              }
+            }
+          }
         }
         reviewThreads(first: 100, after: $threadCursor) {
           pageInfo { hasNextPage endCursor }

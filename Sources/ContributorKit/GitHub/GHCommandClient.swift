@@ -125,6 +125,24 @@ public struct GHCommandClient: GitHubClient {
             issueComments.insert(body, at: 0)
         }
 
+        // Reviewer coverage: the head commit's status/check contexts, verbatim
+        // (issue #10). `commits(last: 1)` is not paginated — it names THIS head —
+        // but the contexts inside it are. Truncation there is recorded as a note,
+        // not an anomaly: a busy CI PR can exceed 100 check runs, and a coverage
+        // field that feeds no obligation must not hold the snapshot write gate
+        // hostage (DeepWiki pre-review of the same change).
+        let headCommit = meta?.commits?.nodes?.last?.commit
+        let headContextsTruncated =
+            headCommit?.statusCheckRollup?.contexts?.pageInfo?.hasNextPage == true
+        let headContexts: [PullRequestThreads.HeadContext] =
+            (headCommit?.statusCheckRollup?.contexts?.nodes ?? []).compactMap { node in
+                guard let name = node.label, let state = node.reportedState
+                else { return nil }
+                return PullRequestThreads.HeadContext(
+                    isCheckRun: node.isCheckRun, name: name, state: state,
+                    detail: node.detail, url: node.link)
+            }
+
         return PullRequestThreads(
             repository: repository, number: number,
             title: meta?.title ?? "", url: meta?.url ?? "",
@@ -132,7 +150,9 @@ public struct GHCommandClient: GitHubClient {
             isMerged: meta?.merged ?? false,
             threads: threads, reviewBodies: reviewBodies, issueComments: issueComments,
             pagesFetched: pages, truncatedConnections: truncated,
-            bodiesAreExcerpts: false)
+            bodiesAreExcerpts: false,
+            headCommitOID: headCommit?.oid, headContexts: headContexts,
+            headContextsTruncated: headContextsTruncated)
     }
 }
 

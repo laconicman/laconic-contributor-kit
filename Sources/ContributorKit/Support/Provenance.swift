@@ -31,6 +31,10 @@ public struct Provenance: Codable, Sendable {
     public var notes: [String] = []
     public var anomalies: [Anomaly] = []
     public var subprocessCalls: Int = 0
+    /// Reviewer coverage on the subject's head commit, verbatim (issue #10). A
+    /// clean counter list cannot distinguish "the reviewer ran and found nothing"
+    /// from "the reviewer never ran"; these lines can.
+    public var reviewers: [InboundReporting.ReviewerReport] = []
 
     public init(command: String, startedAt: Date = Date()) {
         self.command = command
@@ -75,6 +79,9 @@ public struct Provenance: Codable, Sendable {
         }
         for note in notes {
             lines.append("note           \(note)")
+        }
+        for reviewer in reviewers {
+            lines.append("reviewer       \(reviewer.rendered)")
         }
         lines.append("subprocesses   \(subprocessCalls)")
         if anomalies.isEmpty {

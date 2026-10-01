@@ -581,7 +581,7 @@ struct InboundTests {
             permalink: "https://github.com/o/r/issues/1#issuecomment-1")
         let pr = pullRequest(issueComments: [comment])
         let result = try Fixtures.audit().run(pr, against: nil)
-        let output = InboundReporting.terminal(pr, result)
+        let output = InboundReporting.terminal(pr, result, reviewerChannels: [:])
         #expect(output.contains("+ [collapsed: \"Example\""),
             "the worklist must name the hidden section, not just imply collapse somewhere")
         #expect(output.contains("contrib show issuecomment-1 o/r --full"),
@@ -1337,7 +1337,9 @@ struct InboundTests {
         #expect(second.updatedSnapshot.entries.count == 2)
 
         var provenance = Provenance(command: "test")
-        InboundReporting.record(second, fewer, previous: first.updatedSnapshot, into: &provenance)
+        InboundReporting.record(
+            second, fewer, previous: first.updatedSnapshot,
+            reviewerChannels: [:], into: &provenance)
         #expect(provenance.anomalies.contains { $0.kind == "itemsVanished" })
     }
 
@@ -1480,14 +1482,107 @@ struct InboundTests {
             body: "body of \(id)", permalink: "https://github.com/o/r/pull/1#\(id)")
     }
 
+    // MARK: - reviewer coverage (issue #10)
+
+    /// The issue's own case: five heads, one shape of output for three different
+    /// truths. A SUCCESS status whose description says "Full review skipped" must
+    /// be printed verbatim — the audit cannot tell it from a clean round itself.
+    @Test("a skipped reviewer pass is printed verbatim, not as a clean round")
+    func skippedReviewIsNotACleanRound() throws {
+        let pr = pullRequest(
+            headCommitOID: "de08fb51234567890",
+            headContexts: [
+                .init(
+                    isCheckRun: false, name: "Devin Review", state: "SUCCESS",
+                    detail: "Full review skipped: trial expired and no credits remaining")
+            ])
+        let result = try Fixtures.audit().run(pr, against: nil)
+        let output = InboundReporting.terminal(
+            pr, result, reviewerChannels: ["Devin Review": "devin-ai-integration"])
+        #expect(output.contains("Nothing owed"))
+        #expect(
+            output.contains(
+                "reviewer       Devin Review @ de08fb5 (head): SUCCESS "
+                    + "\"Full review skipped: trial expired and no credits remaining\""),
+            "the verdict must ride the zero, verbatim — a skipped run is not clean")
+    }
+
+    /// Status contexts are always listed; a check run is a reviewer channel only
+    /// when the configuration names it — CI produces dozens and coverage is not
+    /// "did the build pass".
+    @Test("coverage lists statuses, filters check runs, and pins the last review head")
+    func reviewerCoverageFiltersCheckRuns() throws {
+        let review = RemoteComment(
+            id: "pullrequestreview-9", channel: .reviewBody, author: "devin-ai-integration",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 100),
+            body: "1 issue found", permalink: "https://github.com/o/r/pull/1#pullrequestreview-9",
+            commitOID: "f4e3cda54999")
+        let pr = pullRequest(
+            reviewBodies: [review],
+            headCommitOID: "de08fb51234567890",
+            headContexts: [
+                .init(isCheckRun: false, name: "Devin Review", state: "SUCCESS",
+                      detail: "Completed analysis in 2m 8s"),
+                .init(isCheckRun: true, name: "build-and-test", state: "SUCCESS"),
+                .init(isCheckRun: true, name: "Devin Review", state: "SUCCESS",
+                      detail: "Completed analysis"),
+            ])
+        let channels = ["Devin Review": "devin-ai-integration"]
+        let coverage = InboundReporting.reviewerCoverage(pr, channels: channels)
+
+        #expect(coverage.map(\.channel) == ["Devin Review", "Devin Review"],
+            "the named check run and the status are both channels; CI is not")
+        #expect(!coverage.contains { $0.channel == "build-and-test" },
+            "an unnamed check run is CI noise, not reviewer coverage")
+        for report in coverage {
+            #expect(report.lastReviewOn == "f4e3cda",
+                "the newest review object by the mapped login names its head")
+            #expect(report.reviewLogin == "devin-ai-integration")
+        }
+    }
+
+    /// Recorded, not counted: provenance carries the lines so `--json` consumers
+    /// get `provenance.reviewers[]`, and the terminal block renders them.
+    @Test("provenance carries reviewer coverage in the block and the JSON")
+    func provenanceCarriesReviewers() throws {
+        let pr = pullRequest(
+            headCommitOID: "de08fb51234567890",
+            headContexts: [
+                .init(isCheckRun: false, name: "Devin Review", state: "SUCCESS",
+                      detail: "Completed analysis in 2m 8s")
+            ])
+        let result = try Fixtures.audit().run(pr, against: nil)
+        var provenance = Provenance(command: "test")
+        InboundReporting.record(
+            result, pr, previous: nil,
+            reviewerChannels: ["Devin Review": "devin-ai-integration"],
+            into: &provenance)
+        #expect(provenance.reviewers.count == 1)
+        #expect(provenance.reviewers[0].channel == "Devin Review")
+        #expect(provenance.reviewers[0].state == "SUCCESS")
+        #expect(provenance.rendered().contains(
+            "reviewer       Devin Review @ de08fb5 (head): SUCCESS"))
+
+        // And it is in the machine contract, not only the terminal.
+        let data = try InboundReporting.json(result, provenance: provenance)
+        let document = try #require(
+            try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let reviewers = try #require(
+            (document["provenance"] as? [String: Any])?["reviewers"] as? [[String: Any]])
+        #expect(reviewers.count == 1 && reviewers[0]["channel"] as? String == "Devin Review")
+    }
+
     private func pullRequest(
         threads: [RemoteThread] = [], reviewBodies: [RemoteComment] = [],
-        issueComments: [RemoteComment] = []
+        issueComments: [RemoteComment] = [],
+        headCommitOID: String? = nil,
+        headContexts: [PullRequestThreads.HeadContext] = []
     ) -> PullRequestThreads {
         PullRequestThreads(
             repository: "o/r", number: 1, title: "t", url: "u", state: "OPEN",
             isMerged: false, threads: threads, reviewBodies: reviewBodies,
-            issueComments: issueComments, pagesFetched: 1)
+            issueComments: issueComments, pagesFetched: 1,
+            headCommitOID: headCommitOID, headContexts: headContexts)
     }
 }
 

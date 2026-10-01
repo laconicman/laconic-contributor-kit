@@ -31,12 +31,28 @@ public struct InboundItem: Codable, Sendable {
         public var isResolved: Bool
         public var resolvedBy: String?
         public var byAsker: Bool
+        /// The newest asker reply that opened with a configured verdict phrase —
+        /// the comment `answered-confirmed` rested on (issue #10). `nil` when no
+        /// asker reply matched one. Reported, like the rest of this struct: the
+        /// reader is given *which* comment, not a conclusion.
+        public var verdictComment: String?
+
+        public init(
+            isResolved: Bool, resolvedBy: String?, byAsker: Bool,
+            verdictComment: String? = nil
+        ) {
+            self.isResolved = isResolved
+            self.resolvedBy = resolvedBy
+            self.byAsker = byAsker
+            self.verdictComment = verdictComment
+        }
 
         public func encode(to encoder: any Encoder) throws {
             var container = encoder.container(keyedBy: CodingKeys.self)
             try container.encode(isResolved, forKey: .isResolved)
             try container.encode(resolvedBy, forKey: .resolvedBy)
             try container.encode(byAsker, forKey: .byAsker)
+            try container.encode(verdictComment, forKey: .verdictComment)
         }
     }
 

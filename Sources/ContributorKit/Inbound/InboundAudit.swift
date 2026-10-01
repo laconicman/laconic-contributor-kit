@@ -212,11 +212,17 @@ public struct InboundAudit: Sendable {
                         ask: rootProse.isEmpty ? root.body : rootProse,
                         reply: mine.last.map { stripper.prose(of: $0.body) }),
                     // Reported beside `state`, never an input to it — and only when the
-                    // source said: unknown is not unresolved.
+                    // source said: unknown is not unresolved. `verdictComment` names the
+                    // newest CURRENT asker reply that opened with a verdict phrase — one
+                    // posted before the ask's last edit judged different text, and
+                    // reporting its permalink unqualified would read as current.
                     resolution: thread.isResolved.map { isResolved in
                         .init(
                             isResolved: isResolved, resolvedBy: thread.resolvedBy,
-                            byAsker: thread.resolvedBy.map { Login.same($0, root.author) } ?? false)
+                            byAsker: thread.resolvedBy.map { Login.same($0, root.author) } ?? false,
+                            verdictComment: askerReplies.last {
+                                $0.isVerdict && !$0.predatesLastEdit
+                            }?.comment.permalink)
                     },
                     roundID: root.reviewID, roundAt: root.createdAt, author: root.author,
                     previousState: before == state ? nil : before,

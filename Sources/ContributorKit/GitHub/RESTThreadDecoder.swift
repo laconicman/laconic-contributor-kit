@@ -27,6 +27,9 @@ public enum RESTThreadDecoder {
         var state: String?
         var excerpt: String?
         var body: String?
+        /// The commit the review was submitted against — REST's name for the
+        /// GraphQL `commit { oid }` that feeds reviewer coverage (issue #10).
+        var commit_id: String?
     }
 
     struct IssueCommentRecord: Decodable {
@@ -118,7 +121,8 @@ public enum RESTThreadDecoder {
                 id: id, channel: .reviewBody, author: record.login,
                 viewerDidAuthor: record.login == input.me,
                 createdAt: GitHubTime.parse(record.submitted_at) ?? .distantPast,
-                body: body, bodyIsExcerpt: isExcerpt, permalink: "\(base)#\(id)")
+                body: body, bodyIsExcerpt: isExcerpt, permalink: "\(base)#\(id)",
+                commitOID: record.commit_id)
         }
 
         let issueComments: [RemoteComment] = issues.map { record in

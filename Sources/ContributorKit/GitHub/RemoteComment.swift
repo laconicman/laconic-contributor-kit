@@ -24,12 +24,15 @@ public struct RemoteComment: Codable, Sendable, Equatable {
     public var permalink: String
     /// The review that carried an inline comment — the round it belongs to (<doc:Design>).
     public var reviewID: String?
+    /// Review bodies only: the head commit the review was left on (issue #10 —
+    /// "ran on what" is part of reviewer coverage).
+    public var commitOID: String?
 
     public init(
         id: String, channel: Channel, author: String, viewerDidAuthor: Bool,
         createdAt: Date, updatedAt: Date? = nil, lastEditedAt: Date? = nil,
         body: String, bodyIsExcerpt: Bool = false, permalink: String,
-        reviewID: String? = nil
+        reviewID: String? = nil, commitOID: String? = nil
     ) {
         self.id = id
         self.channel = channel
@@ -42,6 +45,7 @@ public struct RemoteComment: Codable, Sendable, Equatable {
         self.bodyIsExcerpt = bodyIsExcerpt
         self.permalink = permalink
         self.reviewID = reviewID
+        self.commitOID = commitOID
     }
 
     /// The API-independent backstop for edit detection. For review bodies it is not an
