@@ -272,6 +272,23 @@ struct ContractTests {
         }
     }
 
+    /// **Every `contrib ack` the skill prints must name the repository.** `ack` takes
+    /// it positionally, and the examples shared the `contrib in` hint's broken form —
+    /// pasted as printed they failed on `Missing expected argument` (issue #13).
+    @Test("every ack example in SKILL.md names the repository")
+    func everyAckExampleNamesTheRepository() throws {
+        let skill = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appending(path: "plugin/skills/contributions/SKILL.md")
+        let lines = try String(contentsOf: skill, encoding: .utf8)
+            .components(separatedBy: .newlines)
+            .filter { $0.contains("contrib ack ") }
+        #expect(!lines.isEmpty, "no ack examples found — the check cannot have run")
+        for line in lines {
+            #expect(line.contains("<repo>"), "no repository named: \(line)")
+        }
+    }
+
     /// **The live decoder must carry the round.** It set `reviewID` to `nil` on every
     /// inline comment while the REST-shaped fixtures populated it, so round grouping was
     /// green in tests and collapsed into one unknown round against the real API.
