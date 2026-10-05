@@ -36,6 +36,10 @@ public struct PullRequestThreads: Sendable {
     /// a busy CI PR's context list must not hold the snapshot write gate hostage
     /// for a field that feeds no obligation.
     public var headContextsTruncated: Bool
+    /// Whether the subject is a pull request. `nil` when the source did not say —
+    /// the REST fixtures — so a headless PR can be told from an issue without
+    /// mistaking a pre-field capture for a fetch failure.
+    public var isPullRequest: Bool?
 
     /// One status/check context on the head commit — a legacy `StatusContext` or a
     /// `CheckRun`, flattened so the audit reads one shape either way.
@@ -71,7 +75,7 @@ public struct PullRequestThreads: Sendable {
         pagesFetched: Int, truncatedConnections: [String] = [],
         bodiesAreExcerpts: Bool = false,
         headCommitOID: String? = nil, headContexts: [HeadContext] = [],
-        headContextsTruncated: Bool = false
+        headContextsTruncated: Bool = false, isPullRequest: Bool? = nil
     ) {
         self.repository = repository
         self.number = number
@@ -88,6 +92,7 @@ public struct PullRequestThreads: Sendable {
         self.headCommitOID = headCommitOID
         self.headContexts = headContexts
         self.headContextsTruncated = headContextsTruncated
+        self.isPullRequest = isPullRequest
     }
 
     /// Closed or merged. `UNKNOWN` — the REST fixtures carry no state — reads as open,

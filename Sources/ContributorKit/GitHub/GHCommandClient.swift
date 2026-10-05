@@ -15,19 +15,28 @@ import Foundation
 public struct GHCommandClient: GitHubClient {
     public let runner: any CommandRunner
     public let queryPath: String
+    /// The `--open` queue's document; empty where the surface is not used (tests,
+    /// and commands that never list pull requests).
+    public let openPullRequestsQueryPath: String
     public let maxPages: Int
 
-    public init(runner: any CommandRunner, queryPath: String, maxPages: Int = 50) {
+    public init(
+        runner: any CommandRunner, queryPath: String,
+        openPullRequestsQueryPath: String = "", maxPages: Int = 50
+    ) {
         self.runner = runner
         self.queryPath = queryPath
+        self.openPullRequestsQueryPath = openPullRequestsQueryPath
         self.maxPages = maxPages
     }
 
-    public static func bundledQueryPath() throws -> String {
+    public static func bundledQueryPath(_ document: String = "ThreadDetail") throws
+        -> String
+    {
         guard
             let url = Bundle.module.url(
-                forResource: "Resources/ThreadDetail", withExtension: "graphql")
-        else { throw ConfigurationError.missingResource("ThreadDetail.graphql") }
+                forResource: "Resources/\(document)", withExtension: "graphql")
+        else { throw ConfigurationError.missingResource("\(document).graphql") }
         return url.path
     }
 
@@ -152,13 +161,80 @@ public struct GHCommandClient: GitHubClient {
             pagesFetched: pages, truncatedConnections: truncated,
             bodiesAreExcerpts: false,
             headCommitOID: headCommit?.oid, headContexts: headContexts,
-            headContextsTruncated: headContextsTruncated)
+            headContextsTruncated: headContextsTruncated,
+            isPullRequest: meta?.__typename == "PullRequest" ? true
+                : meta?.__typename == "Issue" ? false : nil)
+    }
+
+    /// The `--open` queue's fetch (issue #12): every open pull request, paged
+    /// explicitly so a cut list is reported rather than mistaken for complete.
+    public func openPullRequests(repository: String) async throws -> OpenPullRequestList {
+        let parts = repository.split(separator: "/")
+        guard parts.count == 2 else { throw GitHubError.badRepository(repository) }
+        let owner = String(parts[0]), name = String(parts[1])
+
+        var cursor: String?
+        var pullRequests: [OpenPullRequest] = []
+        var totalCount = 0
+        var truncated = false
+        var authorshipUnknown = 0
+        var pages = 0
+
+        while pages < maxPages {
+            var argv = [
+                "gh", "api", "graphql",
+                "-F", "query=@\(openPullRequestsQueryPath)",
+                "-f", "owner=\(owner)",
+                "-f", "name=\(name)",
+            ]
+            if let cursor { argv += ["-f", "cursor=\(cursor)"] }
+
+            let out = try await runner.runExpectingOutput(argv)
+            let response = try JSONDecoder().decode(
+                OpenPullRequestsResponse.self, from: out.stdout)
+            if let errors = response.errors, !errors.isEmpty {
+                throw GitHubError.graphQL(errors.map(\.message))
+            }
+            guard let connection = response.data?.repository?.pullRequests else {
+                throw GitHubError.repositoryNotFound(repository)
+            }
+            pages += 1
+            totalCount = connection.totalCount ?? totalCount
+            pullRequests += (connection.nodes ?? []).compactMap { node in
+                guard let number = node.number else { return nil }
+                if node.viewerDidAuthor == nil { authorshipUnknown += 1 }
+                return OpenPullRequest(
+                    number: number, title: node.title ?? "",
+                    isDraft: node.isDraft ?? false,
+                    viewerDidAuthor: node.viewerDidAuthor ?? false)
+            }
+
+            // Advance to the page just read, even on a finished connection:
+            // re-sending a stale cursor re-reads page one and double-counts (the
+            // `threads` comment records the live verification of that).
+            cursor = connection.pageInfo?.endCursor ?? cursor
+
+            guard connection.pageInfo?.hasNextPage == true else { break }
+            if pages == maxPages {
+                truncated = true
+            } else if connection.pageInfo?.endCursor == nil {
+                // `hasNextPage` with no cursor cannot be paged — the list is cut.
+                truncated = true
+                break
+            }
+        }
+
+        return OpenPullRequestList(
+            all: pullRequests, totalCount: totalCount,
+            pagesFetched: pages, truncated: truncated,
+            authorshipUnknown: authorshipUnknown)
     }
 }
 
 public enum GitHubError: Error, CustomStringConvertible {
     case badRepository(String)
     case notFound(repository: String, number: Int)
+    case repositoryNotFound(String)
     case graphQL([String])
 
     public var description: String {
@@ -167,6 +243,8 @@ public enum GitHubError: Error, CustomStringConvertible {
             return "`\(text)` is not <owner>/<repo>"
         case .notFound(let repository, let number):
             return "\(repository)#\(number) was not found"
+        case .repositoryNotFound(let name):
+            return "\(name) was not found — or `gh` cannot see it"
         case .graphQL(let messages):
             return "GitHub returned \(messages.count) error(s): " + messages.joined(separator: "; ")
         }

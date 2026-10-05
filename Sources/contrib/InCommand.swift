@@ -34,14 +34,24 @@ struct InCommand: AsyncParsableCommand {
             { "channel", "head", "state", "detail", "url", "reviewLogin",
             "lastReviewOn" }, verbatim — so a never-ran review cannot pass for a
             clean round.
+
+            --open prints the queue instead of one subject — one facts line per
+            open pull request of mine (owed, to re-read, unexamined, the reviewer
+            line on head) — and writes no snapshot, so --pr N stays the run that consumes
+            a pull request's delta. Every per-subject run ends with a `verdict`
+            line of the same facts; it is a composition, not a judgment, and the
+            exit code does not change with it.
             """
     )
 
     @Argument(help: "<owner>/<repo>")
     var repository: String
 
-    @Option(name: .long, help: "Pull request or issue number.")
-    var pr: Int
+    @Option(name: .long, help: "Pull request or issue number. One of --pr and --open is required.")
+    var pr: Int?
+
+    @Flag(name: .long, help: "One facts line per open pull request of mine — owed, to re-read, unexamined, the reviewer line on head. Writes no snapshot (--no-snapshot is implied).")
+    var open = false
 
     @Option(name: .long, help: "My login. Only needed when the API does not report authorship.")
     var me: String?
@@ -58,7 +68,27 @@ struct InCommand: AsyncParsableCommand {
     @Flag(name: .long, help: "Do not write the snapshot. The run then cannot inform the next one.")
     var noSnapshot = false
 
+    func validate() throws {
+        guard (pr != nil) != open else {
+            throw ValidationError("one of --pr and --open is required")
+        }
+        if open && (json || all) {
+            throw ValidationError(
+                "--open prints the queue, one line per pull request; --json and --all "
+                    + "are per-subject views — use `contrib in <repo> --pr N`")
+        }
+    }
+
     func run() async throws {
+        if open {
+            try await runOpen()
+            return
+        }
+        guard let pr else {
+            // validate() already refuses this shape; the guard is for construction
+            // paths that skip it.
+            throw ValidationError("one of --pr and --open is required")
+        }
         var provenance = Provenance(command: "contrib in \(repository) --pr \(pr)")
         let configuration = try Configuration.load(
             directory: URL(fileURLWithPath: FileManager.default.currentDirectoryPath))
@@ -69,7 +99,9 @@ struct InCommand: AsyncParsableCommand {
         let store = SnapshotStore(directory: stateDir.map { URL(fileURLWithPath: $0) })
         let runner = CountingCommandRunner(SystemCommandRunner())
         let client = GHCommandClient(
-            runner: runner, queryPath: try GHCommandClient.bundledQueryPath())
+            runner: runner, queryPath: try GHCommandClient.bundledQueryPath(),
+            openPullRequestsQueryPath: try GHCommandClient.bundledQueryPath(
+                "OpenPullRequests"))
         let threads = try await client.threads(repository: repository, number: pr)
 
         let audit = try InboundAudit(configuration: configuration, me: me)
@@ -125,6 +157,80 @@ struct InCommand: AsyncParsableCommand {
                     reviewerChannels: configuration.inbound.reviewerChannels))
         }
 
+        try Self.emit(provenance)
+    }
+
+    /// The queue (issue #12): one facts line per open pull request of mine, over a
+    /// full audit per subject — **and no snapshot write**. The queue shows no
+    /// items, so it must not consume an item's `changed` signal: `--pr N` stays
+    /// the run that advances the snapshot.
+    private func runOpen() async throws {
+        var provenance = Provenance(command: "contrib in \(repository) --open")
+        let configuration = try Configuration.load(
+            directory: URL(fileURLWithPath: FileManager.default.currentDirectoryPath))
+        if let horizon = configuration.inbound.horizon {
+            provenance.note("review horizon \(horizon) — earlier items counted, not listed")
+        }
+
+        let store = SnapshotStore(directory: stateDir.map { URL(fileURLWithPath: $0) })
+        let runner = CountingCommandRunner(SystemCommandRunner())
+        let client = GHCommandClient(
+            runner: runner, queryPath: try GHCommandClient.bundledQueryPath(),
+            openPullRequestsQueryPath: try GHCommandClient.bundledQueryPath(
+                "OpenPullRequests"))
+        let list = try await client.openPullRequests(repository: repository)
+        provenance.examined("open pull requests", list.totalCount)
+        provenance.examined("mine", list.mine.count)
+        provenance.examined("queue pages fetched", list.pagesFetched)
+        if list.truncated {
+            provenance.anomaly(
+                "truncatedFetch",
+                "pullRequests still had a next page — the queue is incomplete")
+        }
+        if list.authorshipUnknown > 0 {
+            provenance.anomaly(
+                "authorshipUnknown",
+                "\(list.authorshipUnknown) open pull request(s) carried no "
+                    + "viewerDidAuthor — the queue may be short")
+        }
+
+        // Every fetch runs before the lock: network outside, the single snapshot
+        // read inside it — every row compares against the same previous version.
+        let audit = try InboundAudit(configuration: configuration, me: me)
+        var subjects: [PullRequestThreads] = []
+        for pr in list.mine.sorted(by: { $0.number < $1.number }) {
+            subjects.append(
+                try await client.threads(repository: repository, number: pr.number))
+        }
+        // With no snapshot on disk there is nothing to synchronize with — and the
+        // lock file itself must not be created, so a read-only queue leaves a
+        // fresh state dir untouched. A writer landing mid-sweep just means this
+        // run is the baseline it reports.
+        let rows: [InboundReporting.SubjectSummary]
+        if store.hasSnapshot(repository: repository) {
+            rows = try store.withLock(repository: repository) {
+                let previous = try store.load(repository: repository)
+                return InboundReporting.queueRows(
+                    subjects, drafts: Set(list.mine.filter(\.isDraft).map(\.number)),
+                    previous: previous, audit: audit,
+                    reviewerChannels: configuration.inbound.reviewerChannels,
+                    into: &provenance)
+            }
+        } else {
+            rows = InboundReporting.queueRows(
+                subjects, drafts: Set(list.mine.filter(\.isDraft).map(\.number)),
+                previous: nil, audit: audit,
+                reviewerChannels: configuration.inbound.reviewerChannels,
+                into: &provenance)
+        }
+
+        provenance.note("as of \(GitHubTime.string(Date()))")
+        provenance.note(
+            "--open writes no snapshot — `contrib in \(repository) --pr N` is the run "
+                + "that consumes a pull request's delta")
+
+        print(InboundReporting.queue(repository: repository, list: list, rows: rows))
+        provenance.subprocessCalls = runner.count
         try Self.emit(provenance)
     }
 }

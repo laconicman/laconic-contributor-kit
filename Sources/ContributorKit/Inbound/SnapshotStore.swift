@@ -56,6 +56,14 @@ public struct SnapshotStore: Sendable {
             .replacingOccurrences(of: "..", with: "%2E%2E")
     }
 
+    /// Whether any snapshot file exists for this repository — the current path or
+    /// the pre-collision-fix legacy one. A read-only sweep asks this so a fresh
+    /// state dir stays absent instead of gaining an empty lock file it never used.
+    public func hasSnapshot(repository: String) -> Bool {
+        FileManager.default.fileExists(atPath: url(for: repository).path)
+            || FileManager.default.fileExists(atPath: legacyURL(for: repository).path)
+    }
+
     /// `nil` when no snapshot exists yet — the first run, which every caller must
     /// report rather than silently treat as "nothing changed".
     public func load(repository: String) throws -> Snapshot? {

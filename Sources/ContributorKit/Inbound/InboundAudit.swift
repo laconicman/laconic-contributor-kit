@@ -69,6 +69,13 @@ public struct InboundAudit: Sendable {
         public var toReRead: [InboundItem] {
             items.filter { $0.isVisible && $0.awaitsLook }
         }
+        /// Collapsed sections nobody has read — listed by default but neither owed
+        /// nor awaiting a look, so `owed` and `to re-read` together cannot see them.
+        /// The third count exists because a zero-shaped verdict hiding unexamined
+        /// work is the absence-of-evidence shape again (issue #12, PR #15).
+        public var unexamined: [InboundItem] {
+            items.filter { $0.isVisible && $0.state == .collapsedUnexamined }
+        }
         /// Items the horizon is holding back this run.
         public var beyondHorizon: [InboundItem] { items.filter { !$0.isVisible } }
 

@@ -1605,6 +1605,141 @@ struct InboundTests {
         #expect(reviewers.count == 1 && reviewers[0]["channel"] as? String == "Devin Review")
     }
 
+    // MARK: - the queue (issue #12)
+
+    /// The facts line is a composition, not a judgment: the counts, `baseline`
+    /// only on a cold start, and the reviewer's own words verbatim — a `SUCCESS`
+    /// whose detail says skipped must reach the row untouched. An issue has no
+    /// head, so nothing follows the counts at all.
+    @Test("the facts line carries counts, baseline, and the reviewer verbatim")
+    func factsLineComposes() {
+        let reviewer = InboundReporting.ReviewerReport(
+            channel: "Devin Review", head: "de08fb5", state: "SUCCESS",
+            detail: "Full review skipped: trial expired")
+        #expect(
+            InboundReporting.facts(
+                owed: 2, toReRead: 1, unexamined: 0, isBaseline: false, hasHead: true,
+                reviewers: [reviewer])
+                == "owed 2 · to re-read 1 · unexamined 0 · Devin Review @ de08fb5 "
+                    + "(head): SUCCESS \"Full review skipped: trial expired\"")
+        #expect(
+            InboundReporting.facts(
+                owed: 0, toReRead: 0, unexamined: 0, isBaseline: true, hasHead: true,
+                reviewers: [])
+                == "owed 0 · to re-read 0 · unexamined 0 · baseline "
+                    + "· no reviewer context on head")
+        #expect(
+            InboundReporting.facts(
+                owed: 3, toReRead: 0, unexamined: 0, isBaseline: false, hasHead: false,
+                reviewers: [reviewer])
+                == "owed 3 · to re-read 0 · unexamined 0",
+            "an issue has no head — coverage cannot be claimed or missed")
+
+        // One line is the contract: a status description carrying a newline must
+        // not wrap one subject's row into the next.
+        let multiline = InboundReporting.ReviewerReport(
+            channel: "Devin Review", head: "de08fb5", state: "SUCCESS",
+            detail: "first line\nsecond line")
+        #expect(
+            InboundReporting.facts(
+                owed: 0, toReRead: 0, unexamined: 0, isBaseline: false, hasHead: true,
+                reviewers: [multiline])
+                == "owed 0 · to re-read 0 · unexamined 0 · Devin Review @ de08fb5 "
+                    + "(head): SUCCESS \"first line second line\"")
+    }
+
+    /// The queue counts every open pull request against the ones that are mine —
+    /// the asks on the others are addressed to someone else — then one facts line
+    /// per mine, numbered ascending. With none of mine it says so rather than
+    /// implying a silent fetch.
+    @Test("the queue prints one facts line per pull request of mine")
+    func queuePrintsMineOnly() {
+        let list = OpenPullRequestList(
+            all: [
+                .init(number: 9, title: "theirs", isDraft: false, viewerDidAuthor: false),
+                .init(number: 14, title: "the ack fix", isDraft: false, viewerDidAuthor: true),
+                .init(number: 15, title: "wip", isDraft: true, viewerDidAuthor: true),
+            ], totalCount: 3, pagesFetched: 1, truncated: false)
+        let reviewer = InboundReporting.ReviewerReport(
+            channel: "Devin Review", head: "de08fb5", state: "SUCCESS",
+            detail: "Completed analysis in 2m 8s")
+        let output = InboundReporting.queue(
+            repository: "o/r", list: list,
+            rows: [
+                .init(
+                    number: 15, title: "wip", isDraft: true, owed: 0, toReRead: 0,
+                    unexamined: 0, isBaseline: true, hasHead: true, reviewers: []),
+                .init(
+                    number: 14, title: "the ack fix", isDraft: false, owed: 2,
+                    toReRead: 1, unexamined: 0, isBaseline: false, hasHead: true,
+                    reviewers: [reviewer]),
+            ])
+        #expect(output.contains("o/r — 2 of 3 open pull request(s) are mine"))
+        #expect(output.contains("#14  the ack fix"))
+        #expect(output.contains("#15  wip (draft)"))
+        #expect(output.contains("owed 2 · to re-read 1 · unexamined 0 · Devin Review @ de08fb5"))
+        #expect(output.contains("owed 0 · to re-read 0 · unexamined 0 · baseline · no reviewer context on head"))
+        #expect(
+            output.range(of: "#14")!.lowerBound < output.range(of: "#15")!.lowerBound,
+            "rows are numbered ascending, not fetch order")
+
+        let empty = InboundReporting.queue(
+            repository: "o/r",
+            list: .init(
+                all: [.init(number: 9, title: "theirs", isDraft: false,
+                            viewerDidAuthor: false)],
+                totalCount: 1, pagesFetched: 1, truncated: false),
+            rows: [])
+        #expect(empty.contains("0 of 1 open pull request(s) are mine"))
+        #expect(empty.contains("Nothing to audit."))
+    }
+
+    /// `queueRows` is the lock's payload: every subject audits against the one
+    /// snapshot version loaded inside it, and the fetch anomalies arrive prefixed
+    /// by subject — a cut page on #3 cannot be mistaken for a fact about #2.
+    @Test("queueRows audits every subject against one snapshot version")
+    func queueRowsAuditsAndAttributes() throws {
+        let comment = RemoteComment(
+            id: "issuecomment-1", channel: .issueComment, author: "bot",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: "Please add a regression test.",
+            permalink: "https://github.com/o/r/issues/3#issuecomment-1")
+        var three = pullRequest(issueComments: [comment], headCommitOID: "de08fb51")
+        three.number = 3
+        three.truncatedConnections = ["reviews"]
+        var two = pullRequest()
+        two.number = 2
+        two.isPullRequest = true
+
+        var provenance = Provenance(command: "contrib in o/r --open")
+        let rows = InboundReporting.queueRows(
+            [three, two], drafts: [2], previous: nil, audit: try Fixtures.audit(),
+            reviewerChannels: [:], into: &provenance)
+
+        #expect(rows.map(\.number) == [2, 3])
+        #expect(rows[0].isDraft)
+        #expect(rows[1].owed == 1 && rows[1].isBaseline)
+        #expect(provenance.anomalies.contains {
+            $0.kind == "truncatedFetch" && $0.detail.hasPrefix("#3: reviews")
+        })
+        #expect(provenance.anomalies.contains {
+            $0.kind == "noHeadCommit" && $0.detail.hasPrefix("#2:")
+        })
+        #expect(provenance.counters.contains {
+            $0.label == "pull requests audited" && $0.value == 2
+        })
+        #expect(provenance.counters.contains {
+            $0.label == "issue comments" && $0.value == 1
+        })
+        #expect(provenance.counters.contains { $0.label == "owed" && $0.value == 1 })
+        #expect(provenance.counters.contains {
+            $0.label == "to re-read" && $0.value == 0
+        })
+        #expect(provenance.notes.contains {
+            $0.hasPrefix("bodies: full text, not excerpts — all 2")
+        })
+    }
+
     private func pullRequest(
         threads: [RemoteThread] = [], reviewBodies: [RemoteComment] = [],
         issueComments: [RemoteComment] = [],

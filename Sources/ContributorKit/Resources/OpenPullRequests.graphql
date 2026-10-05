@@ -1,0 +1,33 @@
+# ContributorKit — the queue view (issue #12).
+#
+# `contrib in --open` answers "which of my open pull requests have a round waiting"
+# without one ThreadDetail run per pull request to learn the list itself: 23 open
+# PRs meant 23 runs plus `gh pr list` to learn which heads had a round. This query
+# fetches the list — number, title, draft flag and authorship — and the audit's
+# per-subject fetch then answers each row.
+#
+# `totalCount` is deliberate: a `--limit`-shaped list cannot say it was cut, so the
+# count and explicit pagination (`hasNextPage`/`endCursor`, walked by the client)
+# are what keep "1 open pull request" a fact rather than a first page.
+#
+# `viewerDidAuthor` is GitHub's own authorship answer — the same field the
+# per-subject fetch relies on, so the queue needs no login round-trip either.
+#
+# Validated 2026-10-05 live:
+#   gh api graphql -F query=@Sources/ContributorKit/Resources/OpenPullRequests.graphql \
+#     -f owner=laconicman -f name=laconic-contributor-kit
+query OpenPullRequests($owner: String!, $name: String!, $cursor: String) {
+  repository(owner: $owner, name: $name) {
+    pullRequests(
+      states: OPEN
+      first: 100
+      after: $cursor
+      orderBy: {field: CREATED_AT, direction: ASC}
+    ) {
+      totalCount
+      pageInfo { hasNextPage endCursor }
+      nodes { number title isDraft viewerDidAuthor }
+    }
+  }
+  rateLimit { cost remaining resetAt }
+}
