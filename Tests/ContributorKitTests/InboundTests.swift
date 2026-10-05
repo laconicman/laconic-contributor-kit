@@ -581,7 +581,7 @@ struct InboundTests {
             permalink: "https://github.com/o/r/issues/1#issuecomment-1")
         let pr = pullRequest(issueComments: [comment])
         let result = try Fixtures.audit().run(pr, against: nil)
-        let output = InboundReporting.terminal(pr, result, reviewerChannels: [:])
+        let output = InboundReporting.terminal(pr, result, previous: nil, reviewerChannels: [:])
         #expect(output.contains("+ [collapsed: \"Example\""),
             "the worklist must name the hidden section, not just imply collapse somewhere")
         #expect(output.contains("contrib show issuecomment-1 o/r --full"),
@@ -601,7 +601,7 @@ struct InboundTests {
             permalink: "https://github.com/o/r/issues/1#issuecomment-1")
         let pr = pullRequest(issueComments: [comment])
         let result = try Fixtures.audit().run(pr, against: nil)
-        let output = InboundReporting.terminal(pr, result, reviewerChannels: [:])
+        let output = InboundReporting.terminal(pr, result, previous: nil, reviewerChannels: [:])
         #expect(output.contains(#"contrib ack issuecomment-1 --with none:"…" o/r --pr 1"#),
             "the hint is pasted as printed — it must carry repository and --pr")
 
@@ -615,7 +615,7 @@ struct InboundTests {
         let second = try Fixtures.audit().run(
             threadPR, against: first.updatedSnapshot)
         let threadOutput = InboundReporting.terminal(
-            threadPR, second, reviewerChannels: [:])
+            threadPR, second, previous: nil, reviewerChannels: [:])
         #expect(threadOutput.contains(
             #"contrib ack discussion_r1 --with none:"…" o/r --pr 1"#),
             "the answered-claimed hint takes the same form")
@@ -1531,13 +1531,38 @@ struct InboundTests {
             ])
         let result = try Fixtures.audit().run(pr, against: nil)
         let output = InboundReporting.terminal(
-            pr, result, reviewerChannels: ["Devin Review": "devin-ai-integration"])
+            pr, result, previous: nil,
+            reviewerChannels: ["Devin Review": "devin-ai-integration"])
         #expect(output.contains("Nothing owed"))
         #expect(
             output.contains(
-                "reviewer       Devin Review @ de08fb5 (head): SUCCESS "
+                "verdict  owed 0 · to re-read 0 · unexamined 0 · baseline · Devin Review @ de08fb5 "
+                    + "(head): SUCCESS "
                     + "\"Full review skipped: trial expired and no credits remaining\""),
             "the verdict must ride the zero, verbatim — a skipped run is not clean")
+        #expect(!output.contains("reviewer       "),
+            "one verdict line carries it — the block still prints them on stderr")
+    }
+
+    /// The same line closes a run that lists items: `verdict` composes what the
+    /// list means numerically, and `baseline` appears only on a cold start.
+    @Test("a listed run still ends on the verdict line")
+    func listedRunEndsOnVerdict() throws {
+        let comment = RemoteComment(
+            id: "issuecomment-1", channel: .issueComment, author: "bot",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: "Please add a regression test.",
+            permalink: "https://github.com/o/r/issues/1#issuecomment-1")
+        let pr = pullRequest(
+            issueComments: [comment], headCommitOID: "de08fb51234567890")
+        let result = try Fixtures.audit().run(pr, against: nil)
+        let output = InboundReporting.terminal(
+            pr, result, previous: nil, reviewerChannels: [:])
+        let last = try #require(output.split(separator: "\n").last)
+        #expect(
+            last == "verdict  owed 1 · to re-read 0 · unexamined 0 · baseline "
+                + "· no reviewer context on head",
+            "a head with no contexts is a fact, not a clean round")
     }
 
     /// Status contexts are always listed; a check run is a reviewer channel only
@@ -1735,8 +1760,40 @@ struct InboundTests {
         #expect(provenance.counters.contains {
             $0.label == "to re-read" && $0.value == 0
         })
+        #expect(provenance.counters.contains {
+            $0.label == "unexamined" && $0.value == 0
+        })
         #expect(provenance.notes.contains {
             $0.hasPrefix("bodies: full text, not excerpts — all 2")
+        })
+    }
+
+    /// A collapsed section nobody has read is listed but neither owed nor a
+    /// re-read — the verdict and the queue row must carry `unexamined` or the
+    /// zero-shape hides real work (PR #15).
+    @Test("collapsed-unexamined work is a third count, on verdict and row alike")
+    func collapsedWorkIsCounted() throws {
+        let comment = RemoteComment(
+            id: "issuecomment-1", channel: .issueComment, author: "bot",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: "<details>\n<summary>Diagnostics</summary>\n\nstack trace\n</details>",
+            permalink: "https://github.com/o/r/issues/1#issuecomment-1")
+        let pr = pullRequest(issueComments: [comment], headCommitOID: "de08fb51")
+        let result = try Fixtures.audit().run(pr, against: nil)
+        #expect(result.unexamined.count == 1)
+        let output = InboundReporting.terminal(
+            pr, result, previous: nil, reviewerChannels: [:])
+        let last = try #require(output.split(separator: "\n").last)
+        #expect(last.hasPrefix(
+            "verdict  owed 0 · to re-read 0 · unexamined 1 ·"))
+
+        var provenance = Provenance(command: "contrib in o/r --open")
+        let rows = InboundReporting.queueRows(
+            [pr], drafts: [], previous: nil, audit: try Fixtures.audit(),
+            reviewerChannels: [:], into: &provenance)
+        #expect(rows.first?.unexamined == 1)
+        #expect(provenance.counters.contains {
+            $0.label == "unexamined" && $0.value == 1
         })
     }
 

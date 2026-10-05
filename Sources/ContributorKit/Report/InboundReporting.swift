@@ -90,12 +90,23 @@ public enum InboundReporting {
     }
 
     public static func terminal(
-        _ pr: PullRequestThreads, _ result: InboundAudit.Result, options: Options = .init(),
-        reviewerChannels: [String: String]
+        _ pr: PullRequestThreads, _ result: InboundAudit.Result, previous: Snapshot?,
+        options: Options = .init(), reviewerChannels: [String: String]
     ) -> String {
         var lines: [String] = []
         let title = pr.title.isEmpty ? "" : " — \(pr.title)"
         lines.append("\(pr.repository)#\(pr.number)\(title)")
+
+        // The run's last line is the verdict — the facts a reader was grepping
+        // the output for, composed once (issue #12). Verbatim reviewer coverage
+        // rides it, so a clean ledger and a never-ran review are still not the
+        // same document.
+        let verdict = "verdict  " + facts(
+            owed: result.owed.count, toReRead: result.toReRead.count,
+            unexamined: result.unexamined.count,
+            isBaseline: knownBefore(pr, previous: previous) == 0,
+            hasHead: pr.headCommitOID != nil,
+            reviewers: reviewerCoverage(pr, channels: reviewerChannels))
 
         let shown = result.items.filter {
             options.all ? $0.isVisible : $0.isListedByDefault
@@ -107,13 +118,8 @@ public enum InboundReporting {
             lines.append(
                 "Nothing owed. No item changed state, body or acknowledgement since the "
                     + "last run — \(result.items.count) compared.")
-            // A clean ledger and a never-ran review are the same absence: when the
-            // head carries reviewer contexts the verdict travels with the zero —
-            // verbatim, so "Full review skipped" cannot pass for a clean round
-            // (issue #10).
-            for reviewer in reviewerCoverage(pr, channels: reviewerChannels) {
-                lines.append("reviewer       \(reviewer.rendered)")
-            }
+            lines.append("")
+            lines.append(verdict)
             return lines.joined(separator: "\n")
         }
 
@@ -148,6 +154,8 @@ public enum InboundReporting {
                     })
             }
         }
+        lines.append("")
+        lines.append(verdict)
         return lines.joined(separator: "\n")
     }
 

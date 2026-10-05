@@ -117,7 +117,9 @@ struct InCommand: AsyncParsableCommand {
         // stays outside the lock.
         let subject = Subject.format(repository: repository, number: pr)
         var locked = provenance
-        let result = try store.withLock(repository: repository) { () -> InboundAudit.Result in
+        let lockedRun = try store.withLock(
+            repository: repository
+        ) { () -> (InboundAudit.Result, Snapshot?) in
             let previous = try store.load(repository: repository)
             let result = audit.run(threads, against: previous)
 
@@ -140,8 +142,9 @@ struct InCommand: AsyncParsableCommand {
                 try store.save(merged)
                 locked.note("snapshot written to \(store.url(for: repository).path)")
             }
-            return result
+            return (result, previous)
         }
+        let (result, previous) = lockedRun
         provenance = locked
 
         let options = InboundReporting.Options(all: all)
@@ -153,7 +156,7 @@ struct InCommand: AsyncParsableCommand {
         } else {
             print(
                 InboundReporting.terminal(
-                    threads, result, options: options,
+                    threads, result, previous: previous, options: options,
                     reviewerChannels: configuration.inbound.reviewerChannels))
         }
 
