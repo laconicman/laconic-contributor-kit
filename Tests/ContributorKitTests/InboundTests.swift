@@ -588,6 +588,39 @@ struct InboundTests {
             "the flag must carry a runnable retrieval command")
     }
 
+    /// The hint under an obligation is the one line an agent copies verbatim, so it
+    /// must be the form `contrib ack` accepts: `AckCommand` takes the repository
+    /// positionally and the subject on `--pr`, and the printed line failed without
+    /// them on three PRs in a row (issue #13). Both are known where the line prints.
+    @Test("the ack hint under an obligation is the runnable form")
+    func ackHintIsTheRunnableForm() throws {
+        let comment = RemoteComment(
+            id: "issuecomment-1", channel: .issueComment, author: "bot",
+            viewerDidAuthor: false, createdAt: Date(timeIntervalSince1970: 0),
+            body: "Please add a regression test.",
+            permalink: "https://github.com/o/r/issues/1#issuecomment-1")
+        let pr = pullRequest(issueComments: [comment])
+        let result = try Fixtures.audit().run(pr, against: nil)
+        let output = InboundReporting.terminal(pr, result, reviewerChannels: [:])
+        #expect(output.contains(#"contrib ack issuecomment-1 --with none:"…" o/r --pr 1"#),
+            "the hint is pasted as printed — it must carry repository and --pr")
+
+        // Same hint under an answered-claimed inline thread.
+        let thread = RemoteThread(comments: [
+            self.comment("discussion_r1", "reviewer", at: 0),
+            self.comment("discussion_r2", "laconicman", at: 10),
+        ])
+        let threadPR = pullRequest(threads: [thread])
+        let first = try Fixtures.audit().run(threadPR, against: nil)
+        let second = try Fixtures.audit().run(
+            threadPR, against: first.updatedSnapshot)
+        let threadOutput = InboundReporting.terminal(
+            threadPR, second, reviewerChannels: [:])
+        #expect(threadOutput.contains(
+            #"contrib ack discussion_r1 --with none:"…" o/r --pr 1"#),
+            "the answered-claimed hint takes the same form")
+    }
+
     /// A marker-shaped line an author *wrote* — quoting the format, filing a
     /// bug about it — is not a collapsed section. Only markers the details
     /// pass actually emitted carry provenance: a literal example must not

@@ -22,18 +22,18 @@ table is the whole contract; there is no case where the right response is "ignor
 | State | What the CLI settled | Your question | Your response |
 |---|---|---|---|
 | `open-ask` | A root ask from someone else, no reply from me | — | **Answer it, or say why it should be left out.** "Separate PR" is a fine answer. Silence is not. |
-| `answered-claimed` | I replied; the asker has not confirmed | Is my reply actually *responsive* to the ask, or only adjacent to it? | Re-read both. If the reply dodged, reply again. If it answers, **record that**: `contrib ack <id> --with none:"<why it answers>"`. Listed until one of those happens. |
+| `answered-claimed` | I replied; the asker has not confirmed | Is my reply actually *responsive* to the ask, or only adjacent to it? | Re-read both. If the reply dodged, reply again. If it answers, **record that**: `contrib ack <id> --with none:"<why it answers>" <repo>`. Listed until one of those happens. |
 | `answered-checked` | I recorded that my reply answers the ask; ask and reply unchanged since | None | Nothing. A new reply or an edited ask lists it again. |
 | `answered-confirmed` | I replied, and the asker replied after me — or posted its verdict phrase (`✅ **Resolved**:` for Devin Review) at any point — and after the ask's last edit. A bot asker's reply after mine confirms only when its latest one is the verdict | None | Nothing. The asker confirmed it themselves. |
 | `asker-replied` | A bot asker (`inbound.botAskers`) replied after me, and its latest reply is not its verdict — often its own fix session reporting on my fix | Confirmation, or correction? | `contrib show <id> <repo>` prints the reply. **Answer it in the thread** — say what you checked, or fix what it found. Your reply makes it `answered-claimed`. `ack` is refused here. Listed, never owed. |
 | `edited-after-my-answer` | `lastEditedAt` > my reply | Does the edit change what is being asked? | If it does, answer the new ask. If not, say so once. |
-| `obligation-open` | A review body or issue comment from someone else, nothing recorded | Does this need a response, or is it already absorbed? | Either way, **record which**: `contrib ack <id> --with …`. |
+| `obligation-open` | A review body or issue comment from someone else, nothing recorded | Does this need a response, or is it already absorbed? | Either way, **record which**: `contrib ack <id> --with … <repo>`. |
 | `obligation-acknowledged` | Recorded, body unmoved | None | Nothing. |
 | `reopened-by-edit` | Acknowledged, then the body changed | Does the new text ask for something else? | Re-read and re-acknowledge, or answer. |
 | `superseded` | The reviewer retracted it | None | Confirm the replacement is in the list. |
 | `informational` | The reviewer's own fixed announcement phrase, on a channel with no reply relation | None | Nothing. Counted, not owed. |
 | `no-prose` | Badge markup, nothing else | None | Nothing. It is counted, not owed. |
-| `collapsed-unexamined` | The body is only collapsed `<details>` sections — nobody has read them | Does the marker's title make `contrib show <id> <repo> --full` worth it, or is it diagnostics? | Look at the title. If it might carry an ask, retrieve with `--full` and answer what you find. If it is diagnostics, record that: `contrib ack <id> --with none:"<why>"`. Listed until one of those happens; never owed. |
+| `collapsed-unexamined` | The body is only collapsed `<details>` sections — nobody has read them | Does the marker's title make `contrib show <id> <repo> --full` worth it, or is it diagnostics? | Look at the title. If it might carry an ask, retrieve with `--full` and answer what you find. If it is diagnostics, record that: `contrib ack <id> --with none:"<why>" <repo>`. Listed until one of those happens; never owed. |
 
 **Every state is in this table.** If `contrib` ever prints one that is not, treat it as a
 defect and check the item by hand — a state outside the table has no defined response, and
@@ -95,11 +95,15 @@ if you genuinely need both on the same baseline.
 ## Acknowledging
 
 ```bash
-contrib ack <id> --with comment:<permalink-or-fragment>   # I replied here
-contrib ack <id> --with commit:<sha>                      # this commit carries it
-contrib ack <id> --with pr-body                           # the PR description now says it
-contrib ack <id> --with none:"pre-existing, not this PR"  # no action needed, and why
+contrib ack <id> --with comment:<permalink-or-fragment> <repo>   # I replied here
+contrib ack <id> --with commit:<sha> <repo>                      # this commit carries it
+contrib ack <id> --with pr-body <repo>                           # the PR description now says it
+contrib ack <id> --with none:"pre-existing, not this PR" <repo>  # no action needed, and why
 ```
+
+**`contrib in` prints this line under each item** with the repository and `--pr` filled
+in. Fill in the reason before you paste: the `…` is a placeholder, and `ack` refuses a
+`none:` that is only punctuation — recorded as printed, it would clear an ask nobody read.
 
 Recorded, **never inferred from proximity in time**. The record is keyed by comment id
 *and* body hash, so if the reviewer edits the ask after you acknowledge it, it re-opens
@@ -108,7 +112,7 @@ block prints how many acknowledgements went in unverified.
 
 **Refresh before you acknowledge.** `ack` judges the snapshot, and a reply posted since
 the last `contrib in` leaves the item in its old state — the refusal names the remedy.
-`contrib ack <id> --with … --refresh` re-fetches the item's subject and updates the
+`contrib ack <id> --with … <repo> --refresh` re-fetches the item's subject and updates the
 snapshot in the same step, collapsing reply → `in` → ack into reply → `ack --refresh`.
 
 **Re-read one item whole with `contrib show <id> <owner>/<repo>`** — the ask, your reply,

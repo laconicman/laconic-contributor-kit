@@ -134,13 +134,17 @@ public enum InboundReporting {
                     lines.append("  round \(round), \(when) — \(group.count) thread(s)")
                     lines.append(
                         contentsOf: group.flatMap {
-                            render($0, indent: "    ", repository: pr.repository)
+                            render(
+                                $0, indent: "    ", repository: pr.repository,
+                                number: pr.number)
                         })
                 }
             } else {
                 lines.append(
                     contentsOf: items.flatMap {
-                        render($0, indent: "  ", repository: pr.repository)
+                        render(
+                            $0, indent: "  ", repository: pr.repository,
+                            number: pr.number)
                     })
             }
         }
@@ -297,8 +301,9 @@ public enum InboundReporting {
         }
     }
 
-    private static func render(_ item: InboundItem, indent: String, repository: String)
-        -> [String]
+    private static func render(
+        _ item: InboundItem, indent: String, repository: String, number: Int
+    ) -> [String]
     {
         var lines: [String] = []
         let marker = item.state.isOwed ? "●" : "·"
@@ -327,7 +332,11 @@ public enum InboundReporting {
             if item.state == .askerReplied {
                 lines.append("\(indent)    contrib show \(item.id) \(repository)")
             } else if item.kind != .inlineThread || item.state == .answeredClaimed {
-                lines.append("\(indent)    contrib ack \(item.id) --with none:\"…\"")
+                // The id's subject is known here, so the printed line is the
+                // runnable form — repository and --pr filled in (issue #13).
+                lines.append(
+                    "\(indent)    contrib ack \(item.id) --with none:\"…\""
+                        + " \(repository) --pr \(number)")
             }
         }
         lines.append("\(indent)  \(item.permalink)")

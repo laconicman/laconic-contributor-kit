@@ -73,8 +73,8 @@ mistake to go on as if nothing was posted, so review bodies are listed first and
 auto-cleared. They leave the list when you record where the content was absorbed:
 
 ```bash
-contrib ack pullrequestreview-5130977763 --with commit:e02b93e1
-contrib ack pullrequestreview-5095816383 --with none:"pre-existing, not this PR"
+contrib ack pullrequestreview-5130977763 --with commit:e02b93e1 pjsip/pjproject
+contrib ack pullrequestreview-5095816383 --with none:"pre-existing, not this PR" pjsip/pjproject
 ```
 
 Recorded, never inferred from proximity in time. The record is keyed by comment id
@@ -121,7 +121,7 @@ inference the obligation model exists to refuse. But it is a once-per-repository
 and the honest way to pay it is to record it as what it is:
 
 ```bash
-contrib ack pullrequestreview-5095816383 --with none:"pre-adoption; absorbed in round 3"
+contrib ack pullrequestreview-5095816383 --with none:"pre-adoption; absorbed in round 3" pjsip/pjproject
 ```
 
 Those acknowledgements are real records with real reasons, and they re-open by

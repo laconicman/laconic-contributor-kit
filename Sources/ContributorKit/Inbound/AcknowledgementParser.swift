@@ -68,6 +68,14 @@ public struct AcknowledgementParser: Sendable {
                     ? "no local repository to resolve it against — recorded unverified"
                     : (resolved! ? "resolves in the local repository" : "does not resolve locally"))
         case "none":
+            // The hint `contrib in` prints is runnable as printed, placeholder
+            // included — and a `none` with no reason would clear an ask nobody read.
+            // A reason has at least one letter or digit; `…`, `...`, `???` and
+            // every other run of punctuation is the placeholder's shape, not a reason.
+            // Listing the placeholder's own characters was tried first and left `?`
+            // through (review of #14).
+            guard value.contains(where: { $0.isLetter || $0.isNumber })
+            else { throw AcknowledgementError.placeholderReason(raw) }
             return Acknowledgement(
                 kind: .none, pointer: value, bodySha256AtAck: bodySha256,
                 verified: true,
