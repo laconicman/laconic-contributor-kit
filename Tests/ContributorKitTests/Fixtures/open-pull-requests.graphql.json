@@ -1,0 +1,30 @@
+{
+  "_fixture": {
+    "source": "laconicman/laconic-contributor-kit, gh api graphql -F query=@Sources/ContributorKit/Resources/OpenPullRequests.graphql -f owner=laconicman -f name=laconic-contributor-kit, 2026-10-05 UTC",
+    "captureShape": "the OpenPullRequests.graphql response verbatim; PR #14 is the one open pull request, viewerDidAuthor true"
+  },
+  "data": {
+    "repository": {
+      "pullRequests": {
+        "totalCount": 1,
+        "pageInfo": {
+          "hasNextPage": false,
+          "endCursor": "Y3Vyc29yOnYyOpK0MjAyNi0xMC0wNVQxMzo1NjozNlrPAAAAARric5U="
+        },
+        "nodes": [
+          {
+            "number": 14,
+            "title": "fix: the ack hint names its repository and pull request (#13)",
+            "isDraft": false,
+            "viewerDidAuthor": true
+          }
+        ]
+      }
+    },
+    "rateLimit": {
+      "cost": 1,
+      "remaining": 4931,
+      "resetAt": "2026-10-05T14:36:41Z"
+    }
+  }
+}

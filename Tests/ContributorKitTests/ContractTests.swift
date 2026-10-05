@@ -113,6 +113,33 @@ struct ContractTests {
         #expect(provenance.anomalies.contains { $0.kind == "truncatedFetch" })
     }
 
+    /// A pull request that reports no head commit is a missing fetch fact — the
+    /// queue already said so; the per-subject run must too (PR #15). But a
+    /// capture whose source never said what the subject was reads as *unknown*,
+    /// never as anomalous: the fixtures predate the field.
+    @Test("a pull request with no head commit raises an anomaly")
+    func missingHeadIsAnomalousOnAPullRequest() throws {
+        var pr = PullRequestThreads(
+            repository: "o/r", number: 1, title: "", url: "", state: "OPEN",
+            isMerged: false, threads: [], reviewBodies: [], issueComments: [],
+            pagesFetched: 1, isPullRequest: true)
+        var provenance = Provenance(command: "contrib in")
+        InboundReporting.record(
+            try Fixtures.audit().run(pr, against: nil), pr, previous: nil,
+            reviewerChannels: [:], into: &provenance)
+        #expect(provenance.anomalies.contains {
+            $0.kind == "noHeadCommit" && $0.detail.contains("no head commit")
+        })
+
+        pr.isPullRequest = nil
+        provenance = Provenance(command: "contrib in")
+        InboundReporting.record(
+            try Fixtures.audit().run(pr, against: nil), pr, previous: nil,
+            reviewerChannels: [:], into: &provenance)
+        #expect(!provenance.anomalies.contains { $0.kind == "noHeadCommit" },
+            "the fixtures predate the field and must not read as anomalous")
+    }
+
     /// The fixtures store 120-character excerpts and no full bodies, so boilerplate and
     /// supersession checks see a fragment. Said out loud rather than left to be
     /// discovered — a supersession phrase past character 160 would be invisible.
@@ -498,6 +525,110 @@ struct ContractTests {
         #expect(fetched.truncatedConnections.isEmpty)
     }
 
+    /// The `--open` fetch, replayed against the live capture (issue #12): one page,
+    /// `totalCount` agreeing with the node list, and `viewerDidAuthor` marking the
+    /// one open pull request as mine. The match fragments name the document —
+    /// "api graphql" alone would also match a ThreadDetail call.
+    @Test("the client decodes the open-pull-requests queue")
+    func clientDecodesOpenPullRequests() async throws {
+        let runner = RecordedCommandRunner([
+            try .file(
+                match: ["api", "graphql", "OpenPullRequests"],
+                Fixtures.root.appending(path: "open-pull-requests.graphql.json"))
+        ])
+        let client = GHCommandClient(
+            runner: runner, queryPath: "unused",
+            openPullRequestsQueryPath: "OpenPullRequests.graphql")
+        let list = try await client.openPullRequests(repository: "laconicman/laconic-contributor-kit")
+
+        #expect(list.pagesFetched == 1)
+        #expect(!list.truncated)
+        #expect(list.totalCount == list.all.count)
+        let fourteen = try #require(list.all.first { $0.number == 14 })
+        #expect(fourteen.viewerDidAuthor)
+        #expect(list.mine == [fourteen])
+    }
+
+    /// The second half is constructed: no live capture holds two pages, so the
+    /// fixture is rewritten in-test — `hasNextPage` flipped true — and run against
+    /// a one-page ceiling. A cut list must say it was cut; a `--limit`-shaped
+    /// queue cannot.
+    @Test("a truncated pull-request list reports itself truncated")
+    func openPullRequestsReportsTruncation() async throws {
+        var fixture = try JSONSerialization.jsonObject(
+            with: Fixtures.data("open-pull-requests.graphql.json")) as! [String: Any]
+        var data = fixture["data"] as! [String: Any]
+        var repository = data["repository"] as! [String: Any]
+        var pullRequests = repository["pullRequests"] as! [String: Any]
+        var pageInfo = pullRequests["pageInfo"] as! [String: Any]
+        pageInfo["hasNextPage"] = true
+        pullRequests["pageInfo"] = pageInfo
+        repository["pullRequests"] = pullRequests
+        data["repository"] = repository
+        fixture["data"] = data
+        let payload = try JSONSerialization.data(withJSONObject: fixture)
+
+        let runner = RecordedCommandRunner([
+            .init(match: ["api", "graphql", "OpenPullRequests"], stdout: payload)
+        ])
+        let client = GHCommandClient(
+            runner: runner, queryPath: "unused",
+            openPullRequestsQueryPath: "OpenPullRequests.graphql", maxPages: 1)
+        let list = try await client.openPullRequests(repository: "o/r")
+
+        #expect(list.pagesFetched == 1)
+        #expect(list.truncated)
+    }
+
+    /// Constructed again — no live capture shows the flag absent: a node without
+    /// `viewerDidAuthor` must not silently narrow the queue to "nobody's" and
+    /// print `Nothing to audit.` (rule 3's failure shape). The node still counts
+    /// toward `totalCount`; the count of unknowns is what stays honest.
+    @Test("a missing viewerDidAuthor is counted, not treated as not-mine")
+    func missingAuthorshipIsCounted() async throws {
+        var fixture = try JSONSerialization.jsonObject(
+            with: Fixtures.data("open-pull-requests.graphql.json")) as! [String: Any]
+        var data = fixture["data"] as! [String: Any]
+        var repository = data["repository"] as! [String: Any]
+        var pullRequests = repository["pullRequests"] as! [String: Any]
+        var nodes = pullRequests["nodes"] as! [[String: Any]]
+        nodes[0].removeValue(forKey: "viewerDidAuthor")
+        pullRequests["nodes"] = nodes
+        repository["pullRequests"] = pullRequests
+        data["repository"] = repository
+        fixture["data"] = data
+        let payload = try JSONSerialization.data(withJSONObject: fixture)
+
+        let runner = RecordedCommandRunner([
+            .init(match: ["api", "graphql", "OpenPullRequests"], stdout: payload)
+        ])
+        let client = GHCommandClient(
+            runner: runner, queryPath: "unused",
+            openPullRequestsQueryPath: "OpenPullRequests.graphql")
+        let list = try await client.openPullRequests(repository: "o/r")
+
+        #expect(list.authorshipUnknown == 1)
+        #expect(list.mine.isEmpty)
+        #expect(list.all.count == 1 && list.totalCount == 1)
+    }
+
+    /// "No prior items" is the baseline's positive statement (rule 3): a first run
+    /// must announce that nothing was compared, never read as a clean zero.
+    @Test("a first run says no prior items, not a clean zero")
+    func firstRunSaysBaseline() throws {
+        let pr = PullRequestThreads(
+            repository: "o/r", number: 1, title: "", url: "", state: "OPEN",
+            isMerged: false, threads: [], reviewBodies: [], issueComments: [],
+            pagesFetched: 1)
+        let result = try Fixtures.audit().run(pr, against: nil)
+        var provenance = Provenance(command: "contrib in")
+        InboundReporting.record(
+            result, pr, previous: nil, reviewerChannels: [:], into: &provenance)
+        #expect(provenance.notes.contains {
+            $0.contains("no prior items for o/r#1") && $0.contains("baseline")
+        })
+    }
+
     // MARK: - Snapshot
 
     @Test("a snapshot round-trips, and a future schema is refused rather than guessed at")
@@ -684,6 +815,58 @@ struct SnapshotCompatibilityTests {
         let snapshot = try decode("schema1-before-authored")
         #expect(snapshot.entries["discussion_r1"]?.state == .answeredClaimed)
         #expect(snapshot.authored.isEmpty)
+    }
+
+    /// A read-only sweep asks `hasSnapshot` so a fresh state dir gains no lock
+    /// file it never used (PR #15). Both layouts answer true — current and the
+    /// pre-collision-fix legacy name.
+    @Test("hasSnapshot is false on a fresh dir and true under either layout")
+    func hasSnapshotAnswersForBothLayouts() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appending(path: "ck-hasSnapshot-\(UUID().uuidString)")
+        let store = SnapshotStore(directory: dir)
+        #expect(!store.hasSnapshot(repository: "o/r"))
+
+        try store.save(Snapshot(repository: "o/r"))
+        #expect(store.hasSnapshot(repository: "o/r"))
+
+        let legacyOnly = FileManager.default.temporaryDirectory
+            .appending(path: "ck-hasSnapshot-legacy-\(UUID().uuidString)")
+        let legacyStore = SnapshotStore(directory: legacyOnly)
+        let legacy = legacyStore.legacyURL(for: "o/r")
+        try FileManager.default.createDirectory(
+            at: legacy.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("{}".utf8).write(to: legacy)
+        #expect(legacyStore.hasSnapshot(repository: "o/r"))
+    }
+
+    /// Entries written before `subject` existed are identified by their permalink
+    /// — the one field they always carried. `schema1-before-authored` has two of
+    /// them on `o/r#1`, and none a number over.
+    @Test("pre-subject entries still count toward the baseline")
+    func knownBeforeReadsPreSubjectEntries() throws {
+        let snapshot = try decode("schema1-before-authored")
+        #expect(snapshot.entries.values.allSatisfy { $0.subject == nil },
+            "the fixture predates `subject` — this test guards the fallback")
+        let one = PullRequestThreads(
+            repository: "o/r", number: 1, title: "", url: "", state: "OPEN",
+            isMerged: false, threads: [], reviewBodies: [], issueComments: [],
+            pagesFetched: 1)
+        var two = one
+        two.number = 2
+        #expect(InboundReporting.knownBefore(one, previous: snapshot) == 2)
+        #expect(InboundReporting.knownBefore(two, previous: snapshot) == 0)
+
+        // The same three spellings `subjectBodyID` accepts — `pulls` is the REST
+        // shape, and a permalink in that form must not read as a stranger's.
+        var spelled = snapshot
+        for (id, path) in [("a", "pull"), ("b", "pulls"), ("c", "issues")] {
+            var entry = try #require(snapshot.entries.values.first)
+            entry.url = "https://github.com/O/R/\(path)/2#discussion_r\(id)"
+            spelled.entries["discussion_r\(id)"] = entry
+        }
+        #expect(InboundReporting.knownBefore(two, previous: spelled) == 3,
+            "owner/repo case-insensitive, every subject path shape, host unchecked")
     }
 
     /// Decoding an old snapshot must not lose what it held: the next run compares

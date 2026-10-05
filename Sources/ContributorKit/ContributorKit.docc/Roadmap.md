@@ -10,8 +10,12 @@ Priority-ordered. Rationale lives in <doc:Design>; costs and discharges in <doc:
 
 - **`contrib in`** — the three-channel audit, obligations, transitions, the re-read list,
   and the review horizon. The subject's own body rides the issue-comments channel — for
-  an issue it is the primary ask. Run across three independent trials on `pjsip/pjproject`,
-  `laconicman/telegram-kb`, `laconicman/YDelivery`, `laconicman/YandexDeliveryExpress` and
+  an issue it is the primary ask. `--open` prints the queue: one facts line per open
+  pull request of mine — owed, to re-read, the reviewer line on head — and writes no
+  snapshot, so `--pr N` stays the run that consumes a pull request's delta. Every
+  per-subject run ends with a `verdict` line of the same facts. Run across three
+  independent trials on `pjsip/pjproject`, `laconicman/telegram-kb`,
+  `laconicman/YDelivery`, `laconicman/YandexDeliveryExpress` and
   `anthropics/claude-code`, on both pull requests and issues.
 - **`contrib ack`** — recorded acknowledgement by comment, commit, PR body or an explicit
   no-action with a reason. `--refresh` re-fetches the item's subject and rewrites the
@@ -25,6 +29,26 @@ Priority-ordered. Rationale lives in <doc:Design>; costs and discharges in <doc:
 
 ## Next
 
+- **`contrib in <repo> --pr N --wait [--timeout 15m]`** — deferred 2026-10-05, after
+  issue #12. Return when every channel named in `reviewerChannels` has a context on
+  the current head in a terminal state, polling with `--no-snapshot` semantics until
+  a final normal run. "Terminal" is GitHub's lifecycle enum, never the detail text —
+  a status at `PENDING`/`EXPECTED`, a check run at
+  `QUEUED`/`IN_PROGRESS`/`WAITING`/`REQUESTED`/`PENDING` is still running; anything
+  else has landed. The expected-channel set must come from configuration, because
+  waiting on whatever contexts exist cannot see a reviewer that has not posted one
+  yet. A timeout is an outcome printed as such, never a clean verdict.
+- **`contrib reply <id> --body-file f [--ack none:"…"]`** — deferred 2026-10-05,
+  after issue #12. Post the contributor's own words to the inline thread the id
+  names, refresh under the same truncated-fetch rule as `ack --refresh`, and record
+  the ack with the returned permalink. It would be the kit's first network write —
+  not drafting, the body is the operator's — but it reverses the read-only posture,
+  so it needs its own entry in <doc:Design>, a REVIEW.md rule naming the one
+  permitted write, and a retry story (the reply can land while the refresh fails,
+  and a blind retry duplicates the comment). The endpoint is
+  `POST repos/O/R/pulls/N/comments/<numeric id>/replies` — the pull number is in the
+  path, the one tooling error of the session that asked — and `discussion_r<id>`
+  maps to that numeric id.
 - **`contrib out`** — *what did I say that is still owed, or has gone stale or false?*
   Offers, promises and claim checking. Specified but not built; it depends on a register
   schema whose multi-link anchor shape is undecided.

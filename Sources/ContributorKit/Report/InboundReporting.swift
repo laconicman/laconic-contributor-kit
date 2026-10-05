@@ -90,12 +90,23 @@ public enum InboundReporting {
     }
 
     public static func terminal(
-        _ pr: PullRequestThreads, _ result: InboundAudit.Result, options: Options = .init(),
-        reviewerChannels: [String: String]
+        _ pr: PullRequestThreads, _ result: InboundAudit.Result, previous: Snapshot?,
+        options: Options = .init(), reviewerChannels: [String: String]
     ) -> String {
         var lines: [String] = []
         let title = pr.title.isEmpty ? "" : " — \(pr.title)"
         lines.append("\(pr.repository)#\(pr.number)\(title)")
+
+        // The run's last line is the verdict — the facts a reader was grepping
+        // the output for, composed once (issue #12). Verbatim reviewer coverage
+        // rides it, so a clean ledger and a never-ran review are still not the
+        // same document.
+        let verdict = "verdict  " + facts(
+            owed: result.owed.count, toReRead: result.toReRead.count,
+            unexamined: result.unexamined.count,
+            isBaseline: knownBefore(pr, previous: previous) == 0,
+            hasHead: pr.headCommitOID != nil,
+            reviewers: reviewerCoverage(pr, channels: reviewerChannels))
 
         let shown = result.items.filter {
             options.all ? $0.isVisible : $0.isListedByDefault
@@ -107,13 +118,8 @@ public enum InboundReporting {
             lines.append(
                 "Nothing owed. No item changed state, body or acknowledgement since the "
                     + "last run — \(result.items.count) compared.")
-            // A clean ledger and a never-ran review are the same absence: when the
-            // head carries reviewer contexts the verdict travels with the zero —
-            // verbatim, so "Full review skipped" cannot pass for a clean round
-            // (issue #10).
-            for reviewer in reviewerCoverage(pr, channels: reviewerChannels) {
-                lines.append("reviewer       \(reviewer.rendered)")
-            }
+            lines.append("")
+            lines.append(verdict)
             return lines.joined(separator: "\n")
         }
 
@@ -148,7 +154,190 @@ public enum InboundReporting {
                     })
             }
         }
+        lines.append("")
+        lines.append(verdict)
         return lines.joined(separator: "\n")
+    }
+
+    /// One subject's facts for the `verdict` line and the `--open` queue (issue
+    /// #12): the two counts, whether the subject was a cold start, and the head's
+    /// reviewer coverage verbatim.
+    public struct SubjectSummary: Sendable {
+        public var number: Int
+        public var title: String
+        public var isDraft: Bool
+        public var owed: Int
+        public var toReRead: Int
+        /// Collapsed sections nobody has read — work `owed` and `to re-read`
+        /// cannot see (PR #15).
+        public var unexamined: Int
+        public var isBaseline: Bool
+        public var hasHead: Bool
+        public var reviewers: [ReviewerReport]
+
+        public init(
+            number: Int, title: String, isDraft: Bool, owed: Int, toReRead: Int,
+            unexamined: Int, isBaseline: Bool, hasHead: Bool,
+            reviewers: [ReviewerReport]
+        ) {
+            self.number = number
+            self.title = title
+            self.isDraft = isDraft
+            self.owed = owed
+            self.toReRead = toReRead
+            self.unexamined = unexamined
+            self.isBaseline = isBaseline
+            self.hasHead = hasHead
+            self.reviewers = reviewers
+        }
+    }
+
+    /// `owed 0 · to re-read 0 · unexamined 0 · baseline · <reviewer line verbatim> · …`
+    ///
+    /// A composition of facts, not a judgment (issue #12): the reviewer detail is
+    /// carried verbatim, so `SUCCESS "Full review skipped"` still cannot pass for a
+    /// clean round. On a subject with no head commit (an issue) the line stops after
+    /// the counts — absence of coverage is a fetch fact, not a claim.
+    public static func facts(
+        owed: Int, toReRead: Int, unexamined: Int, isBaseline: Bool, hasHead: Bool,
+        reviewers: [ReviewerReport]
+    ) -> String {
+        var line = "owed \(owed) · to re-read \(toReRead) · unexamined \(unexamined)"
+        if isBaseline { line += " · baseline" }
+        if hasHead {
+            // One line is the contract: a check-run `title` or a status
+            // `description` can carry a newline, and the row must not wrap into
+            // the next subject. `rendered` itself stays verbatim for the
+            // provenance block, which is free to span lines.
+            line += reviewers.isEmpty
+                ? " · no reviewer context on head"
+                : " · " + reviewers.map {
+                    $0.rendered
+                        .replacingOccurrences(of: "\n", with: " ")
+                        .replacingOccurrences(of: "\r", with: " ")
+                }.joined(separator: " · ")
+        }
+        return line
+    }
+
+    /// The `--open` queue (issue #12): a header counting every open pull request
+    /// against the ones that are mine, then one facts line per mine. No items —
+    /// the queue shows no item's `changed` signal, so it writes nothing.
+    public static func queue(
+        repository: String, list: OpenPullRequestList, rows: [SubjectSummary]
+    ) -> String {
+        var lines = [
+            "\(repository) — \(list.mine.count) of \(list.totalCount) "
+                + "open pull request(s) are mine"
+        ]
+        if list.mine.isEmpty {
+            lines.append("")
+            lines.append("Nothing to audit.")
+            return lines.joined(separator: "\n")
+        }
+        for row in rows.sorted(by: { $0.number < $1.number }) {
+            lines.append("")
+            let label = "#\(row.number)  "
+            lines.append("\(label)\(row.title)\(row.isDraft ? " (draft)" : "")")
+            lines.append(
+                String(repeating: " ", count: label.count) + facts(
+                    owed: row.owed, toReRead: row.toReRead, unexamined: row.unexamined,
+                    isBaseline: row.isBaseline,
+                    hasHead: row.hasHead, reviewers: row.reviewers))
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    /// The queue's per-subject work (issue #12): audit each fetched pull request
+    /// against ONE snapshot version — every subject's baseline and every `changed`
+    /// comparison reads the same previous — and fold the fetch anomalies, the
+    /// counters and the rows out of it.
+    ///
+    /// Called inside the repository lock after all fetches: the audits are pure
+    /// and the snapshot they compare against must be the version on disk, not one
+    /// loaded before another run could write.
+    public static func queueRows(
+        _ subjects: [PullRequestThreads], drafts: Set<Int>, previous: Snapshot?,
+        audit: InboundAudit, reviewerChannels: [String: String],
+        into provenance: inout Provenance
+    ) -> [SubjectSummary] {
+        var rows: [SubjectSummary] = []
+        var examined: [Channel: Int] = [:]
+        var owed = 0
+        var toReRead = 0
+        var unexamined = 0
+        var pagesFetched = 0
+        var baselines: [Int] = []
+        var allFullText = true
+        for subject in subjects.sorted(by: { $0.number < $1.number }) {
+            let result = audit.run(subject, against: previous)
+            recordFetchAnomalies(
+                result, subject, label: "#\(subject.number)", into: &provenance)
+            for channel in Channel.allCases {
+                examined[channel, default: 0] += result.examined[channel] ?? 0
+            }
+            let isBaseline = knownBefore(subject, previous: previous) == 0
+            if isBaseline { baselines.append(subject.number) }
+            rows.append(
+                SubjectSummary(
+                    number: subject.number, title: subject.title,
+                    isDraft: drafts.contains(subject.number),
+                    owed: result.owed.count, toReRead: result.toReRead.count,
+                    unexamined: result.unexamined.count, isBaseline: isBaseline,
+                    hasHead: subject.headCommitOID != nil,
+                    reviewers: reviewerCoverage(subject, channels: reviewerChannels)))
+            owed += result.owed.count
+            toReRead += result.toReRead.count
+            unexamined += result.unexamined.count
+            pagesFetched += subject.pagesFetched
+            if subject.bodiesAreExcerpts { allFullText = false }
+        }
+
+        provenance.examined("pull requests audited", subjects.count)
+        for channel in Channel.allCases {
+            provenance.examined(channel.plural, examined[channel] ?? 0)
+        }
+        provenance.examined("owed", owed)
+        provenance.examined("to re-read", toReRead)
+        provenance.examined("unexamined", unexamined)
+        provenance.examined("pages fetched", pagesFetched)
+        if allFullText, !subjects.isEmpty {
+            provenance.note(
+                "bodies: full text, not excerpts — all \(subjects.count) pull request(s)")
+        }
+        if !baselines.isEmpty {
+            provenance.note(
+                "\(baselines.count) pull request(s) have no prior items — their "
+                    + "counts are a cold start, not a round: "
+                    + baselines.map { "#\($0)" }.joined(separator: ", "))
+        }
+        return rows
+    }
+
+    /// How many entries the previous snapshot already knew for this subject — the
+    /// one definition of "baseline", shared by `record()`'s note and the `--open`
+    /// queue's row flag.
+    ///
+    /// Entries written before `subject` existed carry no `subject` key; they are
+    /// identified by their permalink, the one field they always carried — matched
+    /// the way `AcknowledgementParser.subjectBodyID` parses it (owner/repo
+    /// case-insensitive, host unchecked, path before the `#`).
+    public static func knownBefore(_ pr: PullRequestThreads, previous: Snapshot?) -> Int {
+        let subject = "\(pr.repository)#\(pr.number)"
+        let paths = [
+            "/\(pr.repository)/pull/\(pr.number)",
+            "/\(pr.repository)/pulls/\(pr.number)",
+            "/\(pr.repository)/issues/\(pr.number)",
+        ]
+        return (previous?.entries.values ?? [:].values).filter { entry in
+            if entry.subject == subject { return true }
+            guard entry.subject == nil,
+                let url = URL(string: entry.url)
+            else { return false }
+            return paths.contains {
+                url.path.caseInsensitiveCompare($0) == .orderedSame
+            }
+        }.count
     }
 
     /// The `--json` contract, exactly: a provenance block, and per item `id`, `kind`,
@@ -181,10 +370,7 @@ public enum InboundReporting {
         // what the head commit carries, and the verdict is what a "Nothing owed"
         // reads beside the zero (issue #10).
         provenance.reviewers = reviewerCoverage(pr, channels: reviewerChannels)
-        if pr.headContextsTruncated {
-            provenance.note(
-                "head check-context list truncated — reviewer coverage may be incomplete")
-        }
+        recordFetchAnomalies(result, pr, label: nil, into: &provenance)
         for channel in Channel.allCases {
             let examined = result.examined[channel] ?? 0
             let mine = result.ownAuthored[channel] ?? 0
@@ -197,6 +383,9 @@ public enum InboundReporting {
         // Reported beside `owed`, never folded into it: nothing is owed on these, but
         // each carries a question no one has recorded an answer to.
         provenance.examined("to re-read", result.toReRead.count)
+        // A collapsed section nobody has read is work the first two counts cannot
+        // see — a zero is a statement, an absent segment is not.
+        provenance.examined("unexamined", result.unexamined.count)
         if pr.isClosed {
             let quiet = result.items.filter {
                 $0.isVisible && $0.state.needsLook && !$0.isListedByDefault
@@ -255,9 +444,7 @@ public enum InboundReporting {
                 "\(unverified) acknowledgement(s) on this item recorded but unverified")
         }
         let subject = "\(pr.repository)#\(pr.number)"
-        let knownHere = (previous?.entries.values ?? [:].values)
-            .filter { $0.subject == subject }.count
-        if knownHere == 0 {
+        if knownBefore(pr, previous: previous) == 0 {
             // Said per subject, not per repository: sweeping five issues in one repo,
             // only the first announced a baseline while each of the others was also its
             // own first run.
@@ -269,24 +456,55 @@ public enum InboundReporting {
                 "snapshot: \(previous.entries.count) item(s) known for this repository, "
                     + "age \(Int(previous.age / 3600))h; \(newHere) new this run")
         }
-        if !result.vanished.isEmpty {
-            provenance.anomaly(
-                "itemsVanished",
-                "\(result.vanished.count) item(s) this subject carried last run were not in "
-                    + "this fetch: \(result.vanished.prefix(5).joined(separator: ", "))")
-        }
-        for connection in pr.truncatedConnections {
-            provenance.anomaly("truncatedFetch", "\(connection) still had a next page")
-        }
         // Stated positively as well as negatively: an observer cannot tell a check that
         // passed from one that did not run, and "no excerptBodies anomaly" is exactly
         // that shape.
+        if !pr.bodiesAreExcerpts {
+            provenance.note("bodies: full text, not excerpts")
+        }
+    }
+
+    /// The fetch's own anomalies, in one place so `--open` cannot drift from
+    /// `--pr` (issue #12): a vanished item, a truncated connection and an excerpt
+    /// body are the same three failures on every subject, and a truncated head
+    /// context list is a note for the same reason `record()` treats it as one —
+    /// a busy CI PR must not hold the ledger hostage. `label` prefixes each line
+    /// (`"#3: reviews still had a next page"`) when one run covers many subjects.
+    static func recordFetchAnomalies(
+        _ result: InboundAudit.Result, _ pr: PullRequestThreads, label: String?,
+        into provenance: inout Provenance
+    ) {
+        let prefix = label.map { "\($0): " } ?? ""
+        if !result.vanished.isEmpty {
+            provenance.anomaly(
+                "itemsVanished",
+                "\(prefix)\(result.vanished.count) item(s) this subject carried last "
+                    + "run were not in this fetch: "
+                    + "\(result.vanished.prefix(5).joined(separator: ", "))")
+        }
+        for connection in pr.truncatedConnections {
+            provenance.anomaly(
+                "truncatedFetch", "\(prefix)\(connection) still had a next page")
+        }
         if pr.bodiesAreExcerpts {
             provenance.anomaly(
                 "excerptBodies",
-                "bodies are truncated excerpts — boilerplate and supersession checks saw a fragment")
-        } else {
-            provenance.note("bodies: full text, not excerpts")
+                "\(prefix)bodies are truncated excerpts — boilerplate and supersession "
+                    + "checks saw a fragment")
+        }
+        // Only when the source said "pull request": an absent head is then a
+        // missing fetch fact, not an issue-shaped subject — and a pre-field
+        // capture (`isPullRequest` nil) must not read as anomalous.
+        if pr.isPullRequest == true && pr.headCommitOID == nil {
+            provenance.anomaly(
+                "noHeadCommit",
+                "\(prefix)the fetch reported no head commit — "
+                    + "reviewer coverage cannot be read")
+        }
+        if pr.headContextsTruncated {
+            provenance.note(
+                "\(prefix)head check-context list truncated — "
+                    + "reviewer coverage may be incomplete")
         }
     }
 

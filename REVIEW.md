@@ -30,6 +30,9 @@ from a failure on a real upstream pull request. Generic Swift advice is not want
 - Require a new `Sources/ContributorKit/Inbound/ItemState.swift` case to add a row to
   `plugin/skills/contributions/SKILL.md`. A state outside that table has no defined
   response. Reject any PR that disables the test enforcing it.
+- Reject any code that decides a verdict — `clear`, `passed`, an exit code — from
+  `ReviewerReport.state` or `detail`. The `verdict` line composes facts; a `SUCCESS`
+  whose detail says skipped is the case issue #10 was filed for.
 
 ## Conventions
 
