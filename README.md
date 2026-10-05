@@ -68,6 +68,21 @@ It reads **three channels**, not one:
 There is no repo-wide endpoint for review bodies — they are reachable only per pull
 request, which is exactly why they go missing.
 
+### The queue
+
+`contrib in <owner>/<repo> --open` prints one facts line per open pull request of
+yours — owed, to re-read, unexamined, the reviewer line on head — and writes nothing:
+
+```bash
+contrib in laconicman/laconic-contributor-kit --open
+# laconicman/laconic-contributor-kit — 1 of 1 open pull request(s) are mine
+#
+# #14  fix: the ack hint names its repository and pull request (#13)
+#      owed 3 · to re-read 0 · unexamined 0 · Devin Review @ feed8ca (head): SUCCESS "Completed analysis in 1m 16s" — last review object by devin-ai-integration on feed8ca
+```
+
+Run `contrib in … --pr N` on the ones with work; that run consumes the delta.
+
 A review body cannot be replied to. **That does not discharge it.** It is a contributor's
 mistake to go on as if nothing was posted, so review bodies are listed first and never
 auto-cleared. They leave the list when you record where the content was absorbed:
@@ -190,10 +205,12 @@ The same rule applies one level up: a reviewer that never ran and a reviewer tha
 clean are the same absence on the ledger. So `contrib in` also prints a `reviewer`
 line per status/check channel on the head commit — **verbatim**, including
 `SUCCESS "Full review skipped: trial expired"`, which is the only place that truth
-appears — plus the head the configured reviewer's last review object sat on. A
-`Nothing owed` report carries those lines, and `--json` exposes them as
-`provenance.reviewers[]`. Which check-run names count as reviewer channels is
-`reviewerChannels:` in `inbound` config; legacy statuses are always listed.
+appears — plus the head the configured reviewer's last review object sat on.
+Every `contrib in --pr` run ends with a `verdict` line composing those facts —
+`verdict  owed 0 · to re-read 0 · unexamined 0 · Devin Review @ … (head): SUCCESS "…"` — and
+`--json` carries the same as `provenance.reviewers[]`. Which check-run names count
+as reviewer channels is `reviewerChannels:` in `inbound` config; legacy statuses
+are always listed.
 
 ## `contrib loc`
 

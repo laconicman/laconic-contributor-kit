@@ -61,6 +61,13 @@ all. Entries carry ``ItemState`` for this reason.
 Measured: roughly 2,300 tokens per audit against ~24,900 for a hand-rolled `jq` fetch of
 the same three endpoints, and ~193,000 raw.
 
+`--open` is the queue view (issue #12): one facts line per open pull request of mine —
+owed, to re-read, unexamined, the reviewer line on head — and it writes nothing. It shows no items,
+so it must not consume an item's `changed` signal: the `show` rule in reverse.
+`contrib in --pr N` stays the run that advances the snapshot. Open pull requests the
+viewer did not author are counted in the header and not audited — the asks on them are
+addressed to someone else.
+
 ## The boundary
 
 > The CLI decides everything decidable **without reading meaning**. It never decides a
@@ -149,10 +156,17 @@ per channel, **verbatim**: the state and the free-text detail are what GitHub
 said, including "skipped" — the kit never pattern-matches a state into a verdict.
 The mapped login's newest review object contributes `lastReviewOn`, so "the last
 actual review was three heads ago" is visible beside "the status on this head".
-`--json` carries the same lines as `provenance.reviewers[]`, and a `Nothing owed`
-report lists them — a clean round and a never-ran round are no longer the same
-document. `resolution.verdictComment` names the permalink a `answered-confirmed`
-rested on, for the same reason `resolvedBy` names *who*.
+`--json` carries the same lines as `provenance.reviewers[]`. Every `contrib in --pr`
+run also ends with a `verdict` line (issue #12): the facts a reader was grepping for
+— `owed 0 · to re-read 0 · unexamined 0 · Devin Review @ … (head): SUCCESS "…"` — composed, and
+that is all it is — a clean round and a never-ran round are still not the same
+document. **Rejected:** a `clear` word and an exit code for it. `clear =
+every reviewer SUCCESS on head` would pass `SUCCESS "Full review skipped: trial
+expired"`, the case this section exists for, and only the free-text detail tells the
+two apart; a non-zero exit stays what the skill says it is — an anomaly, not a
+finding. `--json` gains no key: the same facts are `provenance.counters` and
+`provenance.reviewers[]`. `resolution.verdictComment` names the permalink an
+`answered-confirmed` rested on, for the same reason `resolvedBy` names *who*.
 
 Check runs stay opt-in through `reviewerChannels` — CI produces dozens and
 coverage is not "did the build pass" — while legacy statuses are always listed:

@@ -433,3 +433,23 @@ see a fragment when run against them. `contrib in` raises an `excerptBodies` ano
 whenever bodies are excerpts, so this reads as a stated limit rather than a silent one.
 
 The live GraphQL path fetches whole bodies and does not have this limitation.
+
+## From the #12 feedback, 2026-10-05
+
+`contrib in --open` (the queue) and the `verdict` line, verified live with the
+release binary (`gh` authenticated as `laconicman`, macOS, all reads).
+
+| Claim | Evidence |
+|---|---|
+| The queue lists my open pull requests and no others | `contrib in laconicman/laconic-contributor-kit --open` printed `1 of 1 open pull request(s) are mine` and one row: `#14  fix: the ack hint names its repository and pull request (#13)` |
+| Each row is a facts line, verbatim | `owed 3 · to re-read 0 · Devin Review @ feed8ca (head): SUCCESS "Completed analysis in 1m 16s" — last review object by devin-ai-integration on feed8ca` |
+| The queue works on a second repository | `contrib in laconicman/YDelivery --open`: `1 of 1 open pull request(s) are mine`, row `#92 … (draft)` with `owed 0 · to re-read 0 · Devin Review @ 24b4243 (head): SUCCESS "Completed analysis in 1m 26s"`. YDelivery had one open PR, not the ~20 the issue reported — the multi-page path is exercised by construction only |
+| `--open` writes no snapshot | `shasum -a 256` of every file in `~/.local/state/contributorkit`, before and after both `--open` runs: `diff` empty |
+| The per-subject run ends on `verdict` | `contrib in laconicman/laconic-contributor-kit --pr 14 --no-snapshot` ended `verdict  owed 3 · to re-read 0 · Devin Review @ feed8ca (head): SUCCESS "Completed analysis in 1m 16s" — last review object by devin-ai-integration on feed8ca` |
+| Bad invocations are refused before any fetch | `contrib in o/r` (neither flag), `--open --json`, `--open --pr 1` — each exits with the validation error, no subprocess spawned |
+| Every queue row compares against one snapshot version: the audits run inside a single repository lock after all fetches | The `queueRows` seam takes the subjects, the drafts and the loaded `previous` — *queueRows audits every subject against one snapshot version* (constructed) — and the live `--open` run above went through it |
+| A fresh state dir stays absent after `--open` | `contrib in laconicman/laconic-contributor-kit --open --state-dir /tmp/ck-fresh-<pid>` ran clean (`pull requests audited 1`); `test ! -e` on the directory after — no directory, no `.lock` |
+
+*The captured lines above are verbatim from their runs; the facts format gained
+`· unexamined <n>` after the review of #15, so a row captured today reads e.g.
+`owed 5 · to re-read 0 · unexamined 0 · Devin Review @ 40dad1c (head): SUCCESS "Completed analysis in 3m 11s" — last review object by devin-ai-integration on 40dad1c`.*

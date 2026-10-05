@@ -16,8 +16,10 @@ it. Your job is the column on the right.
 
 ## The decision table
 
-Run `contrib in <owner>/<repo> --pr N`. Every item comes back with a `state`. This
-table is the whole contract; there is no case where the right response is "ignore it".
+Run `contrib in <owner>/<repo> --pr N` — or `contrib in <owner>/<repo> --open` to
+see the queue of your open pull requests first. Every item comes back with a
+`state`. This table is the whole contract; there is no case where the right
+response is "ignore it".
 
 | State | What the CLI settled | Your question | Your response |
 |---|---|---|---|
@@ -58,7 +60,8 @@ regardless: reviewers post rounds after a merge, and a close can carry a conditi
 to you.
 
 The provenance block reports `to re-read` beside `owed` and never folds one into the other.
-A round is complete at `owed 0` **and** `to re-read 0`; on a closed PR, `to re-read` counts
+A round is complete at `owed 0` and `to re-read 0` with `unexamined 0` — a collapsed
+section nobody has read is work the first two counts cannot see; on a closed PR, `to re-read` counts
 only unresolved threads.
 
 **`isResolved` is not "answered."** A thread is resolved for more reasons than the asker's
@@ -82,9 +85,24 @@ reviewer's re-run, not after your push.**
 same absence as a completed one, so the block prints a `reviewer` line per
 status/check channel on the head commit — verbatim, e.g. `SUCCESS "Full review
 skipped: trial expired"` — and `last review object on <sha>` names the head the
-latest review actually landed on. A `Nothing owed` report carries them; so does
-`--json` as `provenance.reviewers[]`. Read the line before claiming the round is
-done.
+latest review actually landed on. A `Nothing owed` report carries them in its
+`verdict` line; so does `--json` as `provenance.reviewers[]`.
+
+**Your inline replies count as review bodies.** GitHub wraps each reply posted
+through the review API in a review object, so after four replies the block reads
+`review bodies 5 — 4 of those review bodies are mine`. That is the replies, not
+four new rounds.
+
+**Read the `verdict` line before claiming the round is done.** It is facts, not a
+judgment: `owed 0 · to re-read 0 · unexamined 0 · Devin Review @ … (head): SUCCESS "…"`. The
+reviewer's detail is verbatim — `SUCCESS "Full review skipped"` is not a clean
+round — and no exit code says `clear`: a non-zero exit still means an anomaly.
+
+**The queue, not the PR.** `contrib in <owner>/<repo> --open` prints one facts line
+per open pull request of yours — owed, to re-read, unexamined, the reviewer line
+on head — and
+writes nothing. Run `contrib in … --pr N` on the ones with work; that run consumes
+the delta.
 
 **Run one view, not both.** The table and `--json` carry the same bodies, so running
 both doubles the cost of an audit for nothing — measured at roughly 2,300 tokens a run
