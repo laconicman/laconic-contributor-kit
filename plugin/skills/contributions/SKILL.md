@@ -102,7 +102,8 @@ contrib ack <id> --with none:"pre-existing, not this PR" <repo>  # no action nee
 ```
 
 **`contrib in` prints this line under each item** with the repository and `--pr` filled
-in — paste it as printed.
+in. Fill in the reason before you paste: the `…` is a placeholder, and `ack` refuses a
+`none:` that is only punctuation — recorded as printed, it would clear an ask nobody read.
 
 Recorded, **never inferred from proximity in time**. The record is keyed by comment id
 *and* body hash, so if the reviewer edits the ask after you acknowledge it, it re-opens

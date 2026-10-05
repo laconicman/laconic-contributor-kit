@@ -68,6 +68,11 @@ public struct AcknowledgementParser: Sendable {
                     ? "no local repository to resolve it against — recorded unverified"
                     : (resolved! ? "resolves in the local repository" : "does not resolve locally"))
         case "none":
+            // The hint `contrib in` prints is runnable as printed, placeholder
+            // included — and a `none` with no reason would clear an ask nobody read.
+            // Punctuation alone is the placeholder's shape, not a reason.
+            guard value.contains(where: { !Self.placeholderCharacters.contains($0) })
+            else { throw AcknowledgementError.placeholderReason(raw) }
             return Acknowledgement(
                 kind: .none, pointer: value, bodySha256AtAck: bodySha256,
                 verified: true,
@@ -76,6 +81,10 @@ public struct AcknowledgementParser: Sendable {
             throw AcknowledgementError.unknownKind(scheme)
         }
     }
+
+    /// What a `none:` reason may not consist of entirely: the ellipsis the hint
+    /// prints, its three-dot spelling, dashes and whitespace.
+    static let placeholderCharacters: Set<Character> = ["…", ".", "-", "–", "—", " ", "\t"]
 
     /// The synthesized body id a subject URL names, or `nil` when the value is not
     /// exactly `<scheme>://<host>/<owner>/<repo>/(issues|pull|pulls)/<number>` for

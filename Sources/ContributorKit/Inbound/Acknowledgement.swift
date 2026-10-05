@@ -64,6 +64,7 @@ public enum AcknowledgementError: Error, CustomStringConvertible {
     case emptyPointer(String)
     case unknownKind(String)
     case notASHA(String)
+    case placeholderReason(String)
 
     public var description: String {
         switch self {
@@ -71,6 +72,8 @@ public enum AcknowledgementError: Error, CustomStringConvertible {
             return "`\(raw)` is not an acknowledgement — expected comment:<id>, commit:<sha>, pr-body, or none:<reason>"
         case .emptyPointer(let raw):
             return "`\(raw)` has no pointer after the colon"
+        case .placeholderReason(let raw):
+            return "`\(raw)` gives no reason — `…` is the placeholder `contrib in` prints; say why no action is needed"
         case .unknownKind(let scheme):
             return "`\(scheme):` is not a recognised acknowledgement — use comment, commit, pr-body or none"
         case .notASHA(let value):

@@ -162,6 +162,23 @@ struct ContractTests {
         }
     }
 
+    /// The hint under an owed item is runnable as printed, placeholder included —
+    /// `contrib ack <id> --with none:"…" o/r --pr 1` — and a `none` that records
+    /// `…` as its reason would clear an ask nobody read (Devin's review of #14). The
+    /// placeholder's shape is refused; a reason of any substance is not.
+    @Test("a none: reason that is only the placeholder is refused")
+    func placeholderReasonIsRefused() async throws {
+        let parser = AcknowledgementParser(knownCommentIDs: [])
+        let hash = SHA256.hex(of: "body")
+        for placeholder in ["none:…", "none:...", "none: … ", "none:—"] {
+            await #expect(throws: AcknowledgementError.self, "\(placeholder) is not a reason") {
+                try await parser.parse(placeholder, bodySha256: hash)
+            }
+        }
+        let reason = try await parser.parse("none:pre-existing", bodySha256: hash)
+        #expect(reason.kind == .none && reason.verified, "one word of substance is a reason")
+    }
+
     /// The subject body is an authored item when the subject is mine — so a `comment:`
     /// pointer at the subject's own URL must resolve to its synthesized id. The URL
     /// carries no `#fragment`, which used to make the pointer unverifiable despite
