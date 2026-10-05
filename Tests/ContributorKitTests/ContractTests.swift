@@ -165,18 +165,22 @@ struct ContractTests {
     /// The hint under an owed item is runnable as printed, placeholder included —
     /// `contrib ack <id> --with none:"…" o/r --pr 1` — and a `none` that records
     /// `…` as its reason would clear an ask nobody read (Devin's review of #14). The
-    /// placeholder's shape is refused; a reason of any substance is not.
-    @Test("a none: reason that is only the placeholder is refused")
+    /// placeholder's shape is refused; a reason of any substance is not. The rule is
+    /// "at least one letter or digit", not a list of the placeholder's characters —
+    /// the list let `none:???` through (the review's second finding).
+    @Test("a none: reason that is only punctuation is refused")
     func placeholderReasonIsRefused() async throws {
         let parser = AcknowledgementParser(knownCommentIDs: [])
         let hash = SHA256.hex(of: "body")
-        for placeholder in ["none:…", "none:...", "none: … ", "none:—"] {
+        for placeholder in ["none:…", "none:...", "none: … ", "none:—", "none:???", "none:!?- ·"] {
             await #expect(throws: AcknowledgementError.self, "\(placeholder) is not a reason") {
                 try await parser.parse(placeholder, bodySha256: hash)
             }
         }
         let reason = try await parser.parse("none:pre-existing", bodySha256: hash)
         #expect(reason.kind == .none && reason.verified, "one word of substance is a reason")
+        let terse = try await parser.parse("none:see #5", bodySha256: hash)
+        #expect(terse.verified, "a letter or a digit among the punctuation is enough")
     }
 
     /// The subject body is an authored item when the subject is mine — so a `comment:`

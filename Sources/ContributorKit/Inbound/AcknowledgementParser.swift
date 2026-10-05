@@ -70,8 +70,11 @@ public struct AcknowledgementParser: Sendable {
         case "none":
             // The hint `contrib in` prints is runnable as printed, placeholder
             // included — and a `none` with no reason would clear an ask nobody read.
-            // Punctuation alone is the placeholder's shape, not a reason.
-            guard value.contains(where: { !Self.placeholderCharacters.contains($0) })
+            // A reason has at least one letter or digit; `…`, `...`, `???` and
+            // every other run of punctuation is the placeholder's shape, not a reason.
+            // Listing the placeholder's own characters was tried first and left `?`
+            // through (review of #14).
+            guard value.contains(where: { $0.isLetter || $0.isNumber })
             else { throw AcknowledgementError.placeholderReason(raw) }
             return Acknowledgement(
                 kind: .none, pointer: value, bodySha256AtAck: bodySha256,
@@ -81,10 +84,6 @@ public struct AcknowledgementParser: Sendable {
             throw AcknowledgementError.unknownKind(scheme)
         }
     }
-
-    /// What a `none:` reason may not consist of entirely: the ellipsis the hint
-    /// prints, its three-dot spelling, dashes and whitespace.
-    static let placeholderCharacters: Set<Character> = ["…", ".", "-", "–", "—", " ", "\t"]
 
     /// The synthesized body id a subject URL names, or `nil` when the value is not
     /// exactly `<scheme>://<host>/<owner>/<repo>/(issues|pull|pulls)/<number>` for
