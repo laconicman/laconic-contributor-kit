@@ -81,6 +81,14 @@ line; do not let it be no line.
 stamps `as of <time>` for this reason. **The audit that counts is the one run after the
 reviewer's re-run, not after your push.**
 
+**A reviewer re-runs on a new head or a new base — never on the same head twice.** A
+push is the obvious trigger; the quiet one is a retarget: when the PR below yours in a
+stack merges, GitHub recomputes your diff against the new base and the reviewer treats
+it as a new PR, reading lines it has already accepted with fresh eyes (both retarget
+passes on one stack, 2026-10, found real defects in old lines). Expect the wave, run
+`contrib in` after it lands, and answer it like a first round. Asking for a review on
+an unchanged head (`/devin review`, the API) returns the existing one.
+
 **`owed 0` is not "the review ran clean."** A skipped or expired review produces the
 same absence as a completed one, so the block prints a `reviewer` line per
 status/check channel on the head commit — verbatim, e.g. `SUCCESS "Full review
