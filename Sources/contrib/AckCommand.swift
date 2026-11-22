@@ -13,11 +13,13 @@ struct AckCommand: AsyncParsableCommand {
 
               --with comment:<id>        a comment of mine, by permalink or fragment
               --with commit:<sha>        a commit that carries the change
-              --with pr-body             the PR description was edited
+              --with pr-body             the PR description was edited — verified
+                                         against its edit history under --refresh
               --with none:"<reason>"     no action needed, and why
 
             Shape is always checked. Existence is checked only where it is free — an id
-            already in this run's fetch, a sha the local repository resolves — and the
+            already in this run's fetch, a sha the local repository resolves, a pr-body
+            against the description's edit history when --refresh fetched it — and the
             result is recorded per acknowledgement, so an unverified one reads as
             unverified rather than as fine.
 
@@ -83,6 +85,9 @@ struct AckCommand: AsyncParsableCommand {
         // The target repository's rules, not the one this shell happens to sit in.
         let configuration = try Configuration.load(directory: workingCopy)
 
+        // Evidence for `--with pr-body`, captured from the refresh fetch — the
+        // only place a description's edit history is ever read (issue #17).
+        var descriptionEvidence: AcknowledgementParser.DescriptionEvidence?
         if refresh {
             let subject =
                 entry.subject ?? pr.map { Subject.format(repository: repository, number: $0) }
@@ -102,6 +107,10 @@ struct AckCommand: AsyncParsableCommand {
                     "the refresh fetch was truncated (\(fetched.truncatedConnections.joined(separator: ", "))) "
                         + "— refusing to acknowledge against a partial read")
             }
+            descriptionEvidence = .init(
+                edits: fetched.descriptionEdits,
+                truncated: fetched.descriptionEditsTruncated,
+                me: me ?? fetched.viewerLogin)
             let audit = try InboundAudit(configuration: configuration, me: me)
             // The same read-modify-write discipline as `contrib in`: the audit is
             // re-run under the lock against the state actually on disk, and merged
@@ -145,9 +154,15 @@ struct AckCommand: AsyncParsableCommand {
                 let out = try? await runner.run(
                     ["git", "cat-file", "-e", "\(sha)^{commit}"], cwd: workingCopy)
                 return out?.status == 0
-            })
+            },
+            descriptionEvidence: descriptionEvidence)
 
-        var acknowledgement = try await parser.parse(with, bodySha256: entry.bodySha256)
+        // `pr-body` is judged against when the acknowledged item last moved —
+        // the later of its created/edited times, the threshold an asker reply
+        // is already held to. `entry` is the possibly refreshed one.
+        var acknowledgement = try await parser.parse(
+            with, bodySha256: entry.bodySha256,
+            askLastMoved: max(entry.createdAt, entry.lastEditedAt ?? entry.createdAt))
         if let refusal = AcknowledgementEligibility.refusal(
             forKind: acknowledgement.kind,
             allowed: configuration.inbound.acknowledgementKinds, id: id)

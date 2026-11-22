@@ -40,6 +40,18 @@ public struct PullRequestThreads: Sendable {
     /// the REST fixtures — so a headless PR can be told from an issue without
     /// mistaking a pre-field capture for a fetch failure.
     public var isPullRequest: Bool?
+    /// The subject description's edit history (issue #17). Order is not relied
+    /// on — the ack check takes the latest of *my* edits. Empty when the source
+    /// never carried it.
+    public var descriptionEdits: [DescriptionEdit]
+    /// `userContentEdits` still had a next page: only the newest 100 edits were
+    /// read. Reported beside the verdict, never a fetch anomaly — like
+    /// `headContextsTruncated` it feeds no obligation, and unlike a comment
+    /// page it has no cursor to follow anyway.
+    public var descriptionEditsTruncated: Bool
+    /// `viewer { login }` — who the fetch says "I" am. `nil` when the source did
+    /// not say (REST captures, fetches that predate the field).
+    public var viewerLogin: String?
 
     /// One status/check context on the head commit — a legacy `StatusContext` or a
     /// `CheckRun`, flattened so the audit reads one shape either way.
@@ -75,7 +87,9 @@ public struct PullRequestThreads: Sendable {
         pagesFetched: Int, truncatedConnections: [String] = [],
         bodiesAreExcerpts: Bool = false,
         headCommitOID: String? = nil, headContexts: [HeadContext] = [],
-        headContextsTruncated: Bool = false, isPullRequest: Bool? = nil
+        headContextsTruncated: Bool = false, isPullRequest: Bool? = nil,
+        descriptionEdits: [DescriptionEdit] = [],
+        descriptionEditsTruncated: Bool = false, viewerLogin: String? = nil
     ) {
         self.repository = repository
         self.number = number
@@ -93,6 +107,9 @@ public struct PullRequestThreads: Sendable {
         self.headContexts = headContexts
         self.headContextsTruncated = headContextsTruncated
         self.isPullRequest = isPullRequest
+        self.descriptionEdits = descriptionEdits
+        self.descriptionEditsTruncated = descriptionEditsTruncated
+        self.viewerLogin = viewerLogin
     }
 
     /// Closed or merged. `UNKNOWN` — the REST fixtures carry no state — reads as open,

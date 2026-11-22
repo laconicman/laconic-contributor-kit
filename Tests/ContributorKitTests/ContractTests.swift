@@ -176,7 +176,9 @@ struct ContractTests {
         #expect(noAction.kind == .none)
         #expect(noAction.pointer == "pre-existing, not this PR")
 
-        #expect(try await parser.parse("pr-body", bodySha256: hash).kind == .prBody)
+        let prBody = try await parser.parse("pr-body", bodySha256: hash)
+        #expect(prBody.kind == .prBody)
+        #expect(!prBody.verified, "no refresh evidence — recorded unverified, not assumed")
 
         await #expect(throws: AcknowledgementError.self) {
             try await parser.parse("commit:nonsense", bodySha256: hash)
@@ -277,6 +279,176 @@ struct ContractTests {
         let ack = try await parser.parse("commit:e02b93e1", bodySha256: "h")
         #expect(!ack.verified)
         #expect(ack.verificationNote.contains("no local repository"))
+    }
+
+    // MARK: - pr-body evidence, issue #17
+
+    /// `pr-body` evidence, built directly — the parser never fetches; the
+    /// `ack --refresh` fetch hands it the subject's `userContentEdits`.
+    private func descriptionEvidence(
+        _ edits: [(String, String?)],
+        me: String? = "laconicman", truncated: Bool = false
+    ) -> AcknowledgementParser.DescriptionEvidence {
+        .init(
+            edits: edits.map {
+                DescriptionEdit(editedAt: GitHubTime.parse($0.0)!, editor: $0.1)
+            },
+            truncated: truncated, me: me)
+    }
+
+    /// `pr-body` verifies only against the description's edit history the
+    /// `ack --refresh` fetch already carried — an edit BY ME strictly later
+    /// than the acknowledged item last moved. It proves an edit happened,
+    /// never what the edit says; every other shape records unverified.
+    @Test("pr-body without refresh evidence is unverified and names the remedy")
+    func prBodyWithoutEvidence() async throws {
+        let parser = AcknowledgementParser(knownCommentIDs: [])
+        let ack = try await parser.parse("pr-body", bodySha256: "h")
+        #expect(ack.kind == .prBody)
+        #expect(!ack.verified)
+        #expect(ack.verificationNote.contains("not checked"))
+        #expect(ack.verificationNote.contains("--refresh"))
+    }
+
+    /// The one verified shape: my edit in the description's history, later
+    /// than the item last moved — the later of its created/edited times, the
+    /// same threshold an asker reply is held to.
+    @Test("pr-body verifies on my edit later than the item last moved")
+    func prBodyVerifiesOnMyLaterEdit() async throws {
+        let parser = AcknowledgementParser(
+            knownCommentIDs: [],
+            descriptionEvidence: descriptionEvidence(
+                [("2026-11-22T08:22:44Z", "laconicman")]))
+        let ack = try await parser.parse(
+            "pr-body", bodySha256: "h",
+            askLastMoved: GitHubTime.parse("2026-11-21T00:00:00Z")!)
+        #expect(ack.verified)
+        #expect(ack.verificationNote.contains("laconicman"))
+        #expect(ack.verificationNote.contains("2026-11-22T08:22:44Z"))
+        #expect(ack.verificationNote.contains("not what the edit says"))
+    }
+
+    @Test("pr-body is unverified when my edit is not later than the item")
+    func prBodyMyEditNotLater() async throws {
+        let parser = AcknowledgementParser(
+            knownCommentIDs: [],
+            descriptionEvidence: descriptionEvidence(
+                [("2026-11-20T08:00:00Z", "laconicman")]))
+        let ack = try await parser.parse(
+            "pr-body", bodySha256: "h",
+            askLastMoved: GitHubTime.parse("2026-11-21T00:00:00Z")!)
+        #expect(!ack.verified)
+        #expect(ack.verificationNote.contains("not later"))
+    }
+
+    /// The comparison is strict: an edit stamped at the item's own last-move
+    /// instant is not evidence it came after.
+    @Test("an edit at the item's own timestamp is not later")
+    func prBodyEditAtSameInstant() async throws {
+        let at = GitHubTime.parse("2026-11-21T00:00:00Z")!
+        let parser = AcknowledgementParser(
+            knownCommentIDs: [],
+            descriptionEvidence: descriptionEvidence(
+                [("2026-11-21T00:00:00Z", "laconicman")]))
+        let ack = try await parser.parse("pr-body", bodySha256: "h", askLastMoved: at)
+        #expect(!ack.verified)
+    }
+
+    /// `lastEditedAt` + `editor` name only the LAST edit, and a bot that
+    /// re-appends its badge to the description would mask mine — which is why
+    /// the query fetches the history. Order is not relied on: my LATEST edit
+    /// decides, wherever it sits in the list.
+    @Test("a bot's newer badge edit neither masks mine nor verifies for me")
+    func prBodyBotEditDoesNotMask() async throws {
+        let askLastMoved = GitHubTime.parse("2026-11-21T00:00:00Z")!
+        // The bot's badge re-append is newest; my older edit predates the item's
+        // last move and my newer one does not — listed second, so a first-match
+        // read would pick the wrong one of mine.
+        let verifying = AcknowledgementParser(
+            knownCommentIDs: [],
+            descriptionEvidence: descriptionEvidence(
+                [("2026-11-22T10:00:00Z", "some-bot[bot]"),
+                 ("2026-11-20T08:00:00Z", "laconicman"),
+                 ("2026-11-22T08:22:44Z", "laconicman")]))
+        let ack = try await verifying.parse(
+            "pr-body", bodySha256: "h", askLastMoved: askLastMoved)
+        #expect(ack.verified)
+        #expect(ack.verificationNote.contains("2026-11-22T08:22:44Z"))
+
+        // Only the bot's edit is later than the item — nothing of mine counts.
+        let masked = AcknowledgementParser(
+            knownCommentIDs: [],
+            descriptionEvidence: descriptionEvidence(
+                [("2026-11-22T10:00:00Z", "some-bot[bot]"),
+                 ("2026-11-20T08:00:00Z", "laconicman")]))
+        let refused = try await masked.parse(
+            "pr-body", bodySha256: "h", askLastMoved: askLastMoved)
+        #expect(!refused.verified)
+        #expect(refused.verificationNote.contains("not later"))
+    }
+
+    /// GitHub logins are case-insensitive — `Laconicman` and `laconicman` are
+    /// the same actor (`Login.same`), so the comparison cannot be `==`.
+    @Test("pr-body compares the editor login case-insensitively")
+    func prBodyLoginCaseInsensitive() async throws {
+        let parser = AcknowledgementParser(
+            knownCommentIDs: [],
+            descriptionEvidence: descriptionEvidence(
+                [("2026-11-22T08:22:44Z", "laconicman")], me: "Laconicman"))
+        let ack = try await parser.parse(
+            "pr-body", bodySha256: "h",
+            askLastMoved: GitHubTime.parse("2026-11-21T00:00:00Z")!)
+        #expect(ack.verified)
+    }
+
+    /// The fetch names the viewer itself (`viewer { login }`); `--me` overrides.
+    /// Neither → "me" is unknown, and an unverifiable "by me" is recorded as
+    /// such rather than guessed.
+    @Test("pr-body with no named viewer is unverified and points at --me")
+    func prBodyNoViewer() async throws {
+        let parser = AcknowledgementParser(
+            knownCommentIDs: [],
+            descriptionEvidence: descriptionEvidence(
+                [("2026-11-22T08:22:44Z", "laconicman")], me: nil))
+        let ack = try await parser.parse(
+            "pr-body", bodySha256: "h",
+            askLastMoved: GitHubTime.parse("2026-11-21T00:00:00Z")!)
+        #expect(!ack.verified)
+        #expect(ack.verificationNote.contains("--me"))
+    }
+
+    /// A truncated history can hide my edit — the note says how much was read
+    /// rather than letting "no edit by me" read as complete evidence.
+    @Test("pr-body reports a truncated edit history beside the verdict")
+    func prBodyTruncatedHistory() async throws {
+        let parser = AcknowledgementParser(
+            knownCommentIDs: [],
+            descriptionEvidence: descriptionEvidence(
+                [("2026-11-22T08:22:44Z", "someone-else")], truncated: true))
+        let ack = try await parser.parse(
+            "pr-body", bodySha256: "h",
+            askLastMoved: GitHubTime.parse("2026-11-21T00:00:00Z")!)
+        #expect(!ack.verified)
+        #expect(ack.verificationNote.contains("no edit by"))
+        #expect(ack.verificationNote.contains("100"))
+    }
+
+    /// The threshold is the acknowledged item's own last move; when the record
+    /// carries no usable time there is nothing to compare against.
+    @Test("pr-body with an unknown item time is unverified")
+    func prBodyUnknownItemTime() async throws {
+        let parser = AcknowledgementParser(
+            knownCommentIDs: [],
+            descriptionEvidence: descriptionEvidence(
+                [("2026-11-22T08:22:44Z", "laconicman")]))
+        let undated = try await parser.parse("pr-body", bodySha256: "h")
+        #expect(!undated.verified)
+        #expect(undated.verificationNote.contains("time is unknown"))
+
+        let ancient = try await parser.parse(
+            "pr-body", bodySha256: "h", askLastMoved: .distantPast)
+        #expect(!ancient.verified)
+        #expect(ancient.verificationNote.contains("time is unknown"))
     }
 
     /// What may be acknowledged. An inline thread is answered by replying in it, so the
@@ -470,6 +642,11 @@ struct ContractTests {
         let client = GHCommandClient(runner: runner, queryPath: "unused")
         let fetched = try await client.threads(repository: "o/r", number: 3)
         #expect(fetched.issueComments.map(\.id) == ["issue-3", "issuecomment-9"])
+        // A payload without the #17 fields reads as "not fetched", never as
+        // "no edits" — the ack check treats absent evidence as unchecked.
+        #expect(fetched.viewerLogin == nil)
+        #expect(fetched.descriptionEdits.isEmpty)
+        #expect(!fetched.descriptionEditsTruncated)
     }
 
     /// The #10 seam end to end: `commits(last: 1).statusCheckRollup.contexts`
@@ -523,6 +700,45 @@ struct ContractTests {
         // write on a field that feeds no obligation.
         #expect(fetched.headContextsTruncated)
         #expect(fetched.truncatedConnections.isEmpty)
+    }
+
+    /// The #17 seam end to end: `viewer { login }` beside `repository` and
+    /// `userContentEdits` on the subject decode into `viewerLogin`,
+    /// `descriptionEdits` and `descriptionEditsTruncated`. A truncated edit
+    /// history is a note for the ack check — never a fetch anomaly: it has no
+    /// cursor to page, and a `truncatedConnections` entry would refuse
+    /// `ack --refresh` over a field that feeds no obligation.
+    @Test("the client decodes the viewer and the description's edit history")
+    func clientDecodesDescriptionEdits() async throws {
+        let payload = """
+            {"data":{"repository":{"issueOrPullRequest":{
+              "__typename":"PullRequest","number":5419,"title":"t",
+              "url":"https://github.com/o/r/pull/5419","pullRequestState":"OPEN",
+              "body":"the description",
+              "userContentEdits":{"pageInfo":{"hasNextPage":true},"nodes":[
+                {"editedAt":"2026-11-22T08:22:44Z","editor":{"login":"me"}},
+                {"editedAt":"2026-11-21T09:00:00Z","editor":null}]}}},
+             "viewer":{"login":"me"}},
+             "rateLimit":{"cost":1,"remaining":4999,"resetAt":"x"}}
+            """
+        let runner = RecordedCommandRunner([
+            .init(match: ["api", "graphql"], stdout: Data(payload.utf8))
+        ])
+        let client = GHCommandClient(runner: runner, queryPath: "unused")
+        let fetched = try await client.threads(repository: "o/r", number: 5419)
+
+        #expect(fetched.viewerLogin == "me")
+        #expect(fetched.descriptionEdits.count == 2)
+        #expect(
+            fetched.descriptionEdits[0].editedAt
+                == GitHubTime.parse("2026-11-22T08:22:44Z")!)
+        #expect(fetched.descriptionEdits[0].editor == "me")
+        // A deleted account's edit keeps its timestamp; the nil editor simply
+        // never reads as "mine".
+        #expect(fetched.descriptionEdits[1].editor == nil)
+        #expect(fetched.descriptionEditsTruncated)
+        #expect(fetched.truncatedConnections.isEmpty)
+        #expect(fetched.pagesFetched == 1)
     }
 
     /// The `--open` fetch, replayed against the live capture (issue #12): one page,

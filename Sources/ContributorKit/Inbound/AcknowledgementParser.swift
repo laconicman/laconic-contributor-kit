@@ -9,25 +9,46 @@ public struct AcknowledgementParser: Sendable {
     public let repository: String?
     /// Resolves a git object, or `nil` when there is no repository to ask.
     public let resolveCommit: (@Sendable (String) async -> Bool)?
+    /// What the refresh fetch carried about the subject description's edit
+    /// history — the only evidence `pr-body` may verify against (issue #17).
+    /// `nil` means no fetch supplied it; the parser itself never goes anywhere.
+    public let descriptionEvidence: DescriptionEvidence?
 
     public init(
         knownCommentIDs: Set<String>,
         repository: String? = nil,
-        resolveCommit: (@Sendable (String) async -> Bool)? = nil
+        resolveCommit: (@Sendable (String) async -> Bool)? = nil,
+        descriptionEvidence: DescriptionEvidence? = nil
     ) {
         self.knownCommentIDs = knownCommentIDs
         self.repository = repository
         self.resolveCommit = resolveCommit
+        self.descriptionEvidence = descriptionEvidence
     }
 
-    public func parse(_ raw: String, bodySha256: String) async throws -> Acknowledgement {
+    /// The description-edit evidence `pr-body` verification is allowed to see:
+    /// the subject's `userContentEdits` from the refresh fetch, whether the
+    /// list was cut at 100, and who "me" is — `--me` when given, else the
+    /// fetch's own `viewer.login`.
+    public struct DescriptionEvidence: Sendable {
+        public var edits: [DescriptionEdit]
+        public var truncated: Bool
+        public var me: String?
+
+        public init(edits: [DescriptionEdit], truncated: Bool, me: String?) {
+            self.edits = edits
+            self.truncated = truncated
+            self.me = me
+        }
+    }
+
+    public func parse(
+        _ raw: String, bodySha256: String, askLastMoved: Date? = nil
+    ) async throws -> Acknowledgement {
         let trimmed = raw.trimmingCharacters(in: .whitespaces)
         guard let separator = trimmed.firstIndex(of: ":") else {
             guard trimmed == "pr-body" else { throw AcknowledgementError.unparsable(raw) }
-            return Acknowledgement(
-                kind: .prBody, pointer: "pr-body", bodySha256AtAck: bodySha256,
-                verified: false,
-                verificationNote: "a PR description edit is not checkable from here")
+            return prBody(bodySha256: bodySha256, askLastMoved: askLastMoved)
         }
         let scheme = String(trimmed[..<separator])
         let value = String(trimmed[trimmed.index(after: separator)...])
@@ -83,6 +104,55 @@ public struct AcknowledgementParser: Sendable {
         default:
             throw AcknowledgementError.unknownKind(scheme)
         }
+    }
+
+    /// `pr-body` is verified only by evidence the refresh fetch already carried
+    /// (issue #17): an edit of the subject's description **by me**, strictly
+    /// later than the acknowledged item last moved — the same threshold an asker
+    /// reply is held to (68e1e55). `lastEditedAt` + `editor` describe only the
+    /// LAST edit, and a bot re-appending its badge would mask mine, so the
+    /// latest of *my* edits decides, wherever it sits in the list. Verified
+    /// means "an edit by me exists after the ask last moved" — never "the edit
+    /// says what was asked", the same level `commit:` = "resolves locally"
+    /// claims. Every shortfall records unverified with the reason, because
+    /// `verified` must never mean "we did not look".
+    private func prBody(bodySha256: String, askLastMoved: Date?) -> Acknowledgement {
+        func record(_ verified: Bool, _ note: String) -> Acknowledgement {
+            Acknowledgement(
+                kind: .prBody, pointer: "pr-body", bodySha256AtAck: bodySha256,
+                verified: verified, verificationNote: note)
+        }
+        guard let evidence = descriptionEvidence else {
+            return record(
+                false,
+                "not checked — re-run with --refresh to check the description's edit history")
+        }
+        guard let me = evidence.me else {
+            return record(
+                false, "not checked — the fetch did not name the viewer; pass --me")
+        }
+        guard let askLastMoved, askLastMoved != .distantPast else {
+            return record(false, "not checked — this item's own time is unknown")
+        }
+        let mine = evidence.edits.filter { edit in
+            edit.editor.map { Login.same($0, me) } ?? false
+        }
+        let latest = mine.map(\.editedAt).max()
+        if let latest, latest > askLastMoved {
+            return record(
+                true,
+                "the description has an edit by \(me) at \(GitHubTime.string(latest)), "
+                    + "later than this item — that it was edited, not what the edit says")
+        }
+        let truncated =
+            evidence.truncated ? " — only 100 edits were read, and there are more" : ""
+        guard let latest else {
+            return record(false, "the description has no edit by \(me)\(truncated)")
+        }
+        return record(
+            false,
+            "the latest description edit by \(me) (\(GitHubTime.string(latest))) "
+                + "is not later than this item (\(GitHubTime.string(askLastMoved)))\(truncated)")
     }
 
     /// The synthesized body id a subject URL names, or `nil` when the value is not

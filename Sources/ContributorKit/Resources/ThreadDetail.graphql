@@ -20,9 +20,20 @@
 # synthesized item — GitHub's own timeline treats the body as the thread's first
 # entry, and the obligation machinery then works on it unchanged.
 #
+# `viewer { login }` and `userContentEdits` ride along for issue #17: `ack --with
+# pr-body` verifies only when the description's edit history shows an edit by me
+# later than the acknowledged item last moved. `lastEditedAt` + `editor` describe
+# only the LAST edit, and a bot that re-appends a badge to the description on every
+# edit would mask an earlier edit of mine — the history does not have that hole.
+# Exercised live 2026-11-22 against pjsip/pjproject#5419: nodes come newest-first
+# and the oldest node's `editedAt` equals the subject's `createdAt` — the creation
+# itself — so nothing here relies on the ordering.
+#
 # Validated 2026-09-05 against octokit/graphql-schema@main with graphql-js;
 # re-validated 2026-09-07 after the edit-tracking fields were added, and
-# 2026-10-01 after the commits/statusCheckRollup contexts (issue #10).
+# 2026-10-01 after the commits/statusCheckRollup contexts (issue #10). The
+# `viewer`/`userContentEdits` additions were exercised live 2026-11-22, not
+# schema-validated.
 # Note `issueState`/`pullRequestState`: Issue.state and PullRequest.state return
 # different enums, so the same response key across the two fragments is a
 # validation error. The aliases are load-bearing, not cosmetic.
@@ -45,6 +56,10 @@ query ThreadDetail(
         closed
         closedAt
         body author { login } viewerDidAuthor createdAt updatedAt lastEditedAt
+        userContentEdits(first: 100) {
+          pageInfo { hasNextPage }
+          nodes { editedAt editor { login } }
+        }
         comments(first: 100, after: $commentCursor) {
           pageInfo { hasNextPage endCursor }
           nodes { body url createdAt updatedAt lastEditedAt editor { login } viewerDidAuthor author { login } }
@@ -61,6 +76,10 @@ query ThreadDetail(
         mergedAt
         isDraft
         body author { login } viewerDidAuthor createdAt updatedAt lastEditedAt
+        userContentEdits(first: 100) {
+          pageInfo { hasNextPage }
+          nodes { editedAt editor { login } }
+        }
         comments(first: 100, after: $commentCursor) {
           pageInfo { hasNextPage endCursor }
           nodes { body url createdAt updatedAt lastEditedAt editor { login } viewerDidAuthor author { login } }
@@ -118,5 +137,6 @@ query ThreadDetail(
       }
     }
   }
+  viewer { login }
   rateLimit { cost remaining resetAt }
 }
