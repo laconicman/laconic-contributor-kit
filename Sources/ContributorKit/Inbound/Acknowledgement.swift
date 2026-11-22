@@ -9,9 +9,12 @@ import Foundation
 ///   *"no action needed, because …"* <doc:Design> names explicitly; it demands a reason, so
 ///   dismissing something still costs a sentence.
 /// - **Shape is always checked. Existence is checked only where it is free** — an id
-///   already present in the fetch, a sha the local repo can resolve. Never a network
-///   call: a verifier that needs the network is a verifier that gets skipped offline,
-///   and then `verified` means "we did not look" while reading as "fine".
+///   already present in the fetch, a sha the local repo can resolve, a `pr-body`
+///   edit of mine in the description's history when the refresh fetch carried it.
+///   Never a network call: a verifier that needs the network is a verifier that gets
+///   skipped offline, and then `verified` means "we did not look" while reading as
+///   "fine". The pr-body evidence is not a call of its own — it rides the fetch
+///   `ack --refresh` already makes for the snapshot (issue #17).
 /// - `verified` is recorded per acknowledgement, and the provenance block prints how
 ///   many are unverified. That is the difference between a fact and an assumption.
 public struct Acknowledgement: Codable, Sendable {

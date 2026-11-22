@@ -17,6 +17,9 @@ struct ThreadDetailResponse: Decodable {
 
     struct Payload: Decodable {
         var repository: Repository?
+        /// Who `gh` is authenticated as — fetched so `ack --with pr-body` can
+        /// compare edit authors without a second call (issue #17).
+        var viewer: Actor?
     }
 
     struct Repository: Decodable {
@@ -46,6 +49,12 @@ struct ThreadDetailResponse: Decodable {
         /// reviewer report on THIS head", and a deeper history answers a question
         /// nobody asked (issue #10).
         var commits: Connection<CommitNode>?
+        /// The description's edit history (issue #17): `lastEditedAt` + `editor`
+        /// describe only the LAST edit, and a bot re-appending a badge would mask
+        /// an earlier edit of mine — the whole list is what `pr-body` verifies
+        /// against. `first: 100` with no cursor: `hasNextPage` is reported as a
+        /// truncation note, never paged.
+        var userContentEdits: Connection<EditNode>?
 
         /// The subject's own body as a comment-shaped item on the issue-comments
         /// channel.
@@ -150,6 +159,21 @@ struct ThreadDetailResponse: Decodable {
         /// `description`.
         var detail: String? { isCheckRun ? title : description }
         var link: String? { isCheckRun ? detailsUrl : targetUrl }
+    }
+
+    /// One `userContentEdits` node — when the description last changed and who
+    /// changed it. `editor` is `nil` on a deleted account, which reads as "not
+    /// me" rather than as a guess.
+    struct EditNode: Decodable {
+        var editedAt: String?
+        var editor: Actor?
+
+        /// `nil` when the timestamp cannot be parsed — an undated edit cannot be
+        /// ordered against the ask, so it is dropped rather than guessed at.
+        func descriptionEdit() -> DescriptionEdit? {
+            guard let editedAt = GitHubTime.parse(editedAt) else { return nil }
+            return DescriptionEdit(editedAt: editedAt, editor: editor?.login)
+        }
     }
 
     struct Actor: Decodable {

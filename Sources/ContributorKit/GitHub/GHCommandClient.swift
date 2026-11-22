@@ -53,6 +53,7 @@ public struct GHCommandClient: GitHubClient {
         var threads: [RemoteThread] = []
         var truncated: [String] = []
         var meta: ThreadDetailResponse.Subject?
+        var viewerLogin: String?
         var pages = 0
 
         while pages < maxPages {
@@ -78,6 +79,7 @@ public struct GHCommandClient: GitHubClient {
                 throw GitHubError.notFound(repository: repository, number: number)
             }
             meta = subject
+            viewerLogin = response.data?.viewer?.login ?? viewerLogin
             pages += 1
 
             issueComments += (subject.comments?.nodes ?? []).compactMap {
@@ -152,6 +154,23 @@ public struct GHCommandClient: GitHubClient {
                     detail: node.detail, url: node.link)
             }
 
+        // The description's edit history (issue #17), from the last page's
+        // subject like `meta`. `nil` — not `[]` — when the response never
+        // carried the connection (an older capture, a REST-shaped
+        // source): absent history must not read as "no edits". `hasNextPage`
+        // here is a note for the ack check, not a fetch anomaly: the
+        // connection has no cursor variable, so it cannot be paged — and a
+        // `truncatedConnections` entry would refuse `ack --refresh` over a
+        // field that feeds no obligation.
+        let descriptionEdits: [DescriptionEdit]?
+        if let nodes = meta?.userContentEdits?.nodes {
+            descriptionEdits = nodes.compactMap { $0.descriptionEdit() }
+        } else {
+            descriptionEdits = nil
+        }
+        let descriptionEditsTruncated =
+            meta?.userContentEdits?.pageInfo?.hasNextPage == true
+
         return PullRequestThreads(
             repository: repository, number: number,
             title: meta?.title ?? "", url: meta?.url ?? "",
@@ -163,7 +182,10 @@ public struct GHCommandClient: GitHubClient {
             headCommitOID: headCommit?.oid, headContexts: headContexts,
             headContextsTruncated: headContextsTruncated,
             isPullRequest: meta?.__typename == "PullRequest" ? true
-                : meta?.__typename == "Issue" ? false : nil)
+                : meta?.__typename == "Issue" ? false : nil,
+            descriptionEdits: descriptionEdits,
+            descriptionEditsTruncated: descriptionEditsTruncated,
+            viewerLogin: viewerLogin)
     }
 
     /// The `--open` queue's fetch (issue #12): every open pull request, paged
