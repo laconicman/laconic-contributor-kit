@@ -33,7 +33,10 @@ recorded acknowledgement, and the timestamp only decides whether that record is 
 verified. Verified means *an edit by me exists after the ask last moved* — not *the
 edit says what was asked* — the same level of claim `commit:` makes with *resolves
 locally*. Without the refresh fetch the pointer records unverified and names the
-remedy; the evidence never triggers a fetch of its own.
+remedy; the evidence never triggers a fetch of its own. The item being
+acknowledged must itself be in that fetch — a refresh that does not carry it is
+refused, so a stale entry cannot borrow another pull request's edit history
+(review of #18).
 
 The rejected alternative, for the record: *"a review body is answered if I posted any
 top-level comment after it."* It is a silent false negative — it clears an obligation

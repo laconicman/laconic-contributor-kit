@@ -470,8 +470,9 @@ both runs below re-recorded it.
 | `viewer { login }` and `userContentEdits` are accepted by the live schema | the `--refresh` run completed with `anomalies none`; its nodes came back newest-first with the oldest `editedAt` equal to the subject's `createdAt` — the creation itself |
 
 Constructed only, with no live capture behind them: every unverified branch —
-no evidence, no named viewer, unknown item time, my edit not later (including
-the strict equality edge), a bot's newer edit masking or not masking mine, a
-truncated history, and the case-insensitive login compare. All are covered by
-parser tests in `ContractTests`; the negative and masked cases have never met
-a real response.
+no evidence, no fetched edit history, no named viewer, unknown item time, my
+edit not later (including the strict equality edge), a bot's newer edit masking
+or not masking mine, a truncated history, and the case-insensitive login
+compare — plus the refresh refusal for an item the fetch did not carry. All
+are covered by tests in `ContractTests`; the negative and masked cases have
+never met a real response.

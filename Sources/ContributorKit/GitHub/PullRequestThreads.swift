@@ -41,9 +41,12 @@ public struct PullRequestThreads: Sendable {
     /// mistaking a pre-field capture for a fetch failure.
     public var isPullRequest: Bool?
     /// The subject description's edit history (issue #17). Order is not relied
-    /// on — the ack check takes the latest of *my* edits. Empty when the source
-    /// never carried it.
-    public var descriptionEdits: [DescriptionEdit]
+    /// on — the ack check takes the latest of *my* edits. `nil` when the source
+    /// never carried the connection — an older capture, a host without the
+    /// field — which the ack check reads as "not checked", never as "no
+    /// edits"; empty only when the fetch returned the connection with nothing
+    /// in it.
+    public var descriptionEdits: [DescriptionEdit]?
     /// `userContentEdits` still had a next page: only the newest 100 edits were
     /// read. Reported beside the verdict, never a fetch anomaly — like
     /// `headContextsTruncated` it feeds no obligation, and unlike a comment
@@ -88,7 +91,7 @@ public struct PullRequestThreads: Sendable {
         bodiesAreExcerpts: Bool = false,
         headCommitOID: String? = nil, headContexts: [HeadContext] = [],
         headContextsTruncated: Bool = false, isPullRequest: Bool? = nil,
-        descriptionEdits: [DescriptionEdit] = [],
+        descriptionEdits: [DescriptionEdit]? = nil,
         descriptionEditsTruncated: Bool = false, viewerLogin: String? = nil
     ) {
         self.repository = repository

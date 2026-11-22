@@ -29,13 +29,15 @@ public struct AcknowledgementParser: Sendable {
     /// The description-edit evidence `pr-body` verification is allowed to see:
     /// the subject's `userContentEdits` from the refresh fetch, whether the
     /// list was cut at 100, and who "me" is — `--me` when given, else the
-    /// fetch's own `viewer.login`.
+    /// fetch's own `viewer.login`. `edits` is `nil` when the fetch never
+    /// carried the connection — absent history is "not checked", not "no
+    /// edits".
     public struct DescriptionEvidence: Sendable {
-        public var edits: [DescriptionEdit]
+        public var edits: [DescriptionEdit]?
         public var truncated: Bool
         public var me: String?
 
-        public init(edits: [DescriptionEdit], truncated: Bool, me: String?) {
+        public init(edits: [DescriptionEdit]?, truncated: Bool, me: String?) {
             self.edits = edits
             self.truncated = truncated
             self.me = me
@@ -127,6 +129,10 @@ public struct AcknowledgementParser: Sendable {
                 false,
                 "not checked — re-run with --refresh to check the description's edit history")
         }
+        guard let edits = evidence.edits else {
+            return record(
+                false, "not checked — the fetch carried no description edit history")
+        }
         guard let me = evidence.me else {
             return record(
                 false, "not checked — the fetch did not name the viewer; pass --me")
@@ -134,7 +140,7 @@ public struct AcknowledgementParser: Sendable {
         guard let askLastMoved, askLastMoved != .distantPast else {
             return record(false, "not checked — this item's own time is unknown")
         }
-        let mine = evidence.edits.filter { edit in
+        let mine = edits.filter { edit in
             edit.editor.map { Login.same($0, me) } ?? false
         }
         let latest = mine.map(\.editedAt).max()

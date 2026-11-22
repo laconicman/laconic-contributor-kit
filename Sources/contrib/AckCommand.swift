@@ -107,6 +107,15 @@ struct AckCommand: AsyncParsableCommand {
                     "the refresh fetch was truncated (\(fetched.truncatedConnections.joined(separator: ", "))) "
                         + "— refusing to acknowledge against a partial read")
             }
+            // The fetch's evidence — edit history, viewer — belongs to the
+            // subject it fetched. An entry that fetch does not carry must not
+            // borrow it: a legacy record with no subject would otherwise
+            // verify `pr-body` against another pull request's description.
+            if let refusal = AcknowledgementEligibility.refusal(
+                forRefreshOf: id, in: fetched, subject: subject)
+            {
+                throw AckError.refused(refusal)
+            }
             descriptionEvidence = .init(
                 edits: fetched.descriptionEdits,
                 truncated: fetched.descriptionEditsTruncated,

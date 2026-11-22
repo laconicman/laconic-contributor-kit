@@ -62,4 +62,24 @@ public enum AcknowledgementEligibility {
             return "\(id) is an inline thread in state `\(entry.state!.rawValue)`, which takes no acknowledgement."
         }
     }
+
+    /// `nil` when the refresh fetch carried `id`; otherwise why it cannot
+    /// speak for the item.
+    ///
+    /// The fetch's evidence — the description's edit history, the viewer —
+    /// belongs to the subject it fetched. An entry that fetch does not carry
+    /// (a legacy record whose subject was never written, say) would otherwise
+    /// borrow another pull request's history and verify against it. Every
+    /// entry id is a comment id on its subject — an inline thread's root, a
+    /// review body, an issue comment, the synthesized body item — so absence
+    /// here means the fetch is not the item's.
+    public static func refusal(
+        forRefreshOf id: String, in fetched: PullRequestThreads, subject: String
+    ) -> String? {
+        guard !fetched.allComments.contains(where: { $0.id == id }) else { return nil }
+        return """
+            \(id) is not on \(subject) — the refresh fetch did not carry it, \
+            so nothing fetched there can speak for it
+            """
+    }
 }

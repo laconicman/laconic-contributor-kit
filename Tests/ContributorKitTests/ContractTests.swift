@@ -286,11 +286,11 @@ struct ContractTests {
     /// `pr-body` evidence, built directly — the parser never fetches; the
     /// `ack --refresh` fetch hands it the subject's `userContentEdits`.
     private func descriptionEvidence(
-        _ edits: [(String, String?)],
+        _ edits: [(String, String?)]?,
         me: String? = "laconicman", truncated: Bool = false
     ) -> AcknowledgementParser.DescriptionEvidence {
         .init(
-            edits: edits.map {
+            edits: edits?.map {
                 DescriptionEdit(editedAt: GitHubTime.parse($0.0)!, editor: $0.1)
             },
             truncated: truncated, me: me)
@@ -308,6 +308,21 @@ struct ContractTests {
         #expect(!ack.verified)
         #expect(ack.verificationNote.contains("not checked"))
         #expect(ack.verificationNote.contains("--refresh"))
+    }
+
+    /// A response that never carried `userContentEdits` — an older capture, a
+    /// host without the field — is "not checked", never "no edits": absent
+    /// history and an empty one must not collapse into the same verdict.
+    @Test("pr-body with no fetched edit history is unverified, not 'no edits'")
+    func prBodyNoFetchedHistory() async throws {
+        let parser = AcknowledgementParser(
+            knownCommentIDs: [],
+            descriptionEvidence: descriptionEvidence(nil))
+        let ack = try await parser.parse(
+            "pr-body", bodySha256: "h",
+            askLastMoved: GitHubTime.parse("2026-11-21T00:00:00Z")!)
+        #expect(!ack.verified)
+        #expect(ack.verificationNote.contains("no description edit history"))
     }
 
     /// The one verified shape: my edit in the description's history, later
@@ -475,6 +490,46 @@ struct ContractTests {
         #expect(!allow(entry(.inlineThread, .editedAfterMyAnswer)), "the check would be stale")
         #expect(!allow(entry(.inlineThread, .answeredConfirmed)), "nothing to record")
         #expect(!allow(entry(.inlineThread, nil)), "state unknown")
+    }
+
+    /// The refresh fetch's evidence — the description's edit history, the
+    /// viewer — belongs to the subject it fetched. An entry that fetch does
+    /// not carry (a legacy record whose subject was never written, say) must
+    /// be refused before its `pr-body` can borrow another pull request's
+    /// history. Every entry id is a comment id on its subject, so absence
+    /// here means the fetch is not the item's.
+    @Test("a refresh refuses an item its fetch did not carry")
+    func refreshRefusalForUncarriedItem() {
+        let comment = { (id: String, channel: Channel) in
+            RemoteComment(
+                id: id, channel: channel, author: "devin",
+                viewerDidAuthor: false, createdAt: Date(), body: "b",
+                permalink: "u#\(id)")
+        }
+        let fetched = PullRequestThreads(
+            repository: "o/r", number: 7, title: "t", url: "u",
+            state: "OPEN", isMerged: false,
+            threads: [
+                RemoteThread(comments: [comment("discussion_r1", .inlineThread)])
+            ],
+            reviewBodies: [comment("pullrequestreview-2", .reviewBody)],
+            issueComments: [comment("pullrequest-7", .issueComment)],
+            pagesFetched: 1)
+
+        let refusal = AcknowledgementEligibility.refusal(
+            forRefreshOf: "pullrequestreview-1", in: fetched, subject: "o/r#7")
+        #expect(refusal != nil)
+        #expect(refusal?.contains("pullrequestreview-1") == true)
+        #expect(refusal?.contains("o/r#7") == true)
+
+        // Carried ids pass: a review body, an inline thread's root, and the
+        // synthesized body item are all members of `allComments`.
+        #expect(AcknowledgementEligibility.refusal(
+            forRefreshOf: "pullrequestreview-2", in: fetched, subject: "o/r#7") == nil)
+        #expect(AcknowledgementEligibility.refusal(
+            forRefreshOf: "discussion_r1", in: fetched, subject: "o/r#7") == nil)
+        #expect(AcknowledgementEligibility.refusal(
+            forRefreshOf: "pullrequest-7", in: fetched, subject: "o/r#7") == nil)
     }
 
     /// **Every state `contrib` can print is in the skill's decision table.** A state
@@ -645,7 +700,7 @@ struct ContractTests {
         // A payload without the #17 fields reads as "not fetched", never as
         // "no edits" — the ack check treats absent evidence as unchecked.
         #expect(fetched.viewerLogin == nil)
-        #expect(fetched.descriptionEdits.isEmpty)
+        #expect(fetched.descriptionEdits == nil)
         #expect(!fetched.descriptionEditsTruncated)
     }
 
@@ -728,17 +783,34 @@ struct ContractTests {
         let fetched = try await client.threads(repository: "o/r", number: 5419)
 
         #expect(fetched.viewerLogin == "me")
-        #expect(fetched.descriptionEdits.count == 2)
-        #expect(
-            fetched.descriptionEdits[0].editedAt
-                == GitHubTime.parse("2026-11-22T08:22:44Z")!)
-        #expect(fetched.descriptionEdits[0].editor == "me")
+        let edits = try #require(fetched.descriptionEdits)
+        #expect(edits.count == 2)
+        #expect(edits[0].editedAt == GitHubTime.parse("2026-11-22T08:22:44Z")!)
+        #expect(edits[0].editor == "me")
         // A deleted account's edit keeps its timestamp; the nil editor simply
         // never reads as "mine".
-        #expect(fetched.descriptionEdits[1].editor == nil)
+        #expect(edits[1].editor == nil)
         #expect(fetched.descriptionEditsTruncated)
         #expect(fetched.truncatedConnections.isEmpty)
         #expect(fetched.pagesFetched == 1)
+
+        // The same field present but empty is a different fact: the history
+        // was fetched and held nothing — `[]`, not `nil`.
+        let emptyPayload = """
+            {"data":{"repository":{"issueOrPullRequest":{
+              "__typename":"PullRequest","number":5419,"title":"t",
+              "url":"https://github.com/o/r/pull/5419","pullRequestState":"OPEN",
+              "userContentEdits":{"pageInfo":{"hasNextPage":false},"nodes":[]}}},
+             "viewer":{"login":"me"}},
+             "rateLimit":{"cost":1,"remaining":4999,"resetAt":"x"}}
+            """
+        let emptyRunner = RecordedCommandRunner([
+            .init(match: ["api", "graphql"], stdout: Data(emptyPayload.utf8))
+        ])
+        let emptyFetch = try await GHCommandClient(runner: emptyRunner, queryPath: "unused")
+            .threads(repository: "o/r", number: 5419)
+        #expect(emptyFetch.descriptionEdits == [])
+        #expect(!emptyFetch.descriptionEditsTruncated)
     }
 
     /// The `--open` fetch, replayed against the live capture (issue #12): one page,
