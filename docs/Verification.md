@@ -453,3 +453,25 @@ release binary (`gh` authenticated as `laconicman`, macOS, all reads).
 *The captured lines above are verbatim from their runs; the facts format gained
 `· unexamined <n>` after the review of #15, so a row captured today reads e.g.
 `owed 5 · to re-read 0 · unexamined 0 · Devin Review @ 40dad1c (head): SUCCESS "Completed analysis in 3m 11s" — last review object by devin-ai-integration on 40dad1c`.*
+
+## From issue #17, 2026-11-22
+
+`ack --with pr-body` verification against the subject description's edit history,
+run live against `pjsip/pjproject#5419` (`gh` authenticated as `laconicman`,
+all reads). The state dir was copied to `/tmp` first — the real one was never
+touched — and the item already carried a `pr-body` ack recorded unverified, so
+both runs below re-recorded it.
+
+| Claim | Evidence |
+|---|---|
+| Without `--refresh` the ack records unverified and names the remedy | `contrib ack pullrequestreview-5990705657 --with pr-body pjsip/pjproject --pr 5419` printed `UNVERIFIED: not checked — re-run with --refresh to check the description's edit history` (verbatim) |
+| With `--refresh` it verifies on my edit later than the item last moved | the same command plus `--refresh` printed `verified: the description has an edit by laconicman at 2026-11-22T08:22:44Z, later than this item — that it was edited, not what the edit says` (verbatim) |
+| The evidence rides the fetch `ack --refresh` already makes | the `--refresh` provenance block reads `subprocesses 1` — the edit history and `viewer.login` arrived inside the one GraphQL call, no second fetch |
+| `viewer { login }` and `userContentEdits` are accepted by the live schema | the `--refresh` run completed with `anomalies none`; its nodes came back newest-first with the oldest `editedAt` equal to the subject's `createdAt` — the creation itself |
+
+Constructed only, with no live capture behind them: every unverified branch —
+no evidence, no named viewer, unknown item time, my edit not later (including
+the strict equality edge), a bot's newer edit masking or not masking mine, a
+truncated history, and the case-insensitive login compare. All are covered by
+parser tests in `ContractTests`; the negative and masked cases have never met
+a real response.

@@ -24,6 +24,17 @@ then `verified` means *we did not look* while reading as *fine*. Each acknowledg
 records its own `verified` flag and note, and the provenance block prints how many went
 in unverified.
 
+`pr-body` joined the free checks in issue #17: the subject's `userContentEdits` rides
+the fetch `ack --refresh` already makes, and an edit by me strictly later than the
+acknowledged item last moved — the later of its `createdAt` and `lastEditedAt`, the
+threshold an asker reply is already held to — marks the record verified. The rejected
+alternative below *inferred a discharge* from timing; here the discharge is still the
+recorded acknowledgement, and the timestamp only decides whether that record is marked
+verified. Verified means *an edit by me exists after the ask last moved* — not *the
+edit says what was asked* — the same level of claim `commit:` makes with *resolves
+locally*. Without the refresh fetch the pointer records unverified and names the
+remedy; the evidence never triggers a fetch of its own.
+
 The rejected alternative, for the record: *"a review body is answered if I posted any
 top-level comment after it."* It is a silent false negative — it clears an obligation
 whenever you happen to comment about something else in the same window — and it is what

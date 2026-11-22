@@ -141,6 +141,11 @@ the last `contrib in` leaves the item in its old state — the refusal names the
 `contrib ack <id> --with … <repo> --refresh` re-fetches the item's subject and updates the
 snapshot in the same step, collapsing reply → `in` → ack into reply → `ack --refresh`.
 
+**`pr-body` verifies only under `--refresh`.** The refresh fetch carries the
+description's edit history; an edit by me later than the ask last moved marks the
+record verified — that an edit happened, not what it says. Without `--refresh` the
+ack records "not checked" and names the remedy.
+
 **Re-read one item whole with `contrib show <id> <owner>/<repo>`** — the ask, your reply,
 the recorded acknowledgement, and a diff of what moved since. The table truncates and
 `--json` carries full bodies; `show` is the shaped version of that escape hatch for a
