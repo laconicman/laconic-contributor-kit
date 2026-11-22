@@ -156,8 +156,8 @@ public struct GHCommandClient: GitHubClient {
 
         // The description's edit history (issue #17), from the last page's
         // subject like `meta`. `nil` — not `[]` — when the response never
-        // carried the connection (an older capture, a host without the
-        // field): absent history must not read as "no edits". `hasNextPage`
+        // carried the connection (an older capture, a REST-shaped
+        // source): absent history must not read as "no edits". `hasNextPage`
         // here is a note for the ack check, not a fetch anomaly: the
         // connection has no cursor variable, so it cannot be paged — and a
         // `truncatedConnections` entry would refuse `ack --refresh` over a

@@ -42,8 +42,8 @@ public struct PullRequestThreads: Sendable {
     public var isPullRequest: Bool?
     /// The subject description's edit history (issue #17). Order is not relied
     /// on — the ack check takes the latest of *my* edits. `nil` when the source
-    /// never carried the connection — an older capture, a host without the
-    /// field — which the ack check reads as "not checked", never as "no
+    /// never carried the connection — an older capture, a REST-shaped
+    /// source — which the ack check reads as "not checked", never as "no
     /// edits"; empty only when the fetch returned the connection with nothing
     /// in it.
     public var descriptionEdits: [DescriptionEdit]?
